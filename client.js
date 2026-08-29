@@ -179,6 +179,9 @@ function renderHeader() {
   $('#turn-info').innerHTML = `轮到 <b>${p.name}</b>${myTurn ? (p.isAI ? '（电脑思考中…）' : '（请行动）') : ''}`;
   $('#target-info').textContent = `目标 ${S.target} 分`;
   $('#end-banner').hidden = !S.endTriggered;
+  // 房主联机对局进行中：显示「结束对局」按钮
+  const isHost = ONLINE && room && room.you && room.you.isHost;
+  $('#btn-stop-game').hidden = !(isHost && S && !S.over);
 }
 
 function renderMarket() {
@@ -1008,11 +1011,18 @@ function init() {
     b.addEventListener('click', () => showModal('#modal-rules')));
   $('#btn-exit').addEventListener('click', () => {
     if (ONLINE) {
-      if (confirm('确定退出房间吗？')) location.reload();
+      if (confirm('确定退出房间吗？对局会在服务器上继续。')) location.reload();
       return;
     }
     if (!S || S.over) { backToSetup(); return; }
     if (confirm('确定退出当前对局？进度将丢失。')) backToSetup();
+  });
+  // 房主：中途结束对局，所有人返回大厅
+  $('#btn-stop-game').addEventListener('click', () => {
+    if (!ONLINE) return;
+    if (confirm('确定结束当前对局吗？所有玩家将返回大厅。')) {
+      postApi({ type: 'backToLobby', cid: myCid });
+    }
   });
   document.querySelectorAll('[data-close]').forEach((b) =>
     b.addEventListener('click', hideModals));
