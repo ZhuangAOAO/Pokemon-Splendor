@@ -17,6 +17,8 @@ let myCid = null;  // 联机：连接编号
 let room = null;   // 联机：房间信息（最新一次广播）
 let connOk = true; // 联机：连接状态
 let overShown = false; // 本局结算框是否已弹出
+let prevSnap = null;      // 上一次状态快照（漂移动画差分用）
+const lastMarketIds = {}; // 每个市场槽位上次的卡 id（只给新补的卡播入场动画）
 
 /* ---- 核心事件钩子：本地模式下由 game-core 驱动界面 ---- */
 HOOKS.onStateChanged = () => { if (!ONLINE) render(); };
@@ -59,7 +61,114 @@ function showScreen(id) {
 /* ==================== 渲染（读取全局 S） ==================== */
 function render() {
   if (!S) return;
+  floatDiff(); // 先差分状态、计算漂移动画（要用旧 DOM 的位置，必须最先执行）
   renderHeader(); renderMarket(); renderRareLegend(); renderPool(); renderPlayers(); renderActions();
+}
+
+/* ==================== 行动漂移动画 ==================== */
+function snapOf() {
+  return JSON.stringify({
+    pool: S.pool,
+    market: { 1: S.market[1].map((c) => (c ? c.id : null)), 2: S.market[2].map((c) => (c ? c.id : null)), 3: S.market[3].map((c) => (c ? c.id : null)), 4: S.market[4].map((c) => (c ? c.id : null)), 5: S.market[5].map((c) => (c ? c.id : null)) },
+    players: S.players.map((p) => ({
+      balls: p.balls,
+      cardIds: p.cards.map((c) => c.id),
+      resIds: p.reserved.map((c) => c.id),
+    })),
+  });
+}
+function findCardById(id) {
+  for (const t of [1, 2, 3, 4, 5]) {
+    const c = S.market[t].find((x) => x && x.id === id);
+    if (c) return c;
+  }
+  for (const p of S.players) {
+    const c = p.cards.find((x) => x.id === id) || p.reserved.find((x) => x.id === id);
+    if (c) return c;
+  }
+  return null;
+}
+function boardRect(seat) {
+  const el = document.querySelector('.player[data-p="' + seat + '"]');
+  return el ? el.getBoundingClientRect() : null;
+}
+function spawnFloat(el, from, to, delay, duration) {
+  el.style.position = 'fixed';
+  el.style.left = (from.left + from.width / 2 - 16) + 'px';
+  el.style.top = (from.top + from.height / 2 - 24) + 'px';
+  el.style.zIndex = '300';
+  el.style.pointerEvents = 'none';
+  el.style.opacity = '0';
+  el.style.transition = 'transform ' + duration + 'ms cubic-bezier(.2,.8,.3,1), opacity ' + duration + 'ms ease';
+  document.body.appendChild(el);
+  setTimeout(() => {
+    el.style.transform = 'translate(' + (to.left + to.width / 2 - (from.left + from.width / 2)) + 'px,' + (to.top + to.height / 2 - (from.top + from.height / 2)) + 'px) scale(.65)';
+    el.style.opacity = '.95';
+  }, delay + 20);
+  setTimeout(() => { el.style.opacity = '0'; }, delay + duration * 0.75);
+  setTimeout(() => el.remove(), delay + duration + 400);
+}
+function spawnBallFloat(c, from, to, delay) {
+  const el = document.createElement('span');
+  el.className = 'ball';
+  el.style.setProperty('--bc', BALLS[c].top);
+  el.style.setProperty('--band', BALLS[c].band);
+  spawnFloat(el, from, to, delay, 650);
+}
+function spawnCardFloat(card, from, to, delay) {
+  const el = document.createElement('img');
+  el.src = 'pictures/' + encodeURIComponent(card.name) + '.jpg';
+  el.style.width = '64px';
+  el.style.aspectRatio = '1335/2063';
+  el.style.objectFit = 'cover';
+  el.style.borderRadius = '8px';
+  el.style.boxShadow = '0 10px 24px rgba(0,0,0,.4)';
+  spawnFloat(el, from, to, delay, 750);
+}
+// 对比新旧状态：谁拿了球/卡，就从源头飘一个动画到他的面板
+function floatDiff() {
+  if (!prevSnap) { prevSnap = snapOf(); return; }
+  const nowStr = snapOf();
+  const prev = JSON.parse(prevSnap);
+  const now = JSON.parse(nowStr);
+  prevSnap = nowStr;
+  // 位置从"旧 DOM"取（render 尚未重建）
+  const poolRects = {};
+  document.querySelectorAll('#pool .pool-group').forEach((g) => { poolRects[g.dataset.color] = g.getBoundingClientRect(); });
+  const labelRects = {};
+  document.querySelectorAll('#market .tier-label, #rl-wrap .tier-label').forEach((l) => { labelRects[+l.dataset.tier] = l.getBoundingClientRect(); });
+  // 球：供应区减少 → 飞向获得球的玩家
+  COLORS.concat(['master']).forEach((c) => {
+    const taken = prev.pool[c] - now.pool[c];
+    if (taken <= 0) return;
+    const who = now.players.findIndex((p2, i) => p2.balls[c] > prev.players[i].balls[c]);
+    if (who < 0) return;
+    const from = poolRects[c], to = boardRect(who);
+    if (!from || !to) return;
+    for (let k = 0; k < taken; k++) spawnBallFloat(c, from, to, k * 100);
+  });
+  // 卡：玩家新增（收服/预约/进化）→ 从市场槽位（或盲抽的牌堆标签）飞向玩家
+  now.players.forEach((p2, i) => {
+    const prevIds = new Set((prev.players[i].cardIds || []).concat(prev.players[i].resIds || []));
+    const newIds = (p2.cardIds || []).concat(p2.resIds || []).filter((id) => !prevIds.has(id));
+    if (!newIds.length) return;
+    const to = boardRect(i);
+    if (!to) return;
+    newIds.forEach((id, k) => {
+      const card = findCardById(id);
+      if (!card) return;
+      let from = null;
+      for (const t of [1, 2, 3, 4, 5]) {
+        const idx = (prev.market[t] || []).indexOf(id);
+        if (idx >= 0) {
+          const slot = document.querySelector('.card[data-tier="' + t + '"][data-idx="' + idx + '"]');
+          if (slot) { from = slot.getBoundingClientRect(); break; }
+        }
+      }
+      if (!from) from = labelRects[card.tier]; // 盲抽：从牌堆标签飞出
+      if (from) spawnCardFloat(card, from, to, k * 140);
+    });
+  });
 }
 
 function renderHeader() {
@@ -89,11 +198,16 @@ function renderMarket() {
     const row = document.createElement('div');
     row.className = 'tier-row';
     row.appendChild(tierLabel(t));
-    S.market[t].forEach((card, idx) => row.appendChild(cardEl(card, t, idx)));
+    const prevIds = lastMarketIds[t] || [];
+    S.market[t].forEach((card, idx) => {
+      const isNew = prevIds[idx] !== (card ? card.id : null); // 只有新补的卡播放入场动画
+      row.appendChild(cardEl(card, t, idx, false, isNew));
+    });
     mk.appendChild(row);
   });
+  [1, 2, 3].forEach((t) => { lastMarketIds[t] = S.market[t].map((c) => (c ? c.id : null)); });
 }
-function cardEl(card, t, idx, mini) {
+function cardEl(card, t, idx, mini, isNew) {
   if (!card) {
     const d = document.createElement('div');
     d.className = 'card empty' + (mini ? ' mini' : '');
@@ -102,7 +216,7 @@ function cardEl(card, t, idx, mini) {
   }
   const b = BALLS[card.bonus];
   const d = document.createElement('div');
-  d.className = 'card t' + t + (t === 4 ? ' rare' : '') + (t === 5 ? ' legend' : '') + (mini ? ' mini' : '');
+  d.className = 'card t' + t + (t === 4 ? ' rare' : '') + (t === 5 ? ' legend' : '') + (mini ? ' mini' : '') + (isNew ? ' new' : '');
   d.dataset.tier = t;
   d.dataset.idx = idx;
   d.style.setProperty('--bc', b.top);
@@ -148,7 +262,12 @@ function renderRareLegend() {
     label.className = 'tier-label rl-label';
     label.innerHTML = `<span class="tier-dot t${t}"></span>${TIER_NAMES[t]}宝可梦<span class="deck-count">剩 ${S.decks[t].length} 张</span>`;
     box.appendChild(label);
-    S.market[t].forEach((card, idx) => box.appendChild(cardEl(card, t, idx, true)));
+    const prevIds = lastMarketIds[t] || [];
+    S.market[t].forEach((card, idx) => {
+      const isNew = prevIds[idx] !== (card ? card.id : null);
+      box.appendChild(cardEl(card, t, idx, true, isNew));
+    });
+    lastMarketIds[t] = S.market[t].map((c) => (c ? c.id : null));
   });
 }
 
@@ -195,6 +314,7 @@ function renderPlayers() {
 function boardEl(p, pi, isHero) {
   const b = document.createElement('div');
   b.className = 'player' + (pi === S.current ? ' active' : '') + (ONLINE && pi === mySeat ? ' self' : '') + (isHero ? ' hero' : '');
+  b.dataset.p = pi; // 漂移动画的定位锚点
   const discarding = S.phase === 'discard' && pi === S.current;
   const returning = S.mode === 'returnBalls' && pi === S.current && !p.isAI;
   if (discarding) b.classList.add('discarding');
