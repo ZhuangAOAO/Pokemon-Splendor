@@ -186,9 +186,10 @@ function renderHeader() {
   const vb = $('#vote-banner');
   if (ONLINE && room && room.vote) {
     vb.hidden = false;
-    const voted = room.you && room.you.voted;
+    const voted = !!(room.you && room.you.voted);
+    const offlineCount = (room.humans || []).filter((h) => !h.connected).length;
     vb.innerHTML = `
-      <span class="vote-text">${room.vote.by} 发起结束对局投票（${room.vote.yes}/${room.vote.total} 已同意）</span>
+      <span class="vote-text">${room.vote.by} 发起结束对局投票（${room.vote.yes}/${room.vote.total} 已同意${offlineCount > 0 ? '，离线 ' + offlineCount + ' 人自动视为同意' : ''}）</span>
       <button class="btn sm primary" id="vote-yes" ${voted ? 'disabled' : ''}>${voted ? '已同意' : '同意'}</button>
       <button class="btn sm ghost" id="vote-no" ${voted ? 'disabled' : ''}>反对</button>`;
     if (!voted) {
@@ -883,6 +884,7 @@ function updateConnDot() {
 function handleServerMsg(m) {
   if (m.type === 'state') {
     room = m.room;
+    room.you = m.you || null; // 服务器把 you 放在 room 旁边，客户端统一挂在 room.you 上
     if (m.you) { mySeat = m.you.seat; myName = m.you.name; }
     if (m.game) {
       S = m.game;
