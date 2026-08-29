@@ -118,6 +118,7 @@ function newGame(cfg) {
   const pool = {};
   COLORS.forEach((c) => { pool[c] = per; });
   pool.master = RULES.masterCount;
+  const startSeat = Math.floor(Math.random() * n); // 随机先手
   S = {
     n,
     target: cfg.target,
@@ -136,19 +137,21 @@ function newGame(cfg) {
     pool,
     decks: buildDecksFromTable(),
     market: { 1: [], 2: [], 3: [] },
-    current: Math.floor(Math.random() * n),
+    current: startSeat,
+    firstPlayer: startSeat, // 先手座位：公平轮的轮次边界
     turnIdx: 0,
     phase: 'normal',   // normal | discard | evolve | gameover
     mode: null,        // 本地模式下人类玩家的操作模式（联机时由客户端各自维护）
     selColors: [],     // 选中的精灵球颜色
     selCard: null,     // 选中的宝可梦
     evoOptions: null,  // 回合结束时的进化选项
-    endTriggered: false, endPlayer: null,
+    endTriggered: false,
     over: false,
   };
   [1, 2, 3].forEach((t) => {
     for (let i = 0; i < RULES.marketSize; i++) S.market[t].push(S.decks[t].pop() || null);
   });
+  HOOKS.onToast(`${S.players[startSeat].name} 先手`);
 }
 
 function curPlayer() { return S.players[S.current]; }
@@ -229,7 +232,6 @@ function payForCard(p, card) {
 function afterBuyPointsCheck(p) {
   if (p.points >= S.target && !S.endTriggered) {
     S.endTriggered = true;
-    S.endPlayer = S.current;
     HOOKS.onToast('有人达到目标分，进入最终回合！');
   }
 }
@@ -283,8 +285,9 @@ function afterActionDone() {
 // 推进到下一回合（跳过进化 / 无进化机会 / 断线兜底时调用）
 function advanceTurn() {
   const next = (S.current + 1) % S.n;
-  // 终局触发者再次轮到时，本轮结束
-  if (S.endTriggered && next === S.endPlayer) { finishGame(); return; }
+  // 公平轮：终局触发后，轮到"先手玩家"时本局结束——
+  // 这样每名玩家行动次数完全相同（触发者之前的玩家不会多走一轮）
+  if (S.endTriggered && next === S.firstPlayer) { finishGame(); return; }
   S.current = next;
   S.turnIdx++;
   S.phase = 'normal'; S.mode = null; S.selColors = []; S.selCard = null; S.evoOptions = null;

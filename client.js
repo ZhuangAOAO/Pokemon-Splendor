@@ -205,6 +205,7 @@ function boardEl(p, pi, isHero) {
       <span class="p-avatar">${avatar}</span>
       <span class="p-name">${nameLabel}</span>
       <span class="p-type">${typeLabel}</span>
+      ${pi === S.firstPlayer ? `<span class="p-first">先手</span>` : ''}
       ${p.evolutions > 0 ? `<span class="p-evo">进化 ${p.evolutions}</span>` : ''}
       <span class="p-pts">${p.points} 分</span>
       ${isHero ? `<span class="p-count">${p.cards.length} 只</span>` : ''}

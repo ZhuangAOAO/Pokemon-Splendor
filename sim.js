@@ -37,12 +37,20 @@ const test = `
     types[0] = g % 2 === 0 ? 'hard' : 'easy';
     const cfg = { target, players: types.map((t, i) => ({ name: names[i], type: t })) };
     newGame(cfg);
+    const turnsTaken = new Array(nPlayers).fill(0); // 公平轮校验：每人行动次数
 
     let guard = 0;
     while (!S.over && guard < 800) {
+      const cur = S.current;
       aiTurn(curPlayer());
+      turnsTaken[cur]++;
       guard++;
       if (S.phase === 'discard') { console.error('第' + g + '局：出现未处理的弃球阶段！'); break; }
+    }
+    // ---- 公平轮校验：终局时每名玩家行动次数必须完全相同 ----
+    if (S.over) {
+      const mx = Math.max(...turnsTaken), mn = Math.min(...turnsTaken);
+      if (mx !== mn) { leaks++; console.error('第' + g + '局：公平轮违规！行动次数 ' + turnsTaken.join('/')); }
     }
     if (!S.over) {
       guardHits++;

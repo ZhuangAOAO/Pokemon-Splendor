@@ -359,6 +359,7 @@ h3{ font-size:14px; }
 }
 .p-name{ font-weight:900; font-size:15px; }
 .p-type{ font-size:11px; background:var(--field); border:1px solid var(--line); padding:2px 9px; border-radius:999px; color:var(--ink-soft); }
+.p-first{ font-size:11px; background:#fff1ec; border:1px solid #f5b8a8; color:var(--red); padding:2px 9px; border-radius:999px; font-weight:800; }
 .p-pts{ margin-left:auto; font-weight:900; color:var(--red); font-size:15px; }
 .p-evo{ font-size:11px; background:#dcfce7; border:1px solid #bbf7d0; color:#166534; padding:2px 9px; border-radius:999px; font-weight:800; }
 .p-count{ font-size:12px; color:var(--ink-soft); font-weight:700; }
