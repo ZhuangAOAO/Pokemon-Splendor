@@ -24,18 +24,28 @@ const MIME = {
   '.png': 'image/png',
 };
 
-/* ---------- 读取 / 写入 config.js 的卡牌表 ---------- */
+/* ---------- 读取 / 写入 config.js 的卡牌表与进化条件表 ---------- */
+const BASE_OF = (n) => String(n).replace(/\d+$/, '');
+const COLOR_CN = { red: '普通球', blue: '超级球', black: '高级球', pink: '治愈球', yellow: '快速球' };
 function readTable() {
   delete require.cache[require.resolve('./config.js')];
   require('./config.js');
-  return global.CARD_TABLE.map((r) => ({
-    name: r[0], tier: r[1], vp: r[2],
-    cost: { red: r[3], blue: r[4], black: r[5], pink: r[6], yellow: r[7] },
-    bonus: r[8],
-  }));
+  const needs = global.EVOLUTION_NEEDS || {};
+  return global.CARD_TABLE.map((r) => {
+    // 进化条件：优先按完整卡名查，其次按去数字后缀的基础名查
+    const need = r[1] >= 2 ? (needs[r[0]] || needs[BASE_OF(r[0])]) : null;
+    return {
+      name: r[0], tier: r[1], vp: r[2],
+      cost: { red: r[3], blue: r[4], black: r[5], pink: r[6], yellow: r[7] },
+      bonus: r[8],
+      needColor: need ? Object.keys(need)[0] : 'none',
+      needCount: need ? need[Object.keys(need)[0]] : 0,
+    };
+  });
 }
 function writeTable(rows) {
   const src = fs.readFileSync(path.join(ROOT, 'config.js'), 'utf8');
+  // 1) 卡牌表
   const start = src.indexOf('window.CARD_TABLE = [');
   const end = src.indexOf('];', start) + 2;
   if (start < 0 || end < 0) return { ok: false, msg: 'config.js 里找不到卡牌表' };
@@ -47,7 +57,19 @@ function writeTable(rows) {
     body += `  ['${r.name}', ${r.tier}, ${r.vp}, ${r.cost.red}, ${r.cost.blue}, ${r.cost.black}, ${r.cost.pink}, ${r.cost.yellow}, '${r.bonus}'], // ${r.vp}分·费${costTotal}\n`;
   });
   body += '];';
-  fs.writeFileSync(path.join(ROOT, 'config.js'), src.slice(0, start) + body + src.slice(end), 'utf8');
+  let out = src.slice(0, start) + body + src.slice(end);
+  // 2) 进化条件表（只改这一块，其余不动）
+  //    按"行首"找真正的声明——注释里的示例行也含同样文字，不能匹配到
+  const eIdx = out.indexOf('\nwindow.EVOLUTION_NEEDS = ');
+  const eStart = eIdx >= 0 ? eIdx + 1 : -1;
+  const eEnd = eStart >= 0 ? out.indexOf('};', eStart) + 2 : -1;
+  if (eStart < 0 || eEnd < 0) return { ok: false, msg: 'config.js 里找不到 EVOLUTION_NEEDS，请确认 config.js 是最新版' };
+  const entries = rows
+    .filter((r) => r.tier >= 2 && r.needColor && r.needColor !== 'none' && r.needCount > 0)
+    .map((r) => `  '${r.name}': { ${r.needColor}: ${r.needCount} }, // ${r.name} 进化需 ${COLOR_CN[r.needColor] || r.needColor}×${r.needCount}`);
+  const evoBody = `window.EVOLUTION_NEEDS = {\n${entries.join('\n')}${entries.length ? '\n' : ''}};`;
+  out = out.slice(0, eStart) + evoBody + out.slice(eEnd);
+  fs.writeFileSync(path.join(ROOT, 'config.js'), out, 'utf8');
   return { ok: true };
 }
 function validRows(rows, oldRows) {
@@ -63,6 +85,10 @@ function validRows(rows, oldRows) {
       if (!Number.isInteger(r.cost[c]) || r.cost[c] < 0 || r.cost[c] > 10) return `第 ${i + 1} 行（${o.name}）${c} 费用无效（0~10 的整数）`;
     }
     if (!COLORS.includes(r.bonus)) return `第 ${i + 1} 行（${o.name}）加成色无效`;
+    if (r.tier >= 2) {
+      if (r.needColor && r.needColor !== 'none' && !COLORS.includes(r.needColor)) return `第 ${i + 1} 行（${o.name}）进化条件色无效`;
+      if (!Number.isInteger(r.needCount) || r.needCount < 0 || r.needCount > 5) return `第 ${i + 1} 行（${o.name}）进化条件数无效（0~5）`;
+    }
   }
   return null;
 }

@@ -168,7 +168,8 @@ window.EVOLUTION_LINES = [
 // 进化条件覆盖表（可选）：key = 卡名（带或不带数字后缀都可以），
 // 值是 {颜色代号: 需要的永久加成数}，颜色代号同 BALLS 的 key。
 // 例：window.EVOLUTION_NEEDS = { '火恐龙': { yellow: 3 }, '大比鸟': { red: 2 } };
-window.EVOLUTION_NEEDS = {};
+window.EVOLUTION_NEEDS = {
+};
 
 /* Node 环境（服务器）用 require 加载本文件时，把数据导出 */
 if (typeof module !== 'undefined' && module.exports) { module.exports = window; }
