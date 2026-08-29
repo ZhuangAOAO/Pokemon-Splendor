@@ -217,7 +217,7 @@ h3{ font-size:14px; }
   cursor:default; overflow:hidden;
   transition:transform .16s, box-shadow .16s;
 }
-.card.new{ animation:cardIn .7s cubic-bezier(.2,.9,.3,1.2); } /* 只有新补的卡播放入场动画 */
+.card.new{ animation:cardIn .9s cubic-bezier(.25,.7,.35,1); } /* 只有新补的卡播放入场动画 */
 .card-img{
   position:absolute; inset:0; width:100%; height:100%;
   object-fit:cover; border-radius:inherit; z-index:1;
@@ -263,7 +263,10 @@ h3{ font-size:14px; }
 .card.affordable{ cursor:pointer; animation:pulseGold 1.3s infinite; }
 .card.selected{ transform:translateY(-10px) scale(1.04); box-shadow:0 0 0 4px var(--green), 0 14px 30px rgba(22,163,74,.4); animation:none; }
 
-@keyframes cardIn{ from{ opacity:0; transform:scale(.7) translateY(8px); } to{ opacity:1; transform:scale(1) translateY(0); } }
+@keyframes cardIn{
+  from{ opacity:0; transform:translateY(16px) scale(.9); filter:brightness(1.35); }
+  to{ opacity:1; transform:translateY(0) scale(1); filter:brightness(1); }
+}
 @keyframes pulseGold{
   0%,100%{ box-shadow:0 0 0 3px var(--gold), 0 0 12px rgba(255,203,5,.65); }
   50%{ box-shadow:0 0 0 3px var(--gold), 0 0 30px rgba(255,203,5,.95); }
