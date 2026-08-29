@@ -20,7 +20,7 @@ const crypto = require('crypto');
 
 const { HOOKS, newGame, curPlayer, endTurnAction, scheduleAI,
   canAfford, allMarketCards, COLORS, RULES,
-  actTakeThree, actTakeTwo, actDiscardOne, actBuy, actBuyReserved, actReserve, actReturnBall } = core;
+  actTakeThree, actTakeTwo, actDiscardOne, actBuy, actBuyReserved, actReserve, actReturnBall, actTakeMaster } = core;
 
 const NET = global.NETWORK || { port: 3000, turnTimeoutSec: 30, maxPlayers: 4 };
 const PORT = NET.port;
@@ -227,6 +227,12 @@ function validAction(conn, a) {
       if (p.reserved.length >= RULES.reserveLimit) return '预约已满';
       return null;
     }
+    case 'takeMaster': {
+      if (S.phase !== 'normal') return '现在不能拿大师球';
+      if (RULES.takeMasterAlone === false) return '本局未开放"只拿大师球"行动';
+      if (S.pool.master <= 0) return '供应区没有大师球';
+      return null;
+    }
     case 'buy': {
       if (S.phase !== 'normal') return '现在不能收服';
       const card = a.reserved ? p.reserved[a.ridx] : (S.market[a.tier] && S.market[a.tier][a.idx]);
@@ -245,6 +251,7 @@ function handleAction(conn, a) {
   else if (a.kind === 'take2') actTakeTwo(a.color);
   else if (a.kind === 'return') actReturnBall(a.color);
   else if (a.kind === 'discard') actDiscardOne(a.color);
+  else if (a.kind === 'takeMaster') actTakeMaster();
   else if (a.kind === 'reserve') actReserve(a.tier, a.idx);
   else if (a.kind === 'buy') { if (a.reserved) actBuyReserved(a.ridx); else actBuy(a.tier, a.idx); }
   return { ok: true };

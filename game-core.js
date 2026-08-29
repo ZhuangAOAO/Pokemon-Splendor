@@ -208,6 +208,13 @@ function afterBuyPointsCheck(p) {
     HOOKS.onToast('🏁 有人达到目标分，进入最终回合！');
   }
 }
+// 只拿大师球、不预约：config 里 takeMasterAlone=true 时开放的行动
+function actTakeMaster() {
+  const p = curPlayer();
+  S.pool.master--; p.balls.master++;
+  HOOKS.onToast(`${p.name} 拿取了 1 个大师球`);
+  afterGain();
+}
 // 退还精灵球：把 1 个球退回供应区（供应区被拿空时的周转行动，防止游戏卡死）
 function actReturnBall(c) {
   const p = curPlayer();
@@ -223,12 +230,8 @@ function actReserve(tier, idx) {
   S.market[tier][idx] = S.decks[tier].pop() || null;
   p.reserved.push(card);
   let gotMaster = false;
-  // config 里 reserveGivesMaster=false 时预约不送大师球
-  if (RULES.reserveGivesMaster !== false && S.pool.master > 0) { S.pool.master--; p.balls.master++; gotMaster = true; }
-  const masterMsg = RULES.reserveGivesMaster === false
-    ? ''
-    : (gotMaster ? '，并获得 1 个大师球' : '（大师球已领完）');
-  HOOKS.onToast(`${p.name} 预约了 ${card.name}${masterMsg}`);
+  if (S.pool.master > 0) { S.pool.master--; p.balls.master++; gotMaster = true; }
+  HOOKS.onToast(`${p.name} 预约了 ${card.name}${gotMaster ? '，并获得 1 个大师球' : '（大师球已领完）'}`);
   S.mode = null; S.selCard = null;
   endTurnAction();
 }
@@ -260,6 +263,7 @@ function aiTurn(p) {
   if (move.type === 'buy') actBuy(move.tier, move.idx);
   else if (move.type === 'buyReserved') actBuyReserved(move.ridx);
   else if (move.type === 'reserve') actReserve(move.tier, move.idx);
+  else if (move.type === 'takeMaster') actTakeMaster();
   else if (move.type === 'return') actReturnBall(move.color);
   else if (move.type === 'take2') actTakeTwo(move.color);
   else actTakeThree(move.colors);
@@ -288,9 +292,12 @@ function chooseAIMove(p) {
 
   // 收不起 → 预约场上最有价值的卡（附带大师球），破局也靠它
   const reserveTarget = pickMarketTarget(p);
-  const wantReserve = (RULES.reserveGivesMaster !== false && S.pool.master > 0) || reserveTarget.card.vp >= 2;
-  if (reserveTarget && p.reserved.length < RULES.reserveLimit && wantReserve) {
+  if (reserveTarget && p.reserved.length < RULES.reserveLimit && (S.pool.master > 0 || reserveTarget.card.vp >= 2)) {
     return { type: 'reserve', tier: reserveTarget.tier, idx: reserveTarget.idx };
+  }
+  // 开启"只拿大师球"行动时：预约没得约了，就攒大师球当万能球用
+  if (RULES.takeMasterAlone !== false && S.pool.master > 0 && p.balls.master < 3) {
+    return { type: 'takeMaster' };
   }
 
   // 收集资源：参考全场可见卡（场上+已预约）对各颜色的需求
@@ -375,6 +382,7 @@ function randomMove(p) {
   if (t && t.tier !== undefined && p.reserved.length < RULES.reserveLimit) {
     opts.push({ type: 'reserve', tier: t.tier, idx: t.idx });
   }
+  if (RULES.takeMasterAlone !== false && S.pool.master > 0) opts.push({ type: 'takeMaster' });
   COLORS.forEach((c) => { if (S.pool[c] >= RULES.takeTwoMin) opts.push({ type: 'take2', color: c }); });
   const avail = COLORS.filter((c) => S.pool[c] > 0);
   if (avail.length) opts.push({ type: 'take3', colors: shuffle(avail).slice(0, Math.min(3, avail.length)) });
@@ -409,7 +417,7 @@ if (typeof module !== 'undefined' && module.exports) {
     HOOKS,
     COLORS, BALLS, RULES,
     newGame, curPlayer, allMarketCards,
-    actTakeThree, actTakeTwo, actDiscardOne, actBuy, actBuyReserved, actReserve, actReturnBall,
+    actTakeThree, actTakeTwo, actDiscardOne, actBuy, actBuyReserved, actReserve, actReturnBall, actTakeMaster,
     endTurnAction, scheduleAI, aiTurn,
     canAfford, payPlan, missingFor, totalBalls, totalCost, globalNeed,
     shuffle, pick,

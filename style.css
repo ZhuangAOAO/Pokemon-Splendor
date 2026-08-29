@@ -57,6 +57,7 @@ h3{ font-size:14px; }
 .btn.primary{ background:linear-gradient(180deg,#ff5a3c,#e3350d); color:#fff; box-shadow:0 4px 12px rgba(227,53,13,.35); }
 .btn.secondary{ background:linear-gradient(180deg,#5b7ff0,#3b4cca); color:#fff; box-shadow:0 4px 12px rgba(59,76,202,.3); }
 .btn.buy{ background:linear-gradient(180deg,#ffd75e,#ffb800); color:#5a4300; box-shadow:0 4px 12px rgba(255,184,0,.35); }
+.btn.master-ball{ background:linear-gradient(180deg,#b06ee8,#8e44c7); color:#fff; box-shadow:0 4px 12px rgba(142,68,199,.35); }
 .btn.ghost{ background:#fff; color:var(--ink); border:2px solid var(--line); }
 .btn.lg{ font-size:18px; padding:14px 34px; border-radius:16px; }
 .btn.sm{ padding:6px 12px; font-size:13px; border-radius:10px; }

@@ -148,14 +148,12 @@ function renderPool() {
     if (S.selColors.includes(c)) g.classList.add('selected');
     pool.appendChild(g);
   });
-  // 大师球：万能球，只能通过预约获得（config 里关闭预约送球时隐藏）
-  if (RULES.reserveGivesMaster !== false) {
-    const gm = document.createElement('div');
-    gm.className = 'pool-group master';
-    gm.dataset.color = 'master';
-    gm.innerHTML = `${ballHtml('master')}<span class="pool-count">${S.pool.master}</span><span class="pool-name">大师球</span><span class="wild-tag">万能</span>`;
-    pool.appendChild(gm);
-  }
+  // 大师球：万能球，只能通过预约（或 config 开放的"只拿大师球"行动）获得
+  const gm = document.createElement('div');
+  gm.className = 'pool-group master';
+  gm.dataset.color = 'master';
+  gm.innerHTML = `${ballHtml('master')}<span class="pool-count">${S.pool.master}</span><span class="pool-name">大师球</span><span class="wild-tag">万能</span>`;
+  pool.appendChild(gm);
 }
 
 function renderPlayers() {
@@ -251,15 +249,27 @@ function renderActions() {
       bindConfirmCancel('returnBalls');
       return;
     }
+    if (S.mode === 'takeMaster') {
+      box.innerHTML = `
+        <div class="action-hint">🎯 拿取 1 个大师球（万能球，可代替任意颜色的球）？</div>
+        <div class="buy-confirm">
+          <div class="buy-name">不预约卡牌，只拿 1 个大师球</div>
+          <div class="buy-cost">拿完后结束你的回合。</div>
+        </div>
+        <div class="action-btns">
+          <button class="btn primary" id="act-confirm">确认拿取</button>
+          <button class="btn ghost" id="act-cancel">取消</button>
+        </div>`;
+      bindConfirmCancel('takeMaster');
+      return;
+    }
     if (S.mode === 'reserve') {
-      let mid = `<div class="action-hint">🎯 点击场上一张宝可梦，把它收进你的预约区${RULES.reserveGivesMaster !== false ? '（同时送 1 个大师球）' : ''}</div>`;
+      let mid = '<div class="action-hint">🎯 点击场上一张宝可梦，把它收进你的预约区（同时送 1 个大师球）</div>';
       if (S.selCard) {
         const card = selCardCard();
-        const masterInfo = RULES.reserveGivesMaster === false
-          ? ''
-          : (S.pool.master > 0
-            ? '同时送你 1 个大师球（万能球，可代替任意颜色的球）'
-            : '⚠️ 大师球已领完，这次预约没有球可拿');
+        const masterInfo = S.pool.master > 0
+          ? '同时送你 1 个大师球（万能球，可代替任意颜色的球）'
+          : '⚠️ 大师球已领完，这次预约没有球可拿';
         mid = `
           <div class="buy-confirm">
             <div class="buy-name">预约「${card.name}」？</div>
@@ -317,12 +327,15 @@ function renderActions() {
         <button class="btn buy" id="act-buy" ${hasAff ? '' : 'disabled'}>收服宝可梦</button>
         <button class="btn ghost" id="act-reserve" ${canReserve ? '' : 'disabled'}>预约宝可梦</button>
         <button class="btn ghost sm" id="act-return" ${totalBalls(p) > 0 ? '' : 'disabled'}>退还精灵球</button>
+        ${RULES.takeMasterAlone !== false ? `<button class="btn master-ball" id="act-master" ${S.pool.master > 0 ? '' : 'disabled'}>拿大师球</button>` : ''}
       </div>`;
     $('#act-take3').addEventListener('click', () => { S.mode = 'take3'; S.selColors = []; render(); });
     $('#act-take2').addEventListener('click', () => { S.mode = 'take2'; S.selColors = []; render(); });
     $('#act-buy').addEventListener('click', () => { S.mode = 'buy'; S.selCard = null; render(); });
     $('#act-reserve').addEventListener('click', () => { S.mode = 'reserve'; S.selCard = null; render(); });
     $('#act-return').addEventListener('click', () => { S.mode = 'returnBalls'; S.selColors = []; render(); });
+    const actMaster = $('#act-master');
+    if (actMaster) actMaster.addEventListener('click', () => { S.mode = 'takeMaster'; render(); });
   } else {
     const waiting = p.isAI ? `${p.name} 正在思考…` : `等待 ${p.name} 行动…`;
     box.innerHTML = `<div class="action-hint">🤔 ${waiting}</div>`;
@@ -339,6 +352,7 @@ function bindConfirmCancel(type) {
     if (type === 'take3') dispatch({ kind: 'take3', colors: S.selColors.slice() });
     else if (type === 'take2') dispatch({ kind: 'take2', color: S.selColors[0] });
     else if (type === 'returnBalls') dispatch({ kind: 'return', color: S.selColors[0] });
+    else if (type === 'takeMaster') dispatch({ kind: 'takeMaster' });
     else if (type === 'reserve' && S.selCard) dispatch({ kind: 'reserve', tier: S.selCard.tier, idx: S.selCard.idx });
     else if (type === 'buy' && S.selCard) {
       if (S.selCard.kind === 'reserved') dispatch({ kind: 'buy', reserved: true, ridx: S.selCard.ridx });
@@ -361,6 +375,7 @@ function dispatch(a) {
   else if (a.kind === 'take2') actTakeTwo(a.color);
   else if (a.kind === 'return') actReturnBall(a.color);
   else if (a.kind === 'discard') actDiscardOne(a.color);
+  else if (a.kind === 'takeMaster') actTakeMaster();
   else if (a.kind === 'reserve') actReserve(a.tier, a.idx);
   else if (a.kind === 'buy') {
     if (a.reserved) actBuyReserved(a.ridx);
@@ -732,10 +747,14 @@ function init() {
   document.querySelectorAll('[data-close]').forEach((b) =>
     b.addEventListener('click', hideModals));
 
-  // config 里关闭"预约送大师球"时，规则说明里的大师球章节一并隐藏
-  if (RULES.reserveGivesMaster === false) {
-    const sec = $('#rules-master-sec');
-    if (sec) sec.hidden = true;
+  // config 里开放"只拿大师球"行动时，在规则说明的大师球章节补充一句
+  if (RULES.takeMasterAlone !== false) {
+    const ul = document.querySelector('#rules-master-sec ul');
+    if (ul) {
+      const li = document.createElement('li');
+      li.textContent = '本局开启了「拿大师球」行动：可以只拿 1 个大师球、不预约卡牌';
+      ul.appendChild(li);
+    }
   }
 
   $('#market').addEventListener('click', onMarketClick);

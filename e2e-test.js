@@ -80,6 +80,11 @@ const lastState = (msgs) => [...msgs].reverse().find((m) => m.type === 'state');
   const actBad = await api({ type: 'action', cid: other.cid, action: { kind: 'take3', colors: ['red', 'blue', 'black'] } });
   console.log('6. 非本人回合被拦截：', actBad.msg === '还没轮到你' ? '✓' : '❌ ' + JSON.stringify(actBad));
 
+  // 默认配置（takeMasterAlone=false）下，"只拿大师球"行动必须被拦截
+  const tm = await api({ type: 'action', cid: A.cid, action: { kind: 'takeMaster' } });
+  const tmOk = ['本局未开放"只拿大师球"行动', '还没轮到你', '现在是电脑的回合'].includes(tm.msg);
+  console.log('6.5 默认配置下"只拿大师球"被拦截：', tmOk ? '✓（' + tm.msg + '）' : '❌ ' + JSON.stringify(tm));
+
   // 7. 轮流行动直到 AI（座位2）的回合，验证 AI 在服务器上自动行动
   let aiActed = false, guard = 0;
   const before = gameState.game.turnIdx;
