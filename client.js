@@ -845,6 +845,7 @@ function init() {
   $('#market').addEventListener('click', onMarketClick);
   $('#pool').addEventListener('click', onPoolClick);
   $('#players').addEventListener('click', onPlayerClick);
+  $('#my-panel').addEventListener('click', onPlayerClick); // 主角面板的退球/退还点击
   $('#actions').addEventListener('click', onActionsClick);
   // 卡面大图：点击遮罩关闭
   $('#zoom').addEventListener('click', () => { $('#zoom').hidden = true; });
