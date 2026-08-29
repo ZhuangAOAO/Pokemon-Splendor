@@ -550,3 +550,80 @@ h3{ font-size:14px; }
   .player.hero .pcard{ width:50px; }
   .player.hero .p-cards{ min-height:74px; }
 }
+
+/* ==================== 手机竖屏适配 ==================== */
+@media (max-width:820px){
+  body{ min-width:0; }
+  #screen-game{ padding:8px 8px 24px; }
+
+  /* 顶栏：换行紧凑 */
+  #game-header{ flex-wrap:wrap; gap:6px; padding:8px 12px; border-radius:14px; }
+  .header-title{ display:none; }
+  .header-ball{ width:22px; height:22px; }
+  .header-ball::after{ width:9px; height:9px; border-width:2px; }
+  .header-left{ order:1; }
+  .header-center{ order:3; width:100%; text-align:center; font-size:15px; }
+  .header-right{ order:2; margin-left:auto; }
+  #round-info{ font-size:12px; padding:3px 10px; }
+  #target-info{ font-size:12px; padding:3px 10px; }
+  #conn-status{ font-size:11px; padding:3px 10px; }
+
+  /* 三栏 → 竖排：市场 → 稀有传说+供应+行动 → 主角 → 其他玩家 */
+  #mid-zone{ flex-direction:column; gap:8px; }
+  #mid-zone #market{ order:1; }
+  #mid-zone #middle-row{ order:2; width:100%; gap:8px; }
+  #mid-zone #players{ order:3; width:100%; }
+  #my-panel{ margin-top:8px; }
+
+  /* 市场：每阶一条横向滑动卡带 */
+  .tier-row{ overflow-x:auto; flex-wrap:nowrap; gap:8px; margin-bottom:8px; padding-bottom:4px; }
+  .tier-label{ width:64px; flex:none; padding:6px 4px; font-size:12px; border-radius:10px; gap:4px; }
+  .tier-dot{ width:9px; height:9px; }
+  .deck-count{ font-size:10px; }
+  .card{ width:72px; border-radius:9px; }
+  .card.mini{ width:72px; }
+
+  /* 供应区 */
+  #pool-wrap{ padding:8px 10px; }
+  #pool-wrap h3{ font-size:12px; margin-bottom:6px; }
+  #pool{ gap:6px; }
+  .pool-group{ padding:5px 4px; gap:2px; border-radius:12px; }
+  .pool-group .ball{ width:26px; height:26px; }
+  .pool-group .ball::after{ width:10px; height:10px; border-width:2px; }
+  .pool-count{ font-size:12px; }
+
+  /* 行动区 */
+  #action-wrap{ padding:10px 12px; }
+  .action-hint{ font-size:13px; margin-bottom:8px; }
+  .btn{ padding:11px 14px; font-size:14px; border-radius:12px; }
+  .btn.sm{ padding:7px 10px; font-size:12px; }
+  .action-btns{ gap:6px; }
+
+  /* 主角面板：竖排 */
+  .player.hero{ flex-direction:column; gap:10px; padding:10px 12px; }
+  .hero-left{ width:100%; flex-direction:row; flex-wrap:wrap; align-items:center; gap:8px; }
+  .hero-left .p-balls.pp{ width:100%; }
+  .player.hero .pcard{ width:48px; }
+  .player.hero .p-cards{ min-height:70px; }
+  .player.hero .p-avatar{ width:34px; height:34px; font-size:18px; }
+  .player.hero .p-name{ font-size:16px; }
+
+  /* 其他玩家：横向滑动小卡 */
+  #players{ flex-direction:row; overflow-x:auto; gap:8px; padding-bottom:4px; }
+  .player{ flex:none; width:250px; padding:8px 10px; }
+  .pcard{ width:40px; }
+
+  /* 弹窗 */
+  .modal{ padding:20px 18px; width:94vw; border-radius:18px; }
+  .go-row{ font-size:14px; padding:10px 12px; }
+
+  /* 设置 / 加入 / 大厅 */
+  .setup-box{ padding:14px; }
+  .setup-panel, .join-panel, .lobby-panel{ width:100%; max-width:480px; padding:20px 16px; border-radius:18px; }
+  .logo h1{ font-size:30px; letter-spacing:1px; }
+  .logo .logo-ball{ width:72px; height:72px; }
+  .logo .logo-ball::after{ width:24px; height:24px; border-width:6px; }
+  .player-row{ flex-wrap:wrap; }
+  .row-name{ min-width:140px; }
+  .target-row label{ padding:5px 10px; }
+}
