@@ -340,7 +340,7 @@ h3{ font-size:14px; }
 .player.hero.active{ border-left-color:var(--red); }
 .player.hero.self{ border-left-color:var(--blue); }
 .hero-left{ flex:none; width:270px; display:flex; flex-direction:column; gap:10px; }
-.hero-left .p-balls.pp{ flex-wrap:wrap; justify-content:center; }
+.hero-body .p-balls.pp{ flex-wrap:wrap; justify-content:center; }
 .pball i{ font-style:normal; color:#16a34a; font-weight:900; font-size:11px; margin-left:1px; }
 .pball.master{ background:#f7f0fc; border-color:#e6d7f5; }
 .player.hero .p-avatar{ width:40px; height:40px; font-size:22px; }

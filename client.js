@@ -222,9 +222,9 @@ function boardEl(p, pi, isHero) {
     b.innerHTML = `
       <div class="hero-left">
         ${headHtml}
-        <div class="p-balls pp">${ppHtml}</div>
       </div>
       <div class="hero-body">
+        <div class="p-balls pp">${ppHtml}</div>
         ${cardsRow}
         ${sideHtml}
       </div>`;
