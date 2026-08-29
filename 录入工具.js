@@ -64,9 +64,14 @@ function writeTable(rows) {
   const eStart = eIdx >= 0 ? eIdx + 1 : -1;
   const eEnd = eStart >= 0 ? out.indexOf('};', eStart) + 2 : -1;
   if (eStart < 0 || eEnd < 0) return { ok: false, msg: 'config.js 里找不到 EVOLUTION_NEEDS，请确认 config.js 是最新版' };
-  const entries = rows
-    .filter((r) => r.tier >= 2 && r.needColor && r.needColor !== 'none' && r.needCount > 0)
-    .map((r) => `  '${r.name}': { ${r.needColor}: ${r.needCount} }, // ${r.name} 进化需 ${COLOR_CN[r.needColor] || r.needColor}×${r.needCount}`);
+  // 同名宝可梦（如"比比鸟"/"比比鸟2"）进化条件相同：按基础名（去数字后缀）只写一条
+  const byBase = new Map();
+  rows.forEach((r) => {
+    if (r.tier < 2 || !r.needColor || r.needColor === 'none' || !r.needCount) return;
+    byBase.set(BASE_OF(r.name), { color: r.needColor, count: r.needCount });
+  });
+  const entries = [...byBase.entries()]
+    .map(([base, v]) => `  '${base}': { ${v.color}: ${v.count} }, // ${base} 进化需 ${COLOR_CN[v.color] || v.color}×${v.count}`);
   const evoBody = `window.EVOLUTION_NEEDS = {\n${entries.join('\n')}${entries.length ? '\n' : ''}};`;
   out = out.slice(0, eStart) + evoBody + out.slice(eEnd);
   fs.writeFileSync(path.join(ROOT, 'config.js'), out, 'utf8');
