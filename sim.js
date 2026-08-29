@@ -28,7 +28,7 @@ const test = `
   const target = ${JSON.stringify(target)};
   const names = ['A', 'B', 'C', 'D'];
   const wins = {};
-  let turns = 0, finished = 0, guardHits = 0, leaks = 0;
+  let turns = 0, finished = 0, guardHits = 0, leaks = 0, evos = 0;
   const avgPoints = [], maxPoints = [];
 
   for (let g = 0; g < nGames; g++) {
@@ -58,10 +58,11 @@ const test = `
     }
     finished++;
 
-    const rank = S.players.slice().sort((a, b) => (b.points - a.points) || (a.cards.length - b.cards.length));
+    const rank = S.players.slice().sort((a, b) => (b.points - a.points) || (b.evolutions - a.evolutions) || (a.cards.length - b.cards.length));
     const w = rank[0].name;
     wins[w] = (wins[w] || 0) + 1;
     turns += S.turnIdx;
+    evos += S.players.reduce((s, p) => s + p.evolutions, 0);
     avgPoints.push(S.players.reduce((s, p) => s + p.points, 0) / nPlayers);
     maxPoints.push(rank[0].points);
 
@@ -78,13 +79,14 @@ const test = `
     S.players.forEach((p) => { masterSum += p.balls.master; });
     if (masterSum !== RULES.masterCount) { leaks++; console.error('第' + g + '局：大师球不守恒！共 ' + masterSum + ' 个≠' + RULES.masterCount); }
 
-    // ---- 守恒校验：卡牌总数不变（持有 = 已收服 + 已预约；期望值从卡牌表统计）----
+    // ---- 守恒校验：卡牌总数不变（持有 = 已收服 + 已预约 + 图鉴；期望值从卡牌表统计）----
     const totals = { 1: 0, 2: 0, 3: 0 };
     CARD_TABLE.forEach((row) => { totals[row[1]]++; });
     [1, 2, 3].forEach((t) => {
       const held = S.players.reduce((s, p) => s
         + p.cards.filter((c) => c.tier === t).length
-        + p.reserved.filter((c) => c.tier === t).length, 0);
+        + p.reserved.filter((c) => c.tier === t).length
+        + p.dex.filter((c) => c.tier === t).length, 0);
       const inM = S.market[t].filter(Boolean).length;
       if (S.decks[t].length + held + inM !== totals[t]) {
         leaks++;
@@ -107,6 +109,7 @@ const test = `
     console.log('获胜分布（A 轮流简单/困难，其余困难）：', wins);
     console.log('平均总回合数（人次）：' + Math.round(turns / finished));
     console.log('平均轮数：' + (turns / finished / nPlayers).toFixed(1));
+    console.log('平均每局进化次数：' + (evos / finished).toFixed(1));
     console.log('平均最终分数：' + (avgPoints.reduce((a, b) => a + b, 0) / avgPoints.length).toFixed(1));
     console.log('胜者平均分数：' + (maxPoints.reduce((a, b) => a + b, 0) / maxPoints.length).toFixed(1));
   }

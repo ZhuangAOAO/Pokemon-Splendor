@@ -182,16 +182,20 @@ function renderPlayers() {
       ? `<div class="p-reserved">📌 预约：${p.reserved.map((rc) =>
           `<span class="rchip sm">${rc.name}<b class="r-vp ${rc.vp === 0 ? 'zero' : ''}">${rc.vp}</b></span>`).join('')}</div>`
       : '';
+    const dexHtml = (p.dex && p.dex.length)
+      ? `<div class="p-dex" title="图鉴：${p.dex.map((cd) => cd.name).join('、')}">📕 图鉴 ${p.dex.length} 张</div>`
+      : '';
     b.innerHTML = `
       <div class="p-head">
         <span class="p-name">${nameLabel}</span>
         <span class="p-type">${typeLabel}</span>
         <span class="p-pts">★ ${p.points} 分</span>
         <span class="p-count">🃏 ${p.cards.length} 只</span>
+        ${p.evolutions > 0 ? `<span class="p-evo">🔬${p.evolutions}</span>` : ''}
       </div>
       <div class="p-balls">${ballsHtml}</div>
       <div class="p-cards" title="已收服：${p.cards.map((cd) => cd.name).join('、')}">${cardsHtml || '还没有宝可梦'}</div>
-      ${reservedHtml}`;
+      ${reservedHtml}${dexHtml}`;
     box.appendChild(b);
   });
 }
@@ -210,6 +214,30 @@ function renderActions() {
 
   if (S.phase === 'discard') {
     box.innerHTML = `<div class="action-hint warn">⚠️ 你的精灵球超过 ${RULES.handLimit} 个！点击下方自己的精灵球退还（还需 ${S.discardNeed} 个）</div>`;
+    return;
+  }
+  if (S.phase === 'evolve') {
+    const myTurn = ONLINE ? (mySeat === S.current) : !p.isAI;
+    if (myTurn && !p.isAI) {
+      const opts = S.evoOptions || [];
+      const list = opts.map((o, i) => {
+        const needTxt = COLORS.map((c) => (o.card.evoNeed && o.card.evoNeed[c] ? `${BALLS[c].name}加成×${o.card.evoNeed[c]}` : '')).filter(Boolean).join('、');
+        const gain = o.card.vp - o.base.vp;
+        return `<button class="btn evolve" id="act-evo-${i}" ${o.ok ? '' : 'disabled'}>
+          🔬 ${o.base.name} → ${o.card.name}（${gain > 0 ? '+' + gain + '分' : '0分'} · 需${needTxt}${o.ok ? '' : ' ✗不满足'}）
+        </button>`;
+      }).join('');
+      box.innerHTML = `
+        <div class="action-hint">🔬 回合结束免费进化：选择 1 只进化的宝可梦（每回合最多 1 次）</div>
+        <div class="action-btns">${list}<button class="btn ghost" id="act-skip-evo">跳过进化</button></div>`;
+      opts.forEach((o, i) => {
+        const b = $('#act-evo-' + i);
+        if (b && o.ok) b.addEventListener('click', () => dispatch({ kind: 'evolve', loc: o.loc }));
+      });
+      $('#act-skip-evo').addEventListener('click', () => dispatch({ kind: 'skipEvolve' }));
+    } else {
+      box.innerHTML = `<div class="action-hint">🤔 ${p.name} 正在思考…</div>`;
+    }
     return;
   }
   if (S.phase !== 'normal') return;
@@ -376,6 +404,8 @@ function dispatch(a) {
   else if (a.kind === 'return') actReturnBall(a.color);
   else if (a.kind === 'discard') actDiscardOne(a.color);
   else if (a.kind === 'takeMaster') actTakeMaster();
+  else if (a.kind === 'evolve') actEvolve(a.loc);
+  else if (a.kind === 'skipEvolve') actSkipEvolve();
   else if (a.kind === 'reserve') actReserve(a.tier, a.idx);
   else if (a.kind === 'buy') {
     if (a.reserved) actBuyReserved(a.ridx);
@@ -394,10 +424,11 @@ function hideModals() { $('#modal-overlay').hidden = true; }
 function showGameOver() {
   if (!S || overShown) return;
   overShown = true;
+  // 平局判定（官方规则）：先比分数 → 再比进化次数 → 再比宝可梦数量
   const rank = S.players.slice().sort((a, b) =>
-    (b.points - a.points) || (a.cards.length - b.cards.length));
+    (b.points - a.points) || (b.evolutions - a.evolutions) || (a.cards.length - b.cards.length));
   const top = rank[0];
-  const tied = rank.filter((p) => p.points === top.points && p.cards.length === top.cards.length);
+  const tied = rank.filter((p) => p.points === top.points && p.evolutions === top.evolutions && p.cards.length === top.cards.length);
   const title = tied.length > 1
     ? `🏆 并列获胜：${tied.map((p) => p.name).join('、')}（${top.points} 分）`
     : `🏆 ${top.name} 获胜！共 ${top.points} 分`;
@@ -408,7 +439,7 @@ function showGameOver() {
       <span class="go-medal">${medals[i]}</span>
       <span class="go-name">${p.name}</span>
       <span class="go-pts">${p.points} 分</span>
-      <span class="go-cnt">${p.cards.length} 只宝可梦</span>
+      <span class="go-cnt">${p.cards.length} 只 · 🔬${p.evolutions} 次</span>
     </div>`).join('');
   const againBtn = $('#btn-again');
   const backBtn = $('#btn-back-setup');

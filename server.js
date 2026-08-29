@@ -18,9 +18,10 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 
-const { HOOKS, newGame, curPlayer, endTurnAction, scheduleAI,
-  canAfford, allMarketCards, COLORS, RULES,
-  actTakeThree, actTakeTwo, actDiscardOne, actBuy, actBuyReserved, actReserve, actReturnBall, actTakeMaster } = core;
+const { HOOKS, newGame, curPlayer, advanceTurn, scheduleAI,
+  canAfford, allMarketCards, COLORS, RULES, sameLoc,
+  actTakeThree, actTakeTwo, actDiscardOne, actBuy, actBuyReserved, actReserve, actReturnBall, actTakeMaster,
+  actEvolve, actSkipEvolve } = core;
 
 const NET = global.NETWORK || { port: 3000, turnTimeoutSec: 30, maxPlayers: 4 };
 const PORT = NET.port;
@@ -88,16 +89,17 @@ function handleDisconnect(conn) {
     return;
   }
   broadcast();
-  // 对局中：保留座位，轮到他时自动跳过
+  // 对局中：保留座位，轮到他（行动或进化阶段）时自动跳过
   const S = core.S;
-  if (S && !S.over && S.phase === 'normal' && S.current === conn.seat && !curPlayer().isAI) {
+  if (S && !S.over && (S.phase === 'normal' || S.phase === 'evolve') && S.current === conn.seat && !curPlayer().isAI) {
     if (skipTimer) clearTimeout(skipTimer);
     skipTimer = setTimeout(() => {
       skipTimer = null;
       const s2 = core.S;
-      if (s2 && !s2.over && s2.phase === 'normal' && s2.current === conn.seat && !curPlayer().isAI) {
+      if (s2 && !s2.over && (s2.phase === 'normal' || s2.phase === 'evolve') && s2.current === conn.seat && !curPlayer().isAI) {
         broadcastToast(`${conn.name} 断线，自动跳过回合`);
-        endTurnAction();
+        if (s2.phase === 'evolve') actSkipEvolve();
+        else advanceTurn();
       }
     }, TURN_TIMEOUT);
   }
@@ -233,6 +235,17 @@ function validAction(conn, a) {
       if (S.pool.master <= 0) return '供应区没有大师球';
       return null;
     }
+    case 'evolve': {
+      if (S.phase !== 'evolve') return '现在没有进化机会';
+      const op = (S.evoOptions || []).find((o) => sameLoc(o.loc, a.loc));
+      if (!op) return '没有这个进化选项';
+      if (!op.ok) return '进化条件不满足';
+      return null;
+    }
+    case 'skipEvolve': {
+      if (S.phase !== 'evolve') return '现在没有进化机会';
+      return null;
+    }
     case 'buy': {
       if (S.phase !== 'normal') return '现在不能收服';
       const card = a.reserved ? p.reserved[a.ridx] : (S.market[a.tier] && S.market[a.tier][a.idx]);
@@ -252,6 +265,8 @@ function handleAction(conn, a) {
   else if (a.kind === 'return') actReturnBall(a.color);
   else if (a.kind === 'discard') actDiscardOne(a.color);
   else if (a.kind === 'takeMaster') actTakeMaster();
+  else if (a.kind === 'evolve') actEvolve(a.loc);
+  else if (a.kind === 'skipEvolve') actSkipEvolve();
   else if (a.kind === 'reserve') actReserve(a.tier, a.idx);
   else if (a.kind === 'buy') { if (a.reserved) actBuyReserved(a.ridx); else actBuy(a.tier, a.idx); }
   return { ok: true };

@@ -18,6 +18,11 @@ const BALLS = window.BALLS;
 const RULES = window.RULES;
 const AI_CONFIG = window.AI_CONFIG;
 const CARD_TABLE = window.CARD_TABLE || [];
+const EVO_LINES = window.EVOLUTION_LINES || [];
+const EVO_NEEDS = window.EVOLUTION_NEEDS || {};
+
+// 卡名去掉数字后缀："波波2" → "波波"（同一进化线的多张卡共用名字判定）
+function baseNameOf(name) { return String(name).replace(/\d+$/, ''); }
 
 /* ==================== 事件钩子：由环境注入 ==================== */
 const HOOKS = {
@@ -77,10 +82,25 @@ function buildDecksFromTable() {
     const [name, tier, vp, r, b, k, p, y, bonus] = row;
     if (!decks[tier]) { console.error(`卡牌表第 ${i + 1} 行「${name}」阶数无效：只能是 1/2/3`); return; }
     if (!COLORS.includes(bonus)) { console.error(`卡牌表第 ${i + 1} 行「${name}」加成色无效：${bonus}`); return; }
+    // 推导进化关系：二阶/三阶卡在进化线里找上一形态
+    let evoFrom = null, evoNeed = null;
+    if (tier >= 2) {
+      const base = baseNameOf(name);
+      const line = EVO_LINES.find((ln) => ln.includes(base));
+      if (line) {
+        const li = line.indexOf(base);
+        if (li > 0) {
+          evoFrom = line[li - 1];
+          // 进化条件：优先取覆盖表，否则默认 二阶需2个 / 三阶需3个（颜色错开自身加成色）
+          evoNeed = EVO_NEEDS[name] || EVO_NEEDS[base] ||
+            { [COLORS[(COLORS.indexOf(bonus) + tier) % 5]]: tier };
+        }
+      }
+    }
     decks[tier].push({
       id: `${tier}-${i}`, tier, vp,
       cost: { red: r, blue: b, black: k, pink: p, yellow: y },
-      bonus, name,
+      bonus, name, evoFrom, evoNeed,
     });
   });
   return decks;
@@ -107,6 +127,8 @@ function newGame(cfg) {
       balls: { red: 0, blue: 0, black: 0, pink: 0, yellow: 0, master: 0 },
       cards: [],
       reserved: [], // 预约的卡（上限 RULES.reserveLimit 张）
+      dex: [],      // 图鉴：被进化替换掉的卡（面朝下，不再提供加成和分数）
+      evolutions: 0, // 进化次数（终局平局判定用）
       points: 0,
     })),
     pool,
@@ -114,10 +136,11 @@ function newGame(cfg) {
     market: { 1: [], 2: [], 3: [] },
     current: Math.floor(Math.random() * n),
     turnIdx: 0,
-    phase: 'normal',   // normal | discard | gameover
+    phase: 'normal',   // normal | discard | evolve | gameover
     mode: null,        // 本地模式下人类玩家的操作模式（联机时由客户端各自维护）
     selColors: [],     // 选中的精灵球颜色
     selCard: null,     // 选中的宝可梦
+    evoOptions: null,  // 回合结束时的进化选项
     endTriggered: false, endPlayer: null,
     over: false,
   };
@@ -154,13 +177,13 @@ function afterGain() {
     if (p.isAI) {
       aiDiscard(p);
       HOOKS.onToast(`${p.name} 退回了多余的精灵球`);
-      endTurnAction();
+      afterActionDone();
     } else {
       S.phase = 'discard';
       S.discardNeed = totalBalls(p) - RULES.handLimit;
     }
   } else {
-    endTurnAction();
+    afterActionDone();
   }
   HOOKS.onStateChanged();
 }
@@ -170,7 +193,7 @@ function actDiscardOne(c) {
   if (totalBalls(p) <= RULES.handLimit) {
     S.phase = 'normal'; S.discardNeed = 0;
     HOOKS.onToast(`精灵球数量已回到 ${RULES.handLimit} 个以内`);
-    endTurnAction();
+    afterActionDone();
   }
   HOOKS.onStateChanged();
 }
@@ -183,7 +206,7 @@ function actBuy(tier, idx) {
   S.market[tier][idx] = S.decks[tier].pop() || null;
   HOOKS.onToast(`${p.name} 收服了 ${card.name}！${card.vp > 0 ? '（+' + card.vp + '分）' : ''}`);
   afterBuyPointsCheck(p);
-  endTurnAction();
+  afterActionDone();
 }
 function actBuyReserved(ridx) {
   const p = curPlayer();
@@ -194,7 +217,7 @@ function actBuyReserved(ridx) {
   p.points += card.vp;
   HOOKS.onToast(`${p.name} 收服了预约的 ${card.name}！${card.vp > 0 ? '（+' + card.vp + '分）' : ''}`);
   afterBuyPointsCheck(p);
-  endTurnAction();
+  afterActionDone();
 }
 function payForCard(p, card) {
   const plan = payPlan(p, card);
@@ -221,7 +244,7 @@ function actReturnBall(c) {
   p.balls[c]--; S.pool[c]++;
   HOOKS.onToast(`${p.name} 退还了 1 个${BALLS[c].name}`);
   S.mode = null; S.selColors = [];
-  endTurnAction();
+  afterActionDone();
 }
 function actReserve(tier, idx) {
   const p = curPlayer();
@@ -233,18 +256,92 @@ function actReserve(tier, idx) {
   if (S.pool.master > 0) { S.pool.master--; p.balls.master++; gotMaster = true; }
   HOOKS.onToast(`${p.name} 预约了 ${card.name}${gotMaster ? '，并获得 1 个大师球' : '（大师球已领完）'}`);
   S.mode = null; S.selCard = null;
-  endTurnAction();
+  afterActionDone();
 }
-// 结束当前行动，轮到下一位玩家
-function endTurnAction() {
+// 每次行动完成后的入口：先给当前玩家一次免费进化机会（每回合最多 1 次），再推进回合
+function afterActionDone() {
+  const p = curPlayer();
+  const opts = evolveOptions(p);
+  if (opts.length) {
+    if (p.isAI) {
+      // AI 自动挑收益最高的进化（新分 - 旧分最大）
+      const best = opts.filter((o) => o.ok)
+        .sort((a, b) => (b.card.vp - b.base.vp) - (a.card.vp - a.base.vp))[0];
+      if (best) doEvolve(p, best.loc, best.card, best.base);
+    } else {
+      // 人类玩家：进入进化阶段，等玩家选择进化或跳过
+      S.phase = 'evolve';
+      S.evoOptions = opts;
+      HOOKS.onStateChanged();
+      return;
+    }
+  }
+  advanceTurn();
+}
+// 推进到下一回合（跳过进化 / 无进化机会 / 断线兜底时调用）
+function advanceTurn() {
   const next = (S.current + 1) % S.n;
   // 终局触发者再次轮到时，本轮结束
   if (S.endTriggered && next === S.endPlayer) { finishGame(); return; }
   S.current = next;
   S.turnIdx++;
-  S.phase = 'normal'; S.mode = null; S.selColors = []; S.selCard = null;
+  S.phase = 'normal'; S.mode = null; S.selColors = []; S.selCard = null; S.evoOptions = null;
   HOOKS.onStateChanged();
   scheduleAI();
+}
+
+/* ==================== 宝可梦进化（回合结束免费，每回合限 1 次） ==================== */
+// 当前玩家的可选进化：场上或预约区有进化卡，且自己已有其上一形态
+function evolveOptions(p) {
+  const opts = [];
+  const bonus = bonusOf(p);
+  const check = (card, loc) => {
+    if (!card || !card.evoFrom) return;
+    const base = p.cards.find((c) => baseNameOf(c.name) === card.evoFrom);
+    if (!base) return;
+    const ok = COLORS.every((c) => bonus[c] >= (card.evoNeed[c] || 0));
+    opts.push({ loc, card, base, ok });
+  };
+  [1, 2, 3].forEach((t) => S.market[t].forEach((c, idx) => check(c, { kind: 'market', tier: t, idx })));
+  p.reserved.forEach((c, ridx) => check(c, { kind: 'reserved', ridx }));
+  return opts;
+}
+// 执行进化：进化卡替换基础形态卡，基础卡进图鉴
+function doEvolve(p, loc, card, base) {
+  const bi = p.cards.findIndex((c) => c === base);
+  if (bi < 0) return;
+  p.cards.splice(bi, 1);
+  p.dex.push(base);
+  p.evolutions++;
+  p.points += card.vp - base.vp;
+  if (loc.kind === 'reserved') p.reserved.splice(loc.ridx, 1);
+  else S.market[loc.tier][loc.idx] = S.decks[loc.tier].pop() || null;
+  p.cards.push(card);
+  const gain = card.vp - base.vp;
+  HOOKS.onToast(`${p.name} 进化：${base.name} → ${card.name}！（${gain > 0 ? '+' + gain + '分' : '0分'}）`);
+  afterBuyPointsCheck(p); // 进化也可能触发终局
+}
+function actEvolve(loc) {
+  const p = curPlayer();
+  if (S.phase !== 'evolve') return;
+  const op = (S.evoOptions || []).find((o) => sameLoc(o.loc, loc));
+  if (!op || !op.ok) return; // 无此选项或进化条件不满足
+  doEvolve(p, op.loc, op.card, op.base);
+  finishEvolvePhase();
+}
+function actSkipEvolve() {
+  if (S.phase !== 'evolve') return;
+  finishEvolvePhase();
+}
+function finishEvolvePhase() {
+  S.phase = 'normal';
+  S.evoOptions = null;
+  HOOKS.onStateChanged();
+  advanceTurn();
+}
+function sameLoc(a, b) {
+  if (!a || !b || a.kind !== b.kind) return false;
+  return a.kind === 'reserved' ? (a.ridx === b.ridx) : (a.tier === b.tier && a.idx === b.idx);
 }
 
 /* ==================== 电脑 AI ==================== */
@@ -259,7 +356,7 @@ function scheduleAI() {
 }
 function aiTurn(p) {
   const move = chooseAIMove(p);
-  if (move === null) { HOOKS.onToast(`${p.name} 没有可执行的行动，跳过`); endTurnAction(); return; }
+  if (move === null) { HOOKS.onToast(`${p.name} 没有可执行的行动，跳过`); afterActionDone(); return; }
   if (move.type === 'buy') actBuy(move.tier, move.idx);
   else if (move.type === 'buyReserved') actBuyReserved(move.ridx);
   else if (move.type === 'reserve') actReserve(move.tier, move.idx);
@@ -418,7 +515,8 @@ if (typeof module !== 'undefined' && module.exports) {
     COLORS, BALLS, RULES,
     newGame, curPlayer, allMarketCards,
     actTakeThree, actTakeTwo, actDiscardOne, actBuy, actBuyReserved, actReserve, actReturnBall, actTakeMaster,
-    endTurnAction, scheduleAI, aiTurn,
+    afterActionDone, advanceTurn, scheduleAI, aiTurn,
+    actEvolve, actSkipEvolve, evolveOptions, sameLoc, baseNameOf,
     canAfford, payPlan, missingFor, totalBalls, totalCost, globalNeed,
     shuffle, pick,
   };

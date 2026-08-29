@@ -109,7 +109,10 @@ const lastState = (msgs) => [...msgs].reverse().find((m) => m.type === 'state');
       }
     } else {
       const cid = g.current === 0 ? A.cid : B.cid;
-      const r = await api({ type: 'action', cid, action: { kind: 'take3', colors: ['red', 'blue', 'black'] } });
+      // 行动后可能出现进化阶段：先跳过进化再继续
+      const r = g.phase === 'evolve'
+        ? await api({ type: 'action', cid, action: { kind: 'skipEvolve' } })
+        : await api({ type: 'action', cid, action: { kind: 'take3', colors: ['red', 'blue', 'black'] } });
       if (!r.ok) { console.log('❌ 人类行动失败：', JSON.stringify(r)); break; }
     }
   }
