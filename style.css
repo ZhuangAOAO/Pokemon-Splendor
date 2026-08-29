@@ -148,14 +148,14 @@ h3{ font-size:14px; }
 #lobby-host .target-row{ margin:10px 0; }
 
 /* ==================== 游戏界面 ==================== */
-#screen-game{ max-width:1380px; margin:0 auto; padding:16px 20px 34px; }
+#screen-game{ max-width:1380px; margin:0 auto; padding:12px 18px 22px; }
 
 /* ---- 顶栏 ---- */
 #game-header{
   display:flex; align-items:center; justify-content:space-between; gap:12px;
   background:rgba(255,255,255,.92); backdrop-filter:blur(6px);
   border:1px solid rgba(34,48,61,.06);
-  border-radius:18px; padding:12px 20px; box-shadow:var(--shadow); margin-bottom:16px;
+  border-radius:16px; padding:8px 16px; box-shadow:var(--shadow); margin-bottom:10px;
 }
 .header-left{ display:flex; align-items:center; gap:12px; }
 .header-ball{ width:26px; height:26px; }
@@ -177,26 +177,26 @@ h3{ font-size:14px; }
 .end-banner{ background:#fff3cd; border:1px solid #f3d78a; color:#8a5a00; font-weight:800; padding:4px 14px; border-radius:999px; font-size:13px; animation:pulseGold 1.2s infinite; }
 
 /* ---- 市场 ---- */
-.tier-row{ display:flex; align-items:stretch; gap:14px; margin-bottom:14px; }
+.tier-row{ display:flex; align-items:stretch; gap:10px; margin-bottom:10px; }
 .tier-label{
-  width:96px; flex:none; text-align:center; font-size:14px; font-weight:900;
-  color:var(--ink-soft); border-radius:14px; padding:12px 8px;
-  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+  width:82px; flex:none; text-align:center; font-size:13px; font-weight:900;
+  color:var(--ink-soft); border-radius:12px; padding:8px 6px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
   background:rgba(255,255,255,.75); border:1px solid var(--line); box-shadow:var(--shadow-sm);
 }
-.tier-dot{ display:block; width:12px; height:12px; border-radius:50%; }
+.tier-dot{ display:block; width:11px; height:11px; border-radius:50%; }
 .tier-dot.t1{ background:#4caf50; box-shadow:0 0 8px rgba(76,175,80,.6); }
 .tier-dot.t2{ background:#f4a261; box-shadow:0 0 8px rgba(244,162,97,.6); }
 .tier-dot.t3{ background:#7e6bb5; box-shadow:0 0 8px rgba(126,107,181,.6); }
-.deck-count{ display:block; font-weight:600; font-size:12px; color:var(--ink-faint); }
+.deck-count{ display:block; font-weight:600; font-size:11px; color:var(--ink-faint); }
 
 .card{
-  position:relative; width:112px; aspect-ratio:1335/2063; border-radius:12px;
+  position:relative; width:96px; aspect-ratio:1335/2063; border-radius:11px;
   background:linear-gradient(165deg,#ffffff, var(--blight));
   border:2px solid rgba(34,48,61,.14);
-  box-shadow:var(--shadow);
+  box-shadow:var(--shadow-sm);
   display:flex; flex-direction:column; align-items:center;
-  padding:8px 6px 6px; gap:2px;
+  padding:6px 5px 5px; gap:2px;
   cursor:default; overflow:hidden;
   transition:transform .16s, box-shadow .16s;
   animation:cardIn .4s cubic-bezier(.2,.9,.3,1.3);
@@ -204,7 +204,14 @@ h3{ font-size:14px; }
 .card-img{
   position:absolute; inset:0; width:100%; height:100%;
   object-fit:cover; border-radius:inherit; z-index:1;
+  image-rendering:auto;
 }
+/* 有卡面图时：隐藏程序绘制的徽章/文字，让真卡面干干净净；图片加载失败自动恢复 */
+.card:has(.card-img){ cursor:zoom-in; }
+.card:has(.card-img) .card-head,
+.card:has(.card-img) .card-ball,
+.card:has(.card-img) .card-name,
+.card:has(.card-img) .card-cost{ display:none; }
 .card:hover{ transform:translateY(-4px) rotate(-.4deg); box-shadow:0 14px 30px rgba(34,48,61,.18); }
 .card.empty{
   border:2px dashed var(--line-strong); background:#f4f7fb; color:var(--ink-faint);
@@ -245,22 +252,22 @@ h3{ font-size:14px; }
 }
 
 /* ---- 供应区 ---- */
-#middle-row{ display:flex; gap:14px; align-items:stretch; margin:16px 0; }
+#middle-row{ display:flex; gap:10px; align-items:stretch; margin:10px 0; }
 #pool-wrap{
   flex:1.2; background:rgba(255,255,255,.9); border:1px solid rgba(34,48,61,.06);
-  border-radius:18px; padding:14px 18px; box-shadow:var(--shadow);
+  border-radius:16px; padding:10px 14px; box-shadow:var(--shadow);
 }
-#pool-wrap h3{ color:var(--ink-soft); margin-bottom:12px; font-size:13px; letter-spacing:1px; }
-#pool{ display:flex; gap:14px; flex-wrap:wrap; }
+#pool-wrap h3{ color:var(--ink-soft); margin-bottom:8px; font-size:13px; letter-spacing:1px; }
+#pool{ display:flex; gap:12px; flex-wrap:wrap; }
 .pool-group{
-  display:flex; flex-direction:column; align-items:center; gap:4px;
-  padding:10px 18px; border-radius:16px; background:var(--field);
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:7px 14px; border-radius:14px; background:var(--field);
   border:2px solid transparent;
   position:relative; transition:transform .14s, border-color .14s, background .14s;
 }
-.pool-group .ball{ width:40px; height:40px; border-width:3px; }
-.pool-group .ball::after{ width:15px; height:15px; border-width:3px; }
-.pool-count{ font-weight:900; font-size:15px; }
+.pool-group .ball{ width:34px; height:34px; border-width:2px; }
+.pool-group .ball::after{ width:13px; height:13px; border-width:3px; }
+.pool-count{ font-weight:900; font-size:14px; }
 .pool-name{ font-size:11px; color:var(--ink-soft); }
 .pool-group.master{ background:#f7f0fc; border-color:#e6d7f5; }
 .wild-tag{ font-size:10px; background:var(--purple); color:#fff; padding:2px 8px; border-radius:999px; font-weight:700; }
@@ -275,10 +282,10 @@ h3{ font-size:14px; }
 /* ---- 行动区 ---- */
 #action-wrap{
   flex:1; background:rgba(255,255,255,.9); border:1px solid rgba(34,48,61,.06);
-  border-radius:18px; padding:14px 20px; box-shadow:var(--shadow);
+  border-radius:16px; padding:10px 16px; box-shadow:var(--shadow);
   display:flex; flex-direction:column; justify-content:center;
 }
-.action-hint{ font-size:15px; font-weight:800; margin-bottom:12px; }
+.action-hint{ font-size:14px; font-weight:800; margin-bottom:8px; }
 .action-hint.warn{ color:#b91c1c; }
 .action-btns{ display:flex; gap:10px; flex-wrap:wrap; }
 .buy-confirm{ background:var(--field); border:1px solid var(--line); border-radius:14px; padding:10px 14px; margin-bottom:10px; }
@@ -287,11 +294,11 @@ h3{ font-size:14px; }
 .dim{ color:var(--ink-faint); font-size:12px; }
 
 /* ---- 玩家面板 ---- */
-#players{ display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px; }
+#players{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:10px; }
 .player{
   background:rgba(255,255,255,.92); border:1px solid var(--line);
-  border-radius:18px; padding:12px 16px; box-shadow:var(--shadow);
-  border-left:5px solid var(--line-strong);
+  border-radius:16px; padding:9px 13px; box-shadow:var(--shadow);
+  border-left:4px solid var(--line-strong);
   transition:border-color .25s, box-shadow .25s;
 }
 .player.active{
@@ -306,41 +313,42 @@ h3{ font-size:14px; }
   0%,100%{ box-shadow:var(--shadow), 0 0 0 3px rgba(227,53,13,.10); }
   50%{ box-shadow:var(--shadow), 0 0 0 3px rgba(227,53,13,.26); }
 }
-.p-head{ display:flex; align-items:center; gap:8px; font-size:13px; }
+.p-head{ display:flex; align-items:center; gap:7px; font-size:13px; }
 .p-avatar{
-  width:34px; height:34px; flex:none; border-radius:50%;
+  width:30px; height:30px; flex:none; border-radius:50%;
   background:var(--field); border:2px solid var(--line);
-  display:inline-flex; align-items:center; justify-content:center; font-size:18px;
+  display:inline-flex; align-items:center; justify-content:center; font-size:16px;
 }
-.p-name{ font-weight:900; font-size:16px; }
-.p-type{ font-size:11px; background:var(--field); border:1px solid var(--line); padding:2px 10px; border-radius:999px; color:var(--ink-soft); }
-.p-pts{ margin-left:auto; font-weight:900; color:var(--red); font-size:16px; }
-.p-evo{ font-size:12px; background:#dcfce7; border:1px solid #bbf7d0; color:#166534; padding:2px 10px; border-radius:999px; font-weight:800; }
-.p-balls{ display:flex; flex-wrap:wrap; gap:5px; margin-top:10px; }
+.p-name{ font-weight:900; font-size:15px; }
+.p-type{ font-size:11px; background:var(--field); border:1px solid var(--line); padding:2px 9px; border-radius:999px; color:var(--ink-soft); }
+.p-pts{ margin-left:auto; font-weight:900; color:var(--red); font-size:15px; }
+.p-evo{ font-size:11px; background:#dcfce7; border:1px solid #bbf7d0; color:#166534; padding:2px 9px; border-radius:999px; font-weight:800; }
+.p-balls{ display:flex; flex-wrap:wrap; gap:4px; margin-top:7px; }
 .pball{
-  display:inline-flex; align-items:center; gap:4px;
+  display:inline-flex; align-items:center; gap:3px;
   background:var(--field); border:1px solid var(--line);
-  border-radius:12px; padding:3px 9px 3px 4px;
+  border-radius:11px; padding:2px 8px 2px 3px;
 }
-.pball b{ font-size:13px; }
+.pball b{ font-size:12px; }
 .pball.clickable{ cursor:pointer; border-color:var(--red); background:#fff5f2; animation:poolNudge 1.1s infinite; }
 .pball.clickable:hover{ background:#ffe8e1; }
 
 /* 收服/预约/图鉴的卡面缩略图行 */
 .p-cards, .p-reserved, .p-dex{
-  margin-top:8px; display:flex; align-items:center; gap:6px;
+  margin-top:7px; display:flex; align-items:center; gap:5px;
   overflow-x:auto; padding-bottom:2px;
 }
-.p-cards{ min-height:70px; }
+.p-cards{ min-height:58px; }
 .p-label{
-  flex:none; font-size:12px; font-weight:800; color:var(--ink-soft);
-  background:var(--field); border:1px solid var(--line); padding:3px 10px; border-radius:999px;
+  flex:none; font-size:11px; font-weight:800; color:var(--ink-soft);
+  background:var(--field); border:1px solid var(--line); padding:2px 9px; border-radius:999px;
 }
 .p-empty{ font-size:12px; color:var(--ink-faint); }
 .pcard{
   position:relative; flex:none; display:inline-flex;
-  width:52px; aspect-ratio:1335/2063; border-radius:8px; overflow:hidden;
+  width:44px; aspect-ratio:1335/2063; border-radius:7px; overflow:hidden;
   box-shadow:0 2px 6px rgba(34,48,61,.2); border:1px solid rgba(34,48,61,.12);
+  cursor:zoom-in;
 }
 .pcard-img{ width:100%; height:100%; object-fit:cover; display:block; }
 .pcard:hover{ transform:translateY(-3px); box-shadow:0 6px 14px rgba(34,48,61,.3); }
@@ -413,3 +421,25 @@ h3{ font-size:14px; }
   border-left:5px solid var(--gold);
 }
 #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* ==================== 卡面大图 ==================== */
+#zoom{
+  position:fixed; inset:0; background:rgba(23,34,46,.8); backdrop-filter:blur(3px);
+  display:flex; align-items:center; justify-content:center; z-index:150; cursor:zoom-out;
+}
+#zoom img{ max-height:94vh; max-width:94vw; border-radius:14px; box-shadow:0 24px 70px rgba(0,0,0,.55); animation:popIn .2s ease; }
+
+/* ==================== 矮屏自适应（一屏放下，不用滚动） ==================== */
+@media (max-height:880px){
+  .card{ width:84px; }
+  .pcard{ width:38px; }
+  .rchip{ width:38px; }
+  #players{ gap:8px; }
+  .player{ padding:7px 11px; }
+  .p-cards{ min-height:50px; }
+  .pool-group{ padding:5px 11px; }
+  .pool-group .ball{ width:30px; height:30px; }
+  .pool-group .ball::after{ width:11px; height:11px; }
+  #middle-row{ margin:8px 0; }
+  .tier-row{ margin-bottom:8px; }
+}

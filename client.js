@@ -476,21 +476,32 @@ function showGameOver() {
 }
 
 /* ==================== 交互事件 ==================== */
+// 卡面大图：点击没有触发行动的市场卡/缩略图时放大查看
+function openZoom(src) {
+  $('#zoom-img').src = src;
+  $('#zoom').hidden = false;
+}
 function onMarketClick(e) {
   const el = e.target.closest('.card');
   if (!el || !S || el.classList.contains('empty')) return;
   const t = +el.dataset.tier, idx = +el.dataset.idx;
   const card = S.market[t][idx];
   const p = curPlayer();
-  if (S.phase !== 'normal' || p.isAI) return;
-  if (ONLINE && mySeat !== S.current) return;
+  if (S.phase !== 'normal' || p.isAI) { zoomCard(el); return; }
+  if (ONLINE && mySeat !== S.current) { zoomCard(el); return; }
+  let acted = false;
   if (S.mode === 'buy') {
-    if (canAfford(p, card)) { S.selCard = { kind: 'market', tier: t, idx }; render(); }
+    if (canAfford(p, card)) { S.selCard = { kind: 'market', tier: t, idx }; render(); acted = true; }
   } else if (S.mode === 'reserve') {
-    if (p.reserved.length < RULES.reserveLimit) { S.selCard = { kind: 'market', tier: t, idx }; render(); }
+    if (p.reserved.length < RULES.reserveLimit) { S.selCard = { kind: 'market', tier: t, idx }; render(); acted = true; }
   } else if (S.mode === null) {
-    if (canAfford(p, card)) { S.mode = 'buy'; S.selCard = { kind: 'market', tier: t, idx }; render(); }
+    if (canAfford(p, card)) { S.mode = 'buy'; S.selCard = { kind: 'market', tier: t, idx }; render(); acted = true; }
   }
+  if (!acted) zoomCard(el);
+}
+function zoomCard(el) {
+  const img = el.querySelector('.card-img');
+  if (img) openZoom(img.src);
 }
 function onPoolClick(e) {
   const g = e.target.closest('.pool-group');
@@ -512,19 +523,27 @@ function onPoolClick(e) {
 }
 function onPlayerClick(e) {
   const b = e.target.closest('.pball');
-  if (!b || !S) return;
-  const pi = +b.dataset.p, c = b.dataset.c;
-  const p = curPlayer();
-  if (ONLINE && mySeat !== pi) return;
-  if (S.phase === 'discard' && pi === S.current && !p.isAI && p.balls[c] > 0) {
-    if (ONLINE) dispatch({ kind: 'discard', color: c });
-    else actDiscardOne(c);
-    return;
+  if (b && S) {
+    const pi = +b.dataset.p, c = b.dataset.c;
+    const p = curPlayer();
+    if (ONLINE && mySeat !== pi) return;
+    if (S.phase === 'discard' && pi === S.current && !p.isAI && p.balls[c] > 0) {
+      if (ONLINE) dispatch({ kind: 'discard', color: c });
+      else actDiscardOne(c);
+      return;
+    }
+    // "退还精灵球"模式：点击选择自己 1 个球，再点一次取消
+    if (S.mode === 'returnBalls' && S.phase === 'normal' && pi === S.current && !p.isAI && p.balls[c] > 0) {
+      S.selColors = S.selColors[0] === c ? [] : [c];
+      render();
+      return;
+    }
   }
-  // "退还精灵球"模式：点击选择自己 1 个球，再点一次取消
-  if (S.mode === 'returnBalls' && S.phase === 'normal' && pi === S.current && !p.isAI && p.balls[c] > 0) {
-    S.selColors = S.selColors[0] === c ? [] : [c];
-    render();
+  // 点击缩略图放大看卡面
+  const pc = e.target.closest('.pcard');
+  if (pc) {
+    const img = pc.querySelector('.pcard-img');
+    if (img) openZoom(img.src);
   }
 }
 function onActionsClick(e) {
@@ -795,6 +814,8 @@ function init() {
   $('#pool').addEventListener('click', onPoolClick);
   $('#players').addEventListener('click', onPlayerClick);
   $('#actions').addEventListener('click', onActionsClick);
+  // 卡面大图：点击遮罩关闭
+  $('#zoom').addEventListener('click', () => { $('#zoom').hidden = true; });
 
   if (ONLINE) initOnline();
   else showScreen('setup');
