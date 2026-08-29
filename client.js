@@ -168,33 +168,35 @@ function renderPlayers() {
     const typeLabel = p.isAI ? (p.aiLevel === 'easy' ? '🤖 电脑·简单' : '🤖 电脑·困难') : '🙋 人类';
     const offline = ONLINE && !p.isAI && !isConnected(pi);
     const nameLabel = p.name + (offline ? ' 🔌' : '') + (ONLINE && pi === mySeat ? '（你）' : '');
+    const avatar = p.isAI ? (p.aiLevel === 'easy' ? '🤖' : '🦾') : '🙋';
     const ballRow = (c, cnt) => `
       <span class="pball ${((discarding || returning) && cnt > 0) ? 'clickable' : ''}" data-p="${pi}" data-c="${c}">
         ${ballHtml(c, 'sm')}<b>${cnt}</b>
       </span>`;
     const ballsHtml = COLORS.map((c) => ballRow(c, p.balls[c])).join('') + ballRow('master', p.balls.master);
-    const groups = {};
-    COLORS.forEach((c) => { groups[c] = p.cards.filter((cd) => cd.bonus === c).length; });
-    const cardsHtml = COLORS.map((c) =>
-      groups[c] > 0 ? `<span class="pcard">${ballHtml(c, 'xs')}×${groups[c]}</span>` : ''
-    ).join('');
+    // 已收服的宝可梦：卡面缩略图
+    const cardsHtml = p.cards.map((cd) => `
+      <span class="pcard" title="${cd.name}（+${BALLS[cd.bonus].name}加成）">
+        <img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy">
+      </span>`).join('');
     const reservedHtml = p.reserved.length
-      ? `<div class="p-reserved">📌 预约：${p.reserved.map((rc) =>
-          `<span class="rchip sm">${rc.name}<b class="r-vp ${rc.vp === 0 ? 'zero' : ''}">${rc.vp}</b></span>`).join('')}</div>`
+      ? `<div class="p-reserved"><span class="p-label">📌 预约 ${p.reserved.length}</span>${p.reserved.map((rc) => `
+          <span class="pcard reserved" title="${rc.name}"><img class="pcard-img" alt="${rc.name}" src="pictures/${encodeURIComponent(rc.name)}.jpg" loading="lazy"></span>`).join('')}</div>`
       : '';
     const dexHtml = (p.dex && p.dex.length)
-      ? `<div class="p-dex" title="图鉴：${p.dex.map((cd) => cd.name).join('、')}">📕 图鉴 ${p.dex.length} 张</div>`
+      ? `<div class="p-dex" title="图鉴：${p.dex.map((cd) => cd.name).join('、')}"><span class="p-label">📕 图鉴 ${p.dex.length}</span>${p.dex.map((cd) => `
+          <span class="pcard dex" title="${cd.name}"><img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy"></span>`).join('')}</div>`
       : '';
     b.innerHTML = `
       <div class="p-head">
+        <span class="p-avatar">${avatar}</span>
         <span class="p-name">${nameLabel}</span>
         <span class="p-type">${typeLabel}</span>
-        <span class="p-pts">★ ${p.points} 分</span>
-        <span class="p-count">🃏 ${p.cards.length} 只</span>
-        ${p.evolutions > 0 ? `<span class="p-evo">🔬${p.evolutions}</span>` : ''}
+        ${p.evolutions > 0 ? `<span class="p-evo">🔬 ${p.evolutions}</span>` : ''}
+        <span class="p-pts">★ ${p.points}</span>
       </div>
       <div class="p-balls">${ballsHtml}</div>
-      <div class="p-cards" title="已收服：${p.cards.map((cd) => cd.name).join('、')}">${cardsHtml || '还没有宝可梦'}</div>
+      <div class="p-cards"><span class="p-label">🃏 ${p.cards.length}</span>${cardsHtml || '<span class="p-empty">还没有宝可梦</span>'}</div>
       ${reservedHtml}${dexHtml}`;
     box.appendChild(b);
   });
@@ -318,7 +320,7 @@ function renderActions() {
       if (p.reserved.length) {
         mid += '<div class="reserved-strip"><span class="rs-label">📌 已预约：</span>' + p.reserved.map((rc, ri) => {
           const ok = canAfford(p, rc);
-          return `<span class="rchip ${ok ? 'clickable' : ''} ${S.selCard && S.selCard.kind === 'reserved' && S.selCard.ridx === ri ? 'selected' : ''}" data-ridx="${ri}" ${ok ? '' : `title="还不够精灵球收服它"`}>${rc.name}<b class="r-vp ${rc.vp === 0 ? 'zero' : ''}">${rc.vp}</b></span>`;
+          return `<span class="rchip ${ok ? 'clickable' : ''} ${S.selCard && S.selCard.kind === 'reserved' && S.selCard.ridx === ri ? 'selected' : ''}" data-ridx="${ri}" ${ok ? '' : `title="还不够精灵球收服它"`}><img class="rchip-img" src="pictures/${encodeURIComponent(rc.name)}.jpg" alt="${rc.name}"><b class="r-vp ${rc.vp === 0 ? 'zero' : ''}">${rc.vp}</b></span>`;
         }).join('') + '</div>';
       }
       if (S.selCard) {
