@@ -870,12 +870,11 @@ function init() {
     }
   }
 
-  $('#market').addEventListener('click', onMarketClick);
-  $('#rl-wrap').addEventListener('click', onMarketClick); // 稀有/传说卡（右栏）
-  $('#pool').addEventListener('click', onPoolClick);
-  // 玩家面板点击（退球/退还/缩略图放大）委托到整个游戏界面：
-  // 无论玩家面板渲染在左栏还是底部主角面板，点击都能命中
+  // 市场卡点击（收服/预约选择/放大）与玩家面板点击（退球/退还/缩略图放大）
+  // 都委托到整个游戏界面：卡牌或面板以后挪到任何容器都不会漏绑
+  $('#screen-game').addEventListener('click', onMarketClick);
   $('#screen-game').addEventListener('click', onPlayerClick);
+  $('#pool').addEventListener('click', onPoolClick);
   $('#actions').addEventListener('click', onActionsClick);
   // 卡面大图：点击遮罩关闭
   $('#zoom').addEventListener('click', () => { $('#zoom').hidden = true; });
