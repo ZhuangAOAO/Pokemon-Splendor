@@ -59,7 +59,7 @@ function showScreen(id) {
 /* ==================== 渲染（读取全局 S） ==================== */
 function render() {
   if (!S) return;
-  renderHeader(); renderMarket(); renderPool(); renderPlayers(); renderActions();
+  renderHeader(); renderMarket(); renderRareLegend(); renderPool(); renderPlayers(); renderActions();
 }
 
 function renderHeader() {
@@ -81,14 +81,6 @@ function renderMarket() {
     label.innerHTML = `<span class="tier-dot t${t}"></span>${TIER_NAMES[t]}宝可梦<span class="deck-count">剩 ${S.decks[t].length} 张</span>`;
     return label;
   };
-  // 稀有/传说：各展示 1 张，合并为一行（粉=稀有，紫=传说）
-  const rl = document.createElement('div');
-  rl.className = 'tier-row rare-legend-row';
-  rl.appendChild(tierLabel(4));
-  S.market[4].forEach((card, idx) => rl.appendChild(cardEl(card, 4, idx)));
-  rl.appendChild(tierLabel(5));
-  S.market[5].forEach((card, idx) => rl.appendChild(cardEl(card, 5, idx)));
-  mk.appendChild(rl);
   [3, 2, 1].forEach((t) => {
     const row = document.createElement('div');
     row.className = 'tier-row';
@@ -97,16 +89,16 @@ function renderMarket() {
     mk.appendChild(row);
   });
 }
-function cardEl(card, t, idx) {
+function cardEl(card, t, idx, mini) {
   if (!card) {
     const d = document.createElement('div');
-    d.className = 'card empty';
+    d.className = 'card empty' + (mini ? ' mini' : '');
     d.innerHTML = '<span>牌堆耗尽</span>';
     return d;
   }
   const b = BALLS[card.bonus];
   const d = document.createElement('div');
-  d.className = 'card t' + t + (t === 4 ? ' rare' : '') + (t === 5 ? ' legend' : '');
+  d.className = 'card t' + t + (t === 4 ? ' rare' : '') + (t === 5 ? ' legend' : '') + (mini ? ' mini' : '');
   d.dataset.tier = t;
   d.dataset.idx = idx;
   d.style.setProperty('--bc', b.top);
@@ -141,6 +133,19 @@ function cardEl(card, t, idx) {
   img.addEventListener('error', () => img.remove());
   d.appendChild(img);
   return d;
+}
+
+// 稀有/传说：右栏顶部并排展示（粉=稀有，紫=传说）
+function renderRareLegend() {
+  const box = $('#rl-wrap');
+  box.innerHTML = '';
+  [4, 5].forEach((t) => {
+    const label = document.createElement('div');
+    label.className = 'tier-label rl-label';
+    label.innerHTML = `<span class="tier-dot t${t}"></span>${TIER_NAMES[t]}宝可梦<span class="deck-count">剩 ${S.decks[t].length} 张</span>`;
+    box.appendChild(label);
+    S.market[t].forEach((card, idx) => box.appendChild(cardEl(card, t, idx, true)));
+  });
 }
 
 function renderPool() {

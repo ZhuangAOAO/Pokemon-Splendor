@@ -204,7 +204,7 @@ h3{ font-size:14px; }
 .deck-count{ display:block; font-weight:600; font-size:11px; color:var(--ink-faint); }
 
 .card{
-  position:relative; width:132px; aspect-ratio:1335/2063; border-radius:12px;
+  position:relative; width:140px; aspect-ratio:1335/2063; border-radius:12px;
   background:linear-gradient(165deg,#ffffff, var(--blight));
   border:2px solid rgba(34,48,61,.14);
   box-shadow:var(--shadow-sm);
@@ -269,20 +269,23 @@ h3{ font-size:14px; }
 #middle-row{
   flex:none; width:400px; display:flex; flex-direction:column; gap:12px;
 }
+#rl-wrap{ display:flex; gap:10px; align-items:center; }
+#rl-wrap .tier-label{ width:64px; padding:6px 4px; font-size:12px; }
+.card.mini{ width:96px; }
 #pool-wrap{
   background:rgba(255,255,255,.9); border:1px solid rgba(34,48,61,.06);
-  border-radius:16px; padding:12px 16px; box-shadow:var(--shadow);
+  border-radius:16px; padding:9px 12px; box-shadow:var(--shadow);
 }
-#pool-wrap h3{ color:var(--ink-soft); margin-bottom:10px; font-size:13px; letter-spacing:1px; }
-#pool{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+#pool-wrap h3{ color:var(--ink-soft); margin-bottom:8px; font-size:13px; letter-spacing:1px; }
+#pool{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
 .pool-group{
-  display:flex; flex-direction:column; align-items:center; gap:4px;
-  padding:10px 8px; border-radius:14px; background:var(--field);
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:7px 6px; border-radius:14px; background:var(--field);
   border:2px solid transparent;
   position:relative; transition:transform .14s, border-color .14s, background .14s;
 }
-.pool-group .ball{ width:38px; height:38px; border-width:3px; }
-.pool-group .ball::after{ width:15px; height:15px; border-width:3px; }
+.pool-group .ball{ width:32px; height:32px; border-width:2px; }
+.pool-group .ball::after{ width:12px; height:12px; border-width:3px; }
 .pool-count{ font-weight:900; font-size:15px; }
 .pool-group.master{ background:#f7f0fc; border-color:#e6d7f5; }
 .wild-tag{ font-size:10px; background:var(--purple); color:#fff; padding:2px 8px; border-radius:999px; font-weight:700; }
@@ -479,7 +482,8 @@ h3{ font-size:14px; }
 
 /* ==================== 矮屏自适应（一屏放下，不用滚动） ==================== */
 @media (max-height:1000px){
-  .card{ width:116px; }
+  .card{ width:124px; }
+  .card.mini{ width:88px; }
   .pcard{ width:38px; }
   .rchip{ width:38px; }
   #players{ width:272px; gap:8px; }
