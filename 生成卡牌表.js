@@ -124,6 +124,7 @@ window.RULES = {
   poolPerPlayer: [0, 0, 4, 5, 7], // 下标=玩家人数(2/3/4)：每种基础球开局放几个
   masterCount: 5,            // 大师球总数（万能球，只能通过预约获得）
   reserveLimit: 3,           // 每人最多预约几张卡
+  reserveGivesMaster: true,  // 预约时是否强制送大师球（官方规则=true；false=预约不送球，大师球停用）
   marketSize: 4,             // 每个阶层在场上翻开几张卡
   takeTwoMin: 4,             // 拿 2 个相同球时，供应区该色至少有几个
   targets: [15, 18],         // 设置界面可选的目标分数

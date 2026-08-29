@@ -223,8 +223,12 @@ function actReserve(tier, idx) {
   S.market[tier][idx] = S.decks[tier].pop() || null;
   p.reserved.push(card);
   let gotMaster = false;
-  if (S.pool.master > 0) { S.pool.master--; p.balls.master++; gotMaster = true; }
-  HOOKS.onToast(`${p.name} 预约了 ${card.name}${gotMaster ? '，并获得 1 个大师球' : '（大师球已领完）'}`);
+  // config 里 reserveGivesMaster=false 时预约不送大师球
+  if (RULES.reserveGivesMaster !== false && S.pool.master > 0) { S.pool.master--; p.balls.master++; gotMaster = true; }
+  const masterMsg = RULES.reserveGivesMaster === false
+    ? ''
+    : (gotMaster ? '，并获得 1 个大师球' : '（大师球已领完）');
+  HOOKS.onToast(`${p.name} 预约了 ${card.name}${masterMsg}`);
   S.mode = null; S.selCard = null;
   endTurnAction();
 }
@@ -284,7 +288,8 @@ function chooseAIMove(p) {
 
   // 收不起 → 预约场上最有价值的卡（附带大师球），破局也靠它
   const reserveTarget = pickMarketTarget(p);
-  if (reserveTarget && p.reserved.length < RULES.reserveLimit && (S.pool.master > 0 || reserveTarget.card.vp >= 2)) {
+  const wantReserve = (RULES.reserveGivesMaster !== false && S.pool.master > 0) || reserveTarget.card.vp >= 2;
+  if (reserveTarget && p.reserved.length < RULES.reserveLimit && wantReserve) {
     return { type: 'reserve', tier: reserveTarget.tier, idx: reserveTarget.idx };
   }
 

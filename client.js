@@ -148,12 +148,14 @@ function renderPool() {
     if (S.selColors.includes(c)) g.classList.add('selected');
     pool.appendChild(g);
   });
-  // 大师球：万能球，只能通过预约获得
-  const gm = document.createElement('div');
-  gm.className = 'pool-group master';
-  gm.dataset.color = 'master';
-  gm.innerHTML = `${ballHtml('master')}<span class="pool-count">${S.pool.master}</span><span class="pool-name">大师球</span><span class="wild-tag">万能</span>`;
-  pool.appendChild(gm);
+  // 大师球：万能球，只能通过预约获得（config 里关闭预约送球时隐藏）
+  if (RULES.reserveGivesMaster !== false) {
+    const gm = document.createElement('div');
+    gm.className = 'pool-group master';
+    gm.dataset.color = 'master';
+    gm.innerHTML = `${ballHtml('master')}<span class="pool-count">${S.pool.master}</span><span class="pool-name">大师球</span><span class="wild-tag">万能</span>`;
+    pool.appendChild(gm);
+  }
 }
 
 function renderPlayers() {
@@ -250,12 +252,14 @@ function renderActions() {
       return;
     }
     if (S.mode === 'reserve') {
-      let mid = '<div class="action-hint">🎯 点击场上一张宝可梦，把它收进你的预约区（同时送 1 个大师球）</div>';
+      let mid = `<div class="action-hint">🎯 点击场上一张宝可梦，把它收进你的预约区${RULES.reserveGivesMaster !== false ? '（同时送 1 个大师球）' : ''}</div>`;
       if (S.selCard) {
         const card = selCardCard();
-        const masterInfo = S.pool.master > 0
-          ? '同时送你 1 个大师球（万能球，可代替任意颜色的球）'
-          : '⚠️ 大师球已领完，这次预约没有球可拿';
+        const masterInfo = RULES.reserveGivesMaster === false
+          ? ''
+          : (S.pool.master > 0
+            ? '同时送你 1 个大师球（万能球，可代替任意颜色的球）'
+            : '⚠️ 大师球已领完，这次预约没有球可拿');
         mid = `
           <div class="buy-confirm">
             <div class="buy-name">预约「${card.name}」？</div>
@@ -727,6 +731,12 @@ function init() {
   });
   document.querySelectorAll('[data-close]').forEach((b) =>
     b.addEventListener('click', hideModals));
+
+  // config 里关闭"预约送大师球"时，规则说明里的大师球章节一并隐藏
+  if (RULES.reserveGivesMaster === false) {
+    const sec = $('#rules-master-sec');
+    if (sec) sec.hidden = true;
+  }
 
   $('#market').addEventListener('click', onMarketClick);
   $('#pool').addEventListener('click', onPoolClick);
