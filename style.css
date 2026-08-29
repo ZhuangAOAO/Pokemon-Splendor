@@ -202,6 +202,10 @@ h3{ font-size:14px; }
 .card.legend{ border-color:#8e44c7; box-shadow:0 0 12px rgba(142,68,199,.5); }
 .cost-item.master-fee{ background:#f7f0fc; border:1px solid #e6d7f5; }
 .deck-count{ display:block; font-weight:600; font-size:11px; color:var(--ink-faint); }
+/* 预约模式下牌堆标签可点击盲抽 */
+.tier-label.blind-clickable{ cursor:pointer; border-color:var(--gold); background:#fffdf2; animation:pulseGold 1.4s infinite; }
+.tier-label.blind-clickable:hover{ transform:translateY(-2px); }
+.tier-label.blind-clickable .deck-count{ color:#8a5a00; font-weight:800; }
 
 .card{
   position:relative; width:140px; aspect-ratio:1335/2063; border-radius:12px;

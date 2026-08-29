@@ -78,6 +78,10 @@ function renderMarket() {
   const tierLabel = (t) => {
     const label = document.createElement('div');
     label.className = 'tier-label';
+    label.dataset.tier = t;
+    // 预约模式下，一/二/三阶的牌堆标签可点击盲抽
+    const blindable = S.mode === 'reserve' && t <= 3 && S.decks[t].length > 0;
+    if (blindable) label.classList.add('blind-clickable');
     label.innerHTML = `<span class="tier-dot t${t}"></span>${TIER_NAMES[t]}宝可梦<span class="deck-count">剩 ${S.decks[t].length} 张</span>`;
     return label;
   };
@@ -357,7 +361,7 @@ function renderActions() {
       return;
     }
     if (S.mode === 'reserve') {
-      let mid = '<div class="action-hint">点击场上一张宝可梦预约，或从牌堆盲抽一张（只有你能看到）</div>';
+      let mid = '<div class="action-hint">点击场上一张宝可梦预约，或点击左侧一/二/三阶的牌堆盲抽一张（只有你能看到）</div>';
       if (S.selCard) {
         const card = selCardCard();
         const masterInfo = S.pool.master > 0
@@ -382,21 +386,11 @@ function renderActions() {
         bindConfirmCancel('reserveBlind');
         return;
       }
-      const blindBtns = [1, 2, 3].map((t) => {
-        const left = S.decks[t].length;
-        const ok = left > 0 && p.reserved.length < RULES.reserveLimit;
-        return `<button class="btn ghost sm" id="act-blind-${t}" ${ok ? '' : 'disabled'}>盲抽${TIER_NAMES[t]}牌堆（剩${left}）</button>`;
-      }).join('');
       box.innerHTML = mid + `
-        <div class="action-btns">${blindBtns}</div>
-        <div class="action-btns" style="margin-top:8px">
+        <div class="action-btns">
           <button class="btn primary" id="act-confirm" ${S.selCard ? '' : 'disabled'}>确认预约</button>
           <button class="btn ghost" id="act-cancel">取消</button>
         </div>`;
-      [1, 2, 3].forEach((t) => {
-        const bb = $('#act-blind-' + t);
-        if (bb) bb.addEventListener('click', () => { S.selBlind = t; S.selCard = null; render(); });
-      });
       bindConfirmCancel('reserve');
       return;
     }
@@ -571,6 +565,19 @@ function openZoom(src) {
   $('#zoom').hidden = false;
 }
 function onMarketClick(e) {
+  // 预约模式下点击左侧牌堆标签 = 盲抽该阶牌堆
+  const lbl = e.target.closest('.tier-label');
+  if (lbl && S) {
+    const t = +lbl.dataset.tier;
+    const p = curPlayer();
+    if (S.mode === 'reserve' && S.phase === 'normal' && !p.isAI && (!ONLINE || mySeat === S.current)) {
+      if ([1, 2, 3].includes(t) && S.decks[t].length > 0) {
+        if (p.reserved.length < RULES.reserveLimit) { S.selBlind = t; S.selCard = null; render(); }
+        else toast('预约区已满（最多 ' + RULES.reserveLimit + ' 张）');
+      }
+    }
+    return;
+  }
   const el = e.target.closest('.card');
   if (!el || !S || el.classList.contains('empty')) return;
   const t = +el.dataset.tier, idx = +el.dataset.idx;
