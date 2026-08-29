@@ -1,15 +1,5 @@
 @echo off
 
-set FOUND=0
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr /C:":3000 " ^| findstr /C:"LISTENING"') do (
-  set FOUND=1
-  taskkill /F /PID %%a >/dev/null 2>&1
-)
-
-if %FOUND%==1 (
-  echo Server stopped.
-) else (
-  echo No server is running.
-)
-timeout /t 3 /nobreak >nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue|Select-Object -ExpandProperty OwningProcess -Unique; $n=Get-CimInstance Win32_Process -Filter \"Name='node.exe'\"|Where-Object{$_.CommandLine -like '*server.js*'}|Select-Object -ExpandProperty ProcessId; $w=Get-Process cmd -ErrorAction SilentlyContinue|Where-Object{$_.MainWindowTitle -like '*Splendor*'}|Select-Object -ExpandProperty Id; $all=@($p)+@($n)+@($w)|Sort-Object -Unique|Where-Object{$_}; $all|ForEach-Object{Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue}; if(@($p)+@($n)|Where-Object{$_}){Write-Host 'Server stopped.'}else{Write-Host 'No server is running.'}"
+ping -n 3 127.0.0.1 >nul
 exit /b
