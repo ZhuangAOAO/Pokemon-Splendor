@@ -8,7 +8,7 @@
 
 const $ = (sel) => document.querySelector(sel);
 const ONLINE = location.protocol !== 'file:';
-const TIER_NAMES = { 1: '一阶', 2: '二阶', 3: '三阶' };
+const TIER_NAMES = { 1: '一阶', 2: '二阶', 3: '三阶', 4: '稀有', 5: '传说' };
 
 /* ---- 联机身份 ---- */
 let mySeat = -1;   // 联机：自己的座位号
@@ -75,13 +75,24 @@ function renderHeader() {
 function renderMarket() {
   const mk = $('#market');
   mk.innerHTML = '';
-  [3, 2, 1].forEach((t) => {
-    const row = document.createElement('div');
-    row.className = 'tier-row';
+  const tierLabel = (t) => {
     const label = document.createElement('div');
     label.className = 'tier-label';
     label.innerHTML = `<span class="tier-dot t${t}"></span>${TIER_NAMES[t]}宝可梦<span class="deck-count">剩 ${S.decks[t].length} 张</span>`;
-    row.appendChild(label);
+    return label;
+  };
+  // 稀有/传说：各展示 1 张，合并为一行（粉=稀有，紫=传说）
+  const rl = document.createElement('div');
+  rl.className = 'tier-row rare-legend-row';
+  rl.appendChild(tierLabel(4));
+  S.market[4].forEach((card, idx) => rl.appendChild(cardEl(card, 4, idx)));
+  rl.appendChild(tierLabel(5));
+  S.market[5].forEach((card, idx) => rl.appendChild(cardEl(card, 5, idx)));
+  mk.appendChild(rl);
+  [3, 2, 1].forEach((t) => {
+    const row = document.createElement('div');
+    row.className = 'tier-row';
+    row.appendChild(tierLabel(t));
     S.market[t].forEach((card, idx) => row.appendChild(cardEl(card, t, idx)));
     mk.appendChild(row);
   });
@@ -95,7 +106,7 @@ function cardEl(card, t, idx) {
   }
   const b = BALLS[card.bonus];
   const d = document.createElement('div');
-  d.className = 'card t' + t;
+  d.className = 'card t' + t + (t === 4 ? ' rare' : '') + (t === 5 ? ' legend' : '');
   d.dataset.tier = t;
   d.dataset.idx = idx;
   d.style.setProperty('--bc', b.top);
@@ -111,7 +122,8 @@ function cardEl(card, t, idx) {
   if (S.mode === 'reserve' && S.selCard && S.selCard.kind === 'market' && S.selCard.tier === t && S.selCard.idx === idx) {
     d.classList.add('selected');
   }
-  const costHtml = COLORS.map((c) => (card.cost[c] ? ballMini(c, card.cost[c]) : '')).join('');
+  const costHtml = COLORS.map((c) => (card.cost[c] ? ballMini(c, card.cost[c]) : '')).join('') +
+    (card.masterCost ? ballMini('master', card.masterCost) : '');
   d.innerHTML = `
     <div class="card-head">
       <span class="tier-badge">${TIER_NAMES[t]}</span>
@@ -120,7 +132,7 @@ function cardEl(card, t, idx) {
     <div class="card-ball">${ballHtml(card.bonus, 'lg')}</div>
     <div class="card-name">${card.name}</div>
     <div class="card-cost">${costHtml}</div>`;
-  d.title = `${card.name} · 加成：${BALLS[card.bonus].name}`;
+  d.title = `${card.name} · 加成：${BALLS[card.bonus].name}${card.tier >= 4 ? '×2（双倍）' : ''}${card.masterCost ? ' · 需大师球×' + card.masterCost : ''}`;
   // 卡面图片：pictures/宝可梦名.jpg；加载成功盖住默认样式，加载失败自动移除
   const img = document.createElement('img');
   img.className = 'card-img';
@@ -189,7 +201,7 @@ function boardEl(p, pi, isHero) {
   // 已收服的宝可梦：按加成颜色分组排列（红→蓝→黑→粉→黄，组内按到手顺序）
   const sortedCards = COLORS.flatMap((c) => p.cards.filter((cd) => cd.bonus === c));
   const cardsHtml = sortedCards.map((cd) => `
-    <span class="pcard" title="${cd.name}（+${BALLS[cd.bonus].name}加成）">
+    <span class="pcard" title="${cd.name}（+${cd.tier >= 4 ? '2×' : ''}${BALLS[cd.bonus].name}加成）">
       <img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy">
     </span>`).join('');
   // 预约 + 图鉴合并成一行（省高度）
@@ -367,11 +379,12 @@ function renderActions() {
         const card = selCardCard();
         const plan = payPlan(p, card);
         const payHtml = COLORS.map((c) => (plan.pay[c] > 0 ? ballMini(c, plan.pay[c]) : '')).join('') +
-          (plan.useJokers > 0 ? ballMini('master', plan.useJokers) : '');
+          (plan.useJokers > 0 ? ballMini('master', plan.useJokers) : '') +
+          (plan.masterCost > 0 ? `<span class="cost-item master-fee">${ballHtml('master', 'xs')}<b>${plan.masterCost}</b></span>` : '');
         mid += `
           <div class="buy-confirm">
             <div class="buy-name">收服 ${card.name}？</div>
-            <div class="buy-cost">${plan.totNeed === 0 ? '免费收服！' : `实付：${payHtml}<span class="dim">（已计入你的加成）</span>`}</div>
+            <div class="buy-cost">${plan.totNeed === 0 && plan.masterCost === 0 ? '免费收服！' : `实付：${payHtml}<span class="dim">（已计入你的加成）</span>`}</div>
           </div>`;
       }
       box.innerHTML = mid + `
@@ -389,7 +402,8 @@ function renderActions() {
     const avail = COLORS.filter((c) => S.pool[c] > 0).length;
     const hasTwo = COLORS.some((c) => S.pool[c] >= RULES.takeTwoMin);
     const hasAff = allMarketCards().some((c) => canAfford(p, c)) || p.reserved.some((c) => canAfford(p, c));
-    const canReserve = allMarketCards().length > 0 && p.reserved.length < RULES.reserveLimit;
+    // 稀有/传说不能预约：只统计一/二/三阶场上的卡
+    const canReserve = [1, 2, 3].some((t) => S.market[t].some(Boolean)) && p.reserved.length < RULES.reserveLimit;
     box.innerHTML = `
       <div class="action-hint">你的回合：选择一个行动</div>
       <div class="action-btns">
@@ -533,6 +547,7 @@ function onMarketClick(e) {
   if (S.mode === 'buy') {
     if (canAfford(p, card)) { S.selCard = { kind: 'market', tier: t, idx }; render(); acted = true; }
   } else if (S.mode === 'reserve') {
+    if (card.tier >= 4) { toast('稀有/传说宝可梦不能预约，只能直接收服'); return; }
     if (p.reserved.length < RULES.reserveLimit) { S.selCard = { kind: 'market', tier: t, idx }; render(); acted = true; }
   } else if (S.mode === null) {
     if (canAfford(p, card)) { S.mode = 'buy'; S.selCard = { kind: 'market', tier: t, idx }; render(); acted = true; }

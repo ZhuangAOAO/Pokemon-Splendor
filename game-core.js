@@ -44,13 +44,14 @@ function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function totalBalls(p) { return COLORS.reduce((s, c) => s + p.balls[c], 0) + p.balls.master; }
 function totalCost(card) { return COLORS.reduce((s, c) => s + (card.cost[c] || 0), 0); }
 
-// 永久加成：玩家已收服的宝可梦按颜色计数
+// 永久加成：玩家已收服的宝可梦按颜色计数（稀有/传说提供双倍加成）
 function bonusOf(p) {
   const b = { red: 0, blue: 0, black: 0, pink: 0, yellow: 0 };
-  p.cards.forEach((cd) => b[cd.bonus]++);
+  p.cards.forEach((cd) => { b[cd.bonus] += (cd.tier >= 4 ? 2 : 1); });
   return b;
 }
-// 收服一张卡的实际支付方案：先抵扣加成，再用对应颜色球，最后用大师球补足
+// 收服一张卡的实际支付方案：先抵扣加成，再用对应颜色球，颜色缺口用大师球补，
+// 最后额外支付卡面的大师球费用（稀有/传说必须用大师球支付）
 function payPlan(p, card) {
   const b = bonusOf(p);
   const pay = {}; let totPay = 0, totNeed = 0;
@@ -61,7 +62,11 @@ function payPlan(p, card) {
     pay[c] = use; totPay += use;
   });
   const useJokers = Math.min(totNeed - totPay, p.balls.master);
-  return { pay, useJokers, totNeed, canPay: totPay + useJokers >= totNeed };
+  const masterCost = card.masterCost || 0;
+  return {
+    pay, useJokers, masterCost, totNeed,
+    canPay: totPay + useJokers >= totNeed && p.balls.master >= useJokers + masterCost,
+  };
 }
 function canAfford(p, card) { return payPlan(p, card).canPay; }
 // 还差多少球才能收服（供 AI 收集资源用）
@@ -72,15 +77,15 @@ function missingFor(p, card) {
     const m = Math.max(0, (card.cost[c] || 0) - b[c] - p.balls[c]);
     net[c] = m; tot += m;
   });
-  return { net, tot, effTot: Math.max(0, tot - p.balls.master) };
+  return { net, tot, effTot: Math.max(0, tot + (card.masterCost || 0) - p.balls.master) };
 }
 
 /* ==================== 牌堆：从 config.js 的卡牌表读取 ==================== */
 function buildDecksFromTable() {
-  const decks = { 1: [], 2: [], 3: [] };
+  const decks = { 1: [], 2: [], 3: [], 4: [], 5: [] }; // 4=稀有 5=传说
   shuffle(CARD_TABLE).forEach((row, i) => {
-    const [name, tier, vp, r, b, k, p, y, bonus] = row;
-    if (!decks[tier]) { console.error(`卡牌表第 ${i + 1} 行「${name}」阶数无效：只能是 1/2/3`); return; }
+    const [name, tier, vp, r, b, k, p, y, bonus, mcost] = row;
+    if (!decks[tier]) { console.error(`卡牌表第 ${i + 1} 行「${name}」阶数无效：只能是 1/2/3/4/5`); return; }
     if (!COLORS.includes(bonus)) { console.error(`卡牌表第 ${i + 1} 行「${name}」加成色无效：${bonus}`); return; }
     // 推导进化关系：一阶/二阶卡在进化线里找下一形态。
     // 进化条件印在"未进化的卡"上（比如波波的卡面写着进化成比比鸟需要什么）
@@ -102,6 +107,7 @@ function buildDecksFromTable() {
     decks[tier].push({
       id: `${tier}-${i}`, tier, vp,
       cost: { red: r, blue: b, black: k, pink: p, yellow: y },
+      masterCost: mcost || 0, // 稀有/传说卡面的大师球费用（必须用大师球支付）
       bonus, name, evoTo, evoNeed,
     });
   });
@@ -136,7 +142,7 @@ function newGame(cfg) {
     })),
     pool,
     decks: buildDecksFromTable(),
-    market: { 1: [], 2: [], 3: [] },
+    market: { 1: [], 2: [], 3: [], 4: [], 5: [] },
     current: startSeat,
     firstPlayer: startSeat, // 先手座位：公平轮的轮次边界
     turnIdx: 0,
@@ -148,8 +154,10 @@ function newGame(cfg) {
     endTriggered: false,
     over: false,
   };
-  [1, 2, 3].forEach((t) => {
-    for (let i = 0; i < RULES.marketSize; i++) S.market[t].push(S.decks[t].pop() || null);
+  [1, 2, 3, 4, 5].forEach((t) => {
+    // 每阶场上展示数量：一/二/三阶各 4 张，稀有/传说各 1 张
+    const size = (RULES.marketSizes && RULES.marketSizes[t]) || (t <= 3 ? 4 : 1);
+    for (let i = 0; i < size; i++) S.market[t].push(S.decks[t].pop() || null);
   });
   HOOKS.onToast(`${S.players[startSeat].name} 先手`);
 }
@@ -157,7 +165,7 @@ function newGame(cfg) {
 function curPlayer() { return S.players[S.current]; }
 function allMarketCards() {
   const out = [];
-  [1, 2, 3].forEach((t) => S.market[t].forEach((c) => { if (c) out.push(c); }));
+  [1, 2, 3, 4, 5].forEach((t) => S.market[t].forEach((c) => { if (c) out.push(c); }));
   return out;
 }
 
@@ -227,7 +235,8 @@ function actBuyReserved(ridx) {
 function payForCard(p, card) {
   const plan = payPlan(p, card);
   COLORS.forEach((c) => { p.balls[c] -= plan.pay[c]; S.pool[c] += plan.pay[c]; });
-  p.balls.master -= plan.useJokers; S.pool.master += plan.useJokers;
+  const masterPaid = plan.useJokers + plan.masterCost;
+  p.balls.master -= masterPaid; S.pool.master += masterPaid;
 }
 function afterBuyPointsCheck(p) {
   if (p.points >= S.target && !S.endTriggered) {
@@ -254,6 +263,7 @@ function actReserve(tier, idx) {
   const p = curPlayer();
   if (p.reserved.length >= RULES.reserveLimit) return;
   const card = S.market[tier][idx];
+  if (card.tier >= 4) return; // 稀有/传说宝可梦不能预约，只能直接收服
   S.market[tier][idx] = S.decks[tier].pop() || null;
   p.reserved.push(card);
   let gotMaster = false;
@@ -304,12 +314,13 @@ function evolveOptions(p) {
     if (!base.evoTo) return;
     const okNeed = COLORS.every((c) => bonus[c] >= (base.evoNeed[c] || 0));
     [1, 2, 3].forEach((t) => S.market[t].forEach((card, idx) => {
-      if (card && card.tier > base.tier && baseNameOf(card.name) === base.evoTo) {
+      // 进化目标只能是普通一/二/三阶卡（稀有/传说不能作为进化目标）
+      if (card && card.tier <= 3 && card.tier > base.tier && baseNameOf(card.name) === base.evoTo) {
         opts.push({ loc: { kind: 'market', tier: t, idx }, card, base, ok: okNeed });
       }
     }));
     p.reserved.forEach((card, ridx) => {
-      if (card && card.tier > base.tier && baseNameOf(card.name) === base.evoTo) {
+      if (card && card.tier <= 3 && card.tier > base.tier && baseNameOf(card.name) === base.evoTo) {
         opts.push({ loc: { kind: 'reserved', ridx }, card, base, ok: okNeed });
       }
     });
@@ -379,9 +390,9 @@ function chooseAIMove(p) {
   const simple = p.aiLevel === 'easy';
   if (simple && Math.random() < AI_CONFIG.easyRandomRate) return randomMove(p);
 
-  // 能收服就收服：优先高分的卡（含预约的卡）
+  // 能收服就收服：优先高分的卡（含稀有/传说与预约的卡）
   const aff = [];
-  [1, 2, 3].forEach((t) => S.market[t].forEach((c, idx) => {
+  [1, 2, 3, 4, 5].forEach((t) => S.market[t].forEach((c, idx) => {
     if (c && canAfford(p, c)) aff.push({ kind: 'buy', tier: t, idx, card: c });
   }));
   p.reserved.forEach((c, ridx) => {
@@ -463,10 +474,10 @@ function pickTarget(p) {
     if (!card) return;
     const m = missingFor(p, card);
     let score = card.vp * 4 - m.effTot * 1.1 + card.tier * 0.5 - totalCost(card) * 0.05 + (ridx !== undefined ? 0.5 : 0);
-    if (engine && tier !== undefined && card.tier === 3) score -= 8; // 前期不为三阶囤球
+    if (engine && tier !== undefined && card.tier >= 3) score -= 8; // 前期不囤高阶/稀有/传说
     if (score > bestScore) { bestScore = score; best = { card, tier, idx, ridx }; }
   };
-  [1, 2, 3].forEach((t) => S.market[t].forEach((c, idx) => consider(c, t, idx, undefined)));
+  [1, 2, 3, 4, 5].forEach((t) => S.market[t].forEach((c, idx) => consider(c, t, idx, undefined)));
   p.reserved.forEach((c, ridx) => consider(c, undefined, undefined, ridx));
   return best;
 }
@@ -479,14 +490,15 @@ function bailOut(p) {
 }
 function randomMove(p) {
   const opts = [];
-  [1, 2, 3].forEach((t) => S.market[t].forEach((c, idx) => {
+  [1, 2, 3, 4, 5].forEach((t) => S.market[t].forEach((c, idx) => {
     if (c && canAfford(p, c)) opts.push({ type: 'buy', tier: t, idx });
   }));
   p.reserved.forEach((c, ridx) => {
     if (canAfford(p, c)) opts.push({ type: 'buyReserved', ridx });
   });
   const t = pickTarget(p);
-  if (t && t.tier !== undefined && p.reserved.length < RULES.reserveLimit) {
+  // 稀有/传说（4/5 阶）不能预约
+  if (t && t.tier !== undefined && t.tier <= 3 && p.reserved.length < RULES.reserveLimit) {
     opts.push({ type: 'reserve', tier: t.tier, idx: t.idx });
   }
   if (RULES.takeMasterAlone !== false && S.pool.master > 0) opts.push({ type: 'takeMaster' });

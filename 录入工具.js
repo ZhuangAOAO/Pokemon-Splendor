@@ -38,6 +38,7 @@ function readTable() {
       name: r[0], tier: r[1], vp: r[2],
       cost: { red: r[3], blue: r[4], black: r[5], pink: r[6], yellow: r[7] },
       bonus: r[8],
+      masterCost: r[9] || 0, // 稀有/传说卡面的大师球费用
       needColor: need ? Object.keys(need)[0] : 'none',
       needCount: need ? need[Object.keys(need)[0]] : 0,
     };
@@ -54,7 +55,8 @@ function writeTable(rows) {
   let body = `window.CARD_TABLE = [\n  // —— 已按名字拼音排序（一阶 ${byTier[1]} / 二阶 ${byTier[2]} / 三阶 ${byTier[3]}，共 ${rows.length} 张）——\n`;
   rows.forEach((r) => {
     const costTotal = r.cost.red + r.cost.blue + r.cost.black + r.cost.pink + r.cost.yellow;
-    body += `  ['${r.name}', ${r.tier}, ${r.vp}, ${r.cost.red}, ${r.cost.blue}, ${r.cost.black}, ${r.cost.pink}, ${r.cost.yellow}, '${r.bonus}'], // ${r.vp}分·费${costTotal}\n`;
+    const m = r.masterCost || 0;
+    body += `  ['${r.name}', ${r.tier}, ${r.vp}, ${r.cost.red}, ${r.cost.blue}, ${r.cost.black}, ${r.cost.pink}, ${r.cost.yellow}, '${r.bonus}', ${m}], // ${r.vp}分·费${costTotal}${m ? '+大师球' + m : ''}\n`;
   });
   body += '];';
   let out = src.slice(0, start) + body + src.slice(end);
@@ -85,12 +87,13 @@ function validRows(rows, oldRows) {
     const r = rows[i], o = oldRows[i];
     if (!r || typeof r !== 'object') return `第 ${i + 1} 行格式错误`;
     if (r.name !== o.name) return `第 ${i + 1} 行（${o.name}）名字被改动，拒绝保存（名字和图片是一一对应的）`;
-    if (![1, 2, 3].includes(r.tier)) return `第 ${i + 1} 行（${o.name}）阶层无效：只能是 1/2/3`;
+    if (![1, 2, 3, 4, 5].includes(r.tier)) return `第 ${i + 1} 行（${o.name}）阶层无效：只能是 1/2/3/4/5`;
     if (!Number.isInteger(r.vp) || r.vp < 0 || r.vp > 10) return `第 ${i + 1} 行（${o.name}）分数无效（0~10 的整数）`;
     for (const c of COLORS) {
       if (!Number.isInteger(r.cost[c]) || r.cost[c] < 0 || r.cost[c] > 10) return `第 ${i + 1} 行（${o.name}）${c} 费用无效（0~10 的整数）`;
     }
     if (!COLORS.includes(r.bonus)) return `第 ${i + 1} 行（${o.name}）加成色无效`;
+    if (!Number.isInteger(r.masterCost || 0) || (r.masterCost || 0) < 0 || (r.masterCost || 0) > 5) return `第 ${i + 1} 行（${o.name}）大师球费无效（0~5）`;
     if (r.tier <= 2) {
       if (r.needColor && r.needColor !== 'none' && !COLORS.includes(r.needColor)) return `第 ${i + 1} 行（${o.name}）进化条件色无效`;
       if (!Number.isInteger(r.needCount) || r.needCount < 0 || r.needCount > 5) return `第 ${i + 1} 行（${o.name}）进化条件数无效（0~5）`;

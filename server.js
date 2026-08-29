@@ -226,6 +226,7 @@ function validAction(conn, a) {
       if (S.phase !== 'normal') return '现在不能预约';
       const card = S.market[a.tier] && S.market[a.tier][a.idx];
       if (!card) return '没有这张卡';
+      if (card.tier >= 4) return '稀有/传说宝可梦不能预约，只能直接收服';
       if (p.reserved.length >= RULES.reserveLimit) return '预约已满';
       return null;
     }

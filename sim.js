@@ -59,7 +59,7 @@ const test = `
       S.players.forEach((pp) => {
         console.log('  ' + pp.name + ' 球:', JSON.stringify(pp.balls), '预约:', pp.reserved.map((c) => c.name + '(' + c.vp + '分)').join(','), '分:', pp.points);
       });
-      [1, 2, 3].forEach((t) => {
+      [1, 2, 3, 4, 5].forEach((t) => {
         console.log('  场上' + t + '阶:', S.market[t].map((c) => c ? c.name + '(需' + JSON.stringify(c.cost) + ',' + c.vp + '分)' : '空').join(' | '));
       });
       continue;
@@ -88,9 +88,9 @@ const test = `
     if (masterSum !== RULES.masterCount) { leaks++; console.error('第' + g + '局：大师球不守恒！共 ' + masterSum + ' 个≠' + RULES.masterCount); }
 
     // ---- 守恒校验：卡牌总数不变（持有 = 已收服 + 已预约 + 图鉴；期望值从卡牌表统计）----
-    const totals = { 1: 0, 2: 0, 3: 0 };
+    const totals = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     CARD_TABLE.forEach((row) => { totals[row[1]]++; });
-    [1, 2, 3].forEach((t) => {
+    [1, 2, 3, 4, 5].forEach((t) => {
       const held = S.players.reduce((s, p) => s
         + p.cards.filter((c) => c.tier === t).length
         + p.reserved.filter((c) => c.tier === t).length

@@ -70,6 +70,7 @@
   对照卡面填写：分数、红/蓝/黑/粉/黄 费用、加成色（卡面右上角的球色）。
   一阶/二阶卡（未进化的卡）有「进化需」：卡面印的进化图标要求的加成色和个数（选「无」或个数 0 = 用默认规则，不写入）。
   同名宝可梦（如三张「波波」）进化条件相同，改一张会自动同步。
+  稀有/传说卡：阶层选「稀有」或「传说」，并填写卡面上的「大师球费」。
   点击缩略图可放大看细节。填过数值的行会变绿并自动记住进度。保存后联机服务器需重启才生效。
 </div>
 <div id="list"></div>
@@ -122,10 +123,12 @@ function render() {
       <div class="info"><b>${r.name}</b><span class="tier">名字不可改</span></div>
       <label class="fld"><span>阶层</span>
         <select data-i="${i}" data-f="tier">
-          ${[1, 2, 3].includes(r.tier) ? '' : `<option value="${r.tier}" selected>无效(${r.tier})</option>`}
+          ${[1, 2, 3, 4, 5].includes(r.tier) ? '' : `<option value="${r.tier}" selected>无效(${r.tier})</option>`}
           <option value="1" ${r.tier === 1 ? 'selected' : ''}>一阶</option>
           <option value="2" ${r.tier === 2 ? 'selected' : ''}>二阶</option>
           <option value="3" ${r.tier === 3 ? 'selected' : ''}>三阶</option>
+          <option value="4" ${r.tier === 4 ? 'selected' : ''}>稀有</option>
+          <option value="5" ${r.tier === 5 ? 'selected' : ''}>传说</option>
         </select></label>
       <label class="fld"><span>分数</span><input type="number" min="0" max="10" value="${r.vp}" data-i="${i}" data-f="vp"></label>
       ${costHtml}
@@ -133,6 +136,8 @@ function render() {
         <select data-i="${i}" data-f="bonus">
           ${BALL_COLORS.map(([k, cn, hex, tc]) => `<option value="${k}" ${r.bonus === k ? 'selected' : ''} style="background:${hex};color:${tc}">${cn}</option>`).join('')}
         </select></label>
+      ${r.tier >= 4 ? `<label class="fld"><span>大师球费</span>
+        <input type="number" min="0" max="5" value="${r.masterCost || 0}" data-i="${i}" data-f="masterCost"></label>` : ''}
       ${r.tier <= 2 ? `
         <label class="fld"><span>进化需</span>
           <select data-i="${i}" data-f="needColor">
@@ -158,6 +163,7 @@ list.addEventListener('change', (e) => {
   else if (f === 'bonus') rows[i].bonus = val;
   else if (f === 'needColor') rows[i].needColor = val;
   else if (f === 'needCount') rows[i].needCount = Math.max(0, Math.min(5, +val || 0));
+  else if (f === 'masterCost') rows[i].masterCost = Math.max(0, Math.min(5, +val || 0));
   else rows[i].cost[f] = val;
   dirty.add(i);
   localStorage.setItem('cardDirty', JSON.stringify([...dirty]));

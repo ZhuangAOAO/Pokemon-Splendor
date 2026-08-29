@@ -196,6 +196,11 @@ h3{ font-size:14px; }
 .tier-dot.t1{ background:#4caf50; box-shadow:0 0 8px rgba(76,175,80,.6); }
 .tier-dot.t2{ background:#f4a261; box-shadow:0 0 8px rgba(244,162,97,.6); }
 .tier-dot.t3{ background:#7e6bb5; box-shadow:0 0 8px rgba(126,107,181,.6); }
+.tier-dot.t4{ background:#f58fb8; box-shadow:0 0 8px rgba(245,143,184,.6); }
+.tier-dot.t5{ background:#8e44c7; box-shadow:0 0 8px rgba(142,68,199,.6); }
+.card.rare{ border-color:#f58fb8; box-shadow:0 0 12px rgba(245,143,184,.45); }
+.card.legend{ border-color:#8e44c7; box-shadow:0 0 12px rgba(142,68,199,.5); }
+.cost-item.master-fee{ background:#f7f0fc; border:1px solid #e6d7f5; }
 .deck-count{ display:block; font-weight:600; font-size:11px; color:var(--ink-faint); }
 
 .card{
