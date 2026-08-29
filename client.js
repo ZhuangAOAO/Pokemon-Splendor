@@ -68,7 +68,7 @@ function renderHeader() {
   const p = curPlayer();
   const myTurn = ONLINE ? (mySeat === S.current) : !p.isAI;
   $('#turn-info').innerHTML = `轮到 <b>${p.name}</b>${myTurn ? (p.isAI ? '（电脑思考中…）' : '（请行动）') : ''}`;
-  $('#target-info').textContent = `🏁 目标 ${S.target} 分`;
+  $('#target-info').textContent = `目标 ${S.target} 分`;
   $('#end-banner').hidden = !S.endTriggered;
 }
 
@@ -175,10 +175,10 @@ function boardEl(p, pi, isHero) {
   const discarding = S.phase === 'discard' && pi === S.current;
   const returning = S.mode === 'returnBalls' && pi === S.current && !p.isAI;
   if (discarding) b.classList.add('discarding');
-  const typeLabel = p.isAI ? (p.aiLevel === 'easy' ? '🤖 电脑·简单' : '🤖 电脑·困难') : '🙋 人类';
+  const typeLabel = p.isAI ? (p.aiLevel === 'easy' ? '电脑·简单' : '电脑·困难') : '人类';
   const offline = ONLINE && !p.isAI && !isConnected(pi);
-  const nameLabel = p.name + (offline ? ' 🔌' : '') + (ONLINE && pi === mySeat ? '（你）' : '');
-  const avatar = p.isAI ? (p.aiLevel === 'easy' ? '🤖' : '🦾') : '🙋';
+  const nameLabel = p.name + (offline ? '（离线）' : '') + (ONLINE && pi === mySeat ? '（你）' : '');
+  const avatar = p.name.slice(0, 1); // 头像 = 名字首字
   const ballRow = (c, cnt) => `
     <span class="pball ${((discarding || returning) && cnt > 0) ? 'clickable' : ''}" data-p="${pi}" data-c="${c}">
       ${ballHtml(c, 'sm')}<b>${cnt}</b>
@@ -195,21 +195,21 @@ function boardEl(p, pi, isHero) {
     ...(p.dex || []).map((cd) => `<span class="pcard dex" title="${cd.name}"><img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy"></span>`),
   ].join('');
   const sideHtml = sideThumbs
-    ? `<div class="p-side" title="预约与图鉴">${p.reserved.length ? `<span class="p-label">📌 ${p.reserved.length}</span>` : ''}${(p.dex && p.dex.length) ? `<span class="p-label">📕 ${p.dex.length}</span>` : ''}${sideThumbs}</div>`
+    ? `<div class="p-side" title="预约与图鉴">${p.reserved.length ? `<span class="p-label">预约 ${p.reserved.length}</span>` : ''}${(p.dex && p.dex.length) ? `<span class="p-label">图鉴 ${p.dex.length}</span>` : ''}${sideThumbs}</div>`
     : '';
   const headHtml = `
     <div class="p-head">
       <span class="p-avatar">${avatar}</span>
       <span class="p-name">${nameLabel}</span>
       <span class="p-type">${typeLabel}</span>
-      ${p.evolutions > 0 ? `<span class="p-evo">🔬 ${p.evolutions}</span>` : ''}
-      <span class="p-pts">★ ${p.points}</span>
+      ${p.evolutions > 0 ? `<span class="p-evo">进化 ${p.evolutions}</span>` : ''}
+      <span class="p-pts">${p.points} 分</span>
     </div>`;
-  const cardsRow = `<div class="p-cards"><span class="p-label">🃏 ${p.cards.length}</span>${cardsHtml || '<span class="p-empty">还没有宝可梦</span>'}</div>`;
+  const cardsRow = `<div class="p-cards"><span class="p-label">${p.cards.length} 只</span>${cardsHtml || '<span class="p-empty">还没有宝可梦</span>'}</div>`;
   if (isHero) {
     // 主角面板：左侧身份 + 购买力（手持精灵球 + 永久加成合并显示），右侧卡牌区
     const bonus = bonusOf(p);
-    const ppHtml = '<span class="p-label" title="购买力 = 手持精灵球 + 永久加成（固定资产）">💪 购买力</span>' + COLORS.map((c) => `
+    const ppHtml = COLORS.map((c) => `
       <span class="pball ${((discarding || returning) && p.balls[c] > 0) ? 'clickable' : ''}" data-p="${pi}" data-c="${c}" title="${BALLS[c].name}：手持 ${p.balls[c]} + 加成 ${bonus[c]}">
         ${ballHtml(c, 'sm')}<b>${p.balls[c]}</b>${bonus[c] > 0 ? `<i>+${bonus[c]}</i>` : ''}
       </span>`).join('') + `
@@ -247,7 +247,7 @@ function renderActions() {
   if (S.phase === 'gameover') return;
 
   if (S.phase === 'discard') {
-    box.innerHTML = `<div class="action-hint warn">⚠️ 你的精灵球超过 ${RULES.handLimit} 个！点击下方自己的精灵球退还（还需 ${S.discardNeed} 个）</div>`;
+    box.innerHTML = `<div class="action-hint warn">你的精灵球超过 ${RULES.handLimit} 个！点击下方自己的精灵球退还（还需 ${S.discardNeed} 个）</div>`;
     return;
   }
   if (S.phase === 'evolve') {
@@ -259,11 +259,11 @@ function renderActions() {
         const needTxt = COLORS.map((c) => (o.base.evoNeed && o.base.evoNeed[c] ? `${BALLS[c].name}加成×${o.base.evoNeed[c]}` : '')).filter(Boolean).join('、');
         const gain = o.card.vp - o.base.vp;
         return `<button class="btn evolve" id="act-evo-${i}">
-          🔬 ${o.base.name} → ${o.card.name}（${gain > 0 ? '+' + gain + '分' : '0分'} · 需${needTxt}）
+          ${o.base.name} → ${o.card.name}（${gain > 0 ? '+' + gain + '分' : '0分'} · 需${needTxt}）
         </button>`;
       }).join('');
       box.innerHTML = `
-        <div class="action-hint">🔬 回合结束免费进化：选择 1 只进化的宝可梦（每回合最多 1 次）</div>
+        <div class="action-hint">回合结束免费进化：选择 1 只进化的宝可梦（每回合最多 1 次）</div>
         <div class="action-btns">${list}<button class="btn ghost" id="act-skip-evo">跳过进化</button></div>`;
       opts.forEach((o, i) => {
         const b = $('#act-evo-' + i);
@@ -271,7 +271,7 @@ function renderActions() {
       });
       $('#act-skip-evo').addEventListener('click', () => dispatch({ kind: 'skipEvolve' }));
     } else {
-      box.innerHTML = `<div class="action-hint">🤔 ${p.name} 正在思考…</div>`;
+      box.innerHTML = `<div class="action-hint">${p.name} 正在思考…</div>`;
     }
     return;
   }
@@ -284,7 +284,7 @@ function renderActions() {
       const avail = COLORS.filter((c) => S.pool[c] > 0).length;
       const need = Math.min(3, avail);
       box.innerHTML = `
-        <div class="action-hint">🎯 请选择 ${need} 种不同颜色的精灵球（已选 ${S.selColors.length}/${need}，再点一次已选颜色可取消）</div>
+        <div class="action-hint">请选择 ${need} 种不同颜色的精灵球（已选 ${S.selColors.length}/${need}，再点一次已选颜色可取消）</div>
         <div class="action-btns">
           <button class="btn primary" id="act-confirm" ${S.selColors.length === need ? '' : 'disabled'}>确认拿取</button>
           <button class="btn ghost" id="act-cancel">取消</button>
@@ -294,7 +294,7 @@ function renderActions() {
     }
     if (S.mode === 'take2') {
       box.innerHTML = `
-        <div class="action-hint">🎯 请选择一种精灵球（供应区中该色至少 ${RULES.takeTwoMin} 个）</div>
+        <div class="action-hint">请选择一种精灵球（供应区中该色至少 ${RULES.takeTwoMin} 个）</div>
         <div class="action-btns">
           <button class="btn primary" id="act-confirm" ${S.selColors.length === 1 ? '' : 'disabled'}>确认拿取</button>
           <button class="btn ghost" id="act-cancel">取消</button>
@@ -304,7 +304,7 @@ function renderActions() {
     }
     if (S.mode === 'returnBalls') {
       box.innerHTML = `
-        <div class="action-hint">🎯 点击下方你自己的 1 个精灵球，把它退回供应区（周转用，通常只在没别的行动时做）</div>
+        <div class="action-hint">点击下方你自己的 1 个精灵球，把它退回供应区（周转用，通常只在没别的行动时做）</div>
         <div class="action-btns">
           <button class="btn primary" id="act-confirm" ${S.selColors.length === 1 ? '' : 'disabled'}>确认退还</button>
           <button class="btn ghost" id="act-cancel">取消</button>
@@ -314,7 +314,7 @@ function renderActions() {
     }
     if (S.mode === 'takeMaster') {
       box.innerHTML = `
-        <div class="action-hint">🎯 拿取 1 个大师球（万能球，可代替任意颜色的球）？</div>
+        <div class="action-hint">拿取 1 个大师球（万能球，可代替任意颜色的球）？</div>
         <div class="buy-confirm">
           <div class="buy-name">不预约卡牌，只拿 1 个大师球</div>
           <div class="buy-cost">拿完后结束你的回合。</div>
@@ -327,12 +327,12 @@ function renderActions() {
       return;
     }
     if (S.mode === 'reserve') {
-      let mid = '<div class="action-hint">🎯 点击场上一张宝可梦，把它收进你的预约区（同时送 1 个大师球）</div>';
+      let mid = '<div class="action-hint">点击场上一张宝可梦，把它收进你的预约区（同时送 1 个大师球）</div>';
       if (S.selCard) {
         const card = selCardCard();
         const masterInfo = S.pool.master > 0
           ? '同时送你 1 个大师球（万能球，可代替任意颜色的球）'
-          : '⚠️ 大师球已领完，这次预约没有球可拿';
+          : '大师球已领完，这次预约没有球可拿';
         mid = `
           <div class="buy-confirm">
             <div class="buy-name">预约「${card.name}」？</div>
@@ -348,9 +348,9 @@ function renderActions() {
       return;
     }
     if (S.mode === 'buy') {
-      let mid = '<div class="action-hint">🎯 点击场上发光的宝可梦，或下方已预约的宝可梦</div>';
+      let mid = '<div class="action-hint">点击场上发光的宝可梦，或下方已预约的宝可梦</div>';
       if (p.reserved.length) {
-        mid += '<div class="reserved-strip"><span class="rs-label">📌 已预约：</span>' + p.reserved.map((rc, ri) => {
+        mid += '<div class="reserved-strip"><span class="rs-label">已预约：</span>' + p.reserved.map((rc, ri) => {
           const ok = canAfford(p, rc);
           return `<span class="rchip ${ok ? 'clickable' : ''} ${S.selCard && S.selCard.kind === 'reserved' && S.selCard.ridx === ri ? 'selected' : ''}" data-ridx="${ri}" ${ok ? '' : `title="还不够精灵球收服它"`}><img class="rchip-img" src="pictures/${encodeURIComponent(rc.name)}.jpg" alt="${rc.name}"><b class="r-vp ${rc.vp === 0 ? 'zero' : ''}">${rc.vp}</b></span>`;
         }).join('') + '</div>';
@@ -363,7 +363,7 @@ function renderActions() {
         mid += `
           <div class="buy-confirm">
             <div class="buy-name">收服 ${card.name}？</div>
-            <div class="buy-cost">${plan.totNeed === 0 ? '🎉 免费收服！' : `实付：${payHtml}<span class="dim">（已计入你的加成）</span>`}</div>
+            <div class="buy-cost">${plan.totNeed === 0 ? '免费收服！' : `实付：${payHtml}<span class="dim">（已计入你的加成）</span>`}</div>
           </div>`;
       }
       box.innerHTML = mid + `
@@ -383,7 +383,7 @@ function renderActions() {
     const hasAff = allMarketCards().some((c) => canAfford(p, c)) || p.reserved.some((c) => canAfford(p, c));
     const canReserve = allMarketCards().length > 0 && p.reserved.length < RULES.reserveLimit;
     box.innerHTML = `
-      <div class="action-hint">🎮 你的回合：选择一个行动</div>
+      <div class="action-hint">你的回合：选择一个行动</div>
       <div class="action-btns">
         <button class="btn primary" id="act-take3" ${avail === 0 ? 'disabled' : ''}>拿 3 个不同球</button>
         <button class="btn secondary" id="act-take2" ${hasTwo ? '' : 'disabled'}>拿 2 个相同球</button>
@@ -401,7 +401,7 @@ function renderActions() {
     if (actMaster) actMaster.addEventListener('click', () => { S.mode = 'takeMaster'; render(); });
   } else {
     const waiting = p.isAI ? `${p.name} 正在思考…` : `等待 ${p.name} 行动…`;
-    box.innerHTML = `<div class="action-hint">🤔 ${waiting}</div>`;
+    box.innerHTML = `<div class="action-hint">${waiting}</div>`;
   }
 }
 function selCardCard() {
@@ -465,16 +465,16 @@ function showGameOver() {
   const top = rank[0];
   const tied = rank.filter((p) => p.points === top.points && p.evolutions === top.evolutions && p.cards.length === top.cards.length);
   const title = tied.length > 1
-    ? `🏆 并列获胜：${tied.map((p) => p.name).join('、')}（${top.points} 分）`
-    : `🏆 ${top.name} 获胜！共 ${top.points} 分`;
+    ? `并列获胜：${tied.map((p) => p.name).join('、')}（${top.points} 分）`
+    : `${top.name} 获胜！共 ${top.points} 分`;
   $('#go-title').textContent = title;
-  const medals = ['🥇', '🥈', '🥉', '④'];
+  const medals = ['1', '2', '3', '4'];
   $('#go-result').innerHTML = rank.map((p, i) => `
     <div class="go-row ${i === 0 ? 'first' : ''}">
       <span class="go-medal">${medals[i]}</span>
       <span class="go-name">${p.name}</span>
       <span class="go-pts">${p.points} 分</span>
-      <span class="go-cnt">${p.cards.length} 只 · 🔬${p.evolutions} 次</span>
+      <span class="go-cnt">${p.cards.length} 只 · 进化 ${p.evolutions} 次</span>
     </div>`).join('');
   const againBtn = $('#btn-again');
   const backBtn = $('#btn-back-setup');
@@ -598,11 +598,11 @@ function addPlayerRow(pc) {
     <span class="row-idx"></span>
     <input class="row-name" maxlength="8" value="${pc.name}">
     <select class="row-type">
-      <option value="human" ${pc.type === 'human' ? 'selected' : ''}>🙋 人类</option>
-      <option value="easy" ${pc.type === 'easy' ? 'selected' : ''}>🤖 电脑·简单</option>
-      <option value="hard" ${pc.type === 'hard' ? 'selected' : ''}>🤖 电脑·困难</option>
+      <option value="human" ${pc.type === 'human' ? 'selected' : ''}>人类</option>
+      <option value="easy" ${pc.type === 'easy' ? 'selected' : ''}>电脑·简单</option>
+      <option value="hard" ${pc.type === 'hard' ? 'selected' : ''}>电脑·困难</option>
     </select>
-    <button class="btn ghost sm row-del">✕</button>`;
+    <button class="btn ghost sm row-del">×</button>`;
   row.querySelector('.row-del').addEventListener('click', () => {
     if (rows.children.length <= 2) return;
     row.remove();
@@ -663,10 +663,10 @@ async function postApi(obj) {
       body: JSON.stringify(obj),
     });
     const j = await r.json().catch(() => ({}));
-    if (!j.ok) toast('⚠️ ' + (j.msg || '请求失败'));
+    if (!j.ok) toast(j.msg || '请求失败');
     return j;
   } catch (err) {
-    toast('⚠️ 与服务器通信失败');
+    toast('与服务器通信失败');
     return { ok: false };
   }
 }
@@ -674,7 +674,7 @@ function updateConnDot() {
   const dot = $('#conn-status');
   if (!ONLINE) { dot.hidden = true; return; }
   dot.hidden = false;
-  dot.textContent = connOk ? '🟢 已连接' : '🔴 连接中断，重连中…';
+  dot.textContent = connOk ? '已连接' : '连接中断，重连中…';
 }
 function handleServerMsg(m) {
   if (m.type === 'state') {
@@ -694,7 +694,7 @@ function handleServerMsg(m) {
   } else if (m.type === 'toast') {
     toast(m.msg);
   } else if (m.type === 'error') {
-    toast('⚠️ ' + m.msg);
+    toast(m.msg);
   }
 }
 function renderLobby() {
@@ -707,15 +707,15 @@ function renderLobby() {
   $('#lobby-roster').innerHTML = humans.map((h) => `
     <div class="lobby-row">
       <span class="lobby-dot ${h.connected ? 'on' : 'off'}"></span>
-      <span class="lobby-name">${h.name}${h.isHost ? ' 👑' : ''}${h.name === myName ? '（你）' : ''}</span>
-      <span class="lobby-tag">🙋 人类</span>
+      <span class="lobby-name">${h.name}${h.isHost ? '（房主）' : ''}${h.name === myName ? '（你）' : ''}</span>
+      <span class="lobby-tag">人类</span>
       ${h.connected ? '' : '<span class="lobby-tag off">已断线</span>'}
     </div>`).join('') +
     ais.map((a) => `
     <div class="lobby-row">
       <span class="lobby-dot on"></span>
       <span class="lobby-name">${a.name}</span>
-      <span class="lobby-tag">🤖 电脑·${a.level === 'easy' ? '简单' : '困难'}</span>
+      <span class="lobby-tag">电脑·${a.level === 'easy' ? '简单' : '困难'}</span>
     </div>`).join('');
 
   // 房主控制区
@@ -739,10 +739,10 @@ function renderAiRows() {
       <span class="row-idx">AI</span>
       <input class="ai-name" maxlength="8" value="${a.name}">
       <select class="ai-level">
-        <option value="easy" ${a.level === 'easy' ? 'selected' : ''}>🤖 电脑·简单</option>
-        <option value="hard" ${a.level === 'hard' ? 'selected' : ''}>🤖 电脑·困难</option>
+        <option value="easy" ${a.level === 'easy' ? 'selected' : ''}>电脑·简单</option>
+        <option value="hard" ${a.level === 'hard' ? 'selected' : ''}>电脑·困难</option>
       </select>
-      <button class="btn ghost sm ai-del">✕</button>`;
+      <button class="btn ghost sm ai-del">×</button>`;
     const send = () => {
       const ais = [];
       [...box.querySelectorAll('.player-row')].forEach((r) => {
@@ -761,7 +761,7 @@ function renderAiRows() {
 }
 function renderLobbyTarget() {
   const row = $('#lobby-target');
-  row.innerHTML = '<span class="label">🏁 目标分数</span>' +
+  row.innerHTML = '<span class="label">目标分数</span>' +
     RULES.targets.map((t) => `
       <label><input type="radio" name="lobby-target" value="${t}" ${t === room.target ? 'checked' : ''}> ${t} 分</label>`).join('');
   row.querySelectorAll('input').forEach((inp) =>
@@ -779,7 +779,7 @@ function openEvents(cid) {
 }
 async function joinGame() {
   const name = $('#join-name').value.trim();
-  if (!name) { toast('⚠️ 请输入名字'); return; }
+  if (!name) { toast('请输入名字'); return; }
   const j = await postApi({ type: 'join', name });
   if (j.ok) {
     myCid = j.cid;
@@ -809,7 +809,7 @@ function init() {
   addPlayerRow({ name: '小智', type: 'easy' });
   addPlayerRow({ name: '小霞', type: 'hard' });
   const targetRow = document.querySelector('#screen-setup .target-row');
-  targetRow.innerHTML = '<span class="label">🏁 目标分数</span>' +
+  targetRow.innerHTML = '<span class="label">目标分数</span>' +
     RULES.targets.map((t) => `
       <label><input type="radio" name="target" value="${t}" ${t === RULES.defaultTarget ? 'checked' : ''}> ${t} 分</label>`).join('');
 

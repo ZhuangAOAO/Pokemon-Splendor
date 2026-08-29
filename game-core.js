@@ -230,7 +230,7 @@ function afterBuyPointsCheck(p) {
   if (p.points >= S.target && !S.endTriggered) {
     S.endTriggered = true;
     S.endPlayer = S.current;
-    HOOKS.onToast('🏁 有人达到目标分，进入最终回合！');
+    HOOKS.onToast('有人达到目标分，进入最终回合！');
   }
 }
 // 只拿大师球、不预约：config 里 takeMasterAlone=true 时开放的行动
