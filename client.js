@@ -179,13 +179,13 @@ function renderPlayers() {
       <span class="pcard" title="${cd.name}（+${BALLS[cd.bonus].name}加成）">
         <img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy">
       </span>`).join('');
-    const reservedHtml = p.reserved.length
-      ? `<div class="p-reserved"><span class="p-label">📌 预约 ${p.reserved.length}</span>${p.reserved.map((rc) => `
-          <span class="pcard reserved" title="${rc.name}"><img class="pcard-img" alt="${rc.name}" src="pictures/${encodeURIComponent(rc.name)}.jpg" loading="lazy"></span>`).join('')}</div>`
-      : '';
-    const dexHtml = (p.dex && p.dex.length)
-      ? `<div class="p-dex" title="图鉴：${p.dex.map((cd) => cd.name).join('、')}"><span class="p-label">📕 图鉴 ${p.dex.length}</span>${p.dex.map((cd) => `
-          <span class="pcard dex" title="${cd.name}"><img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy"></span>`).join('')}</div>`
+    // 预约 + 图鉴合并成一行（省高度）
+    const sideThumbs = [
+      ...p.reserved.map((rc) => `<span class="pcard reserved" title="${rc.name}"><img class="pcard-img" alt="${rc.name}" src="pictures/${encodeURIComponent(rc.name)}.jpg" loading="lazy"></span>`),
+      ...(p.dex || []).map((cd) => `<span class="pcard dex" title="${cd.name}"><img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy"></span>`),
+    ].join('');
+    const sideHtml = sideThumbs
+      ? `<div class="p-side" title="预约与图鉴">${p.reserved.length ? `<span class="p-label">📌 ${p.reserved.length}</span>` : ''}${(p.dex && p.dex.length) ? `<span class="p-label">📕 ${p.dex.length}</span>` : ''}${sideThumbs}</div>`
       : '';
     b.innerHTML = `
       <div class="p-head">
@@ -197,7 +197,7 @@ function renderPlayers() {
       </div>
       <div class="p-balls">${ballsHtml}</div>
       <div class="p-cards"><span class="p-label">🃏 ${p.cards.length}</span>${cardsHtml || '<span class="p-empty">还没有宝可梦</span>'}</div>
-      ${reservedHtml}${dexHtml}`;
+      ${sideHtml}`;
     box.appendChild(b);
   });
 }
