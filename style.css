@@ -195,7 +195,7 @@ h3{ font-size:14px; }
 .deck-count{ display:block; font-weight:600; font-size:11px; color:var(--ink-faint); }
 
 .card{
-  position:relative; width:132px; aspect-ratio:1335/2063; border-radius:12px;
+  position:relative; width:148px; aspect-ratio:1335/2063; border-radius:12px;
   background:linear-gradient(165deg,#ffffff, var(--blight));
   border:2px solid rgba(34,48,61,.14);
   box-shadow:var(--shadow-sm);
@@ -208,7 +208,8 @@ h3{ font-size:14px; }
 .card-img{
   position:absolute; inset:0; width:100%; height:100%;
   object-fit:cover; border-radius:inherit; z-index:1;
-  image-rendering:auto;
+  /* Chromium 高质量降采样：大幅缩小的高清卡面图文字更锐利 */
+  image-rendering:-webkit-optimize-contrast;
 }
 /* 有卡面图时：隐藏程序绘制的徽章/文字，让真卡面干干净净；图片加载失败自动恢复 */
 .card:has(.card-img){ cursor:zoom-in; }
@@ -356,7 +357,7 @@ h3{ font-size:14px; }
   box-shadow:0 2px 6px rgba(34,48,61,.2); border:1px solid rgba(34,48,61,.12);
   cursor:zoom-in;
 }
-.pcard-img{ width:100%; height:100%; object-fit:cover; display:block; }
+.pcard-img{ width:100%; height:100%; object-fit:cover; display:block; image-rendering:-webkit-optimize-contrast; }
 .pcard:hover{ transform:translateY(-3px); box-shadow:0 6px 14px rgba(34,48,61,.3); }
 .pcard.reserved{ border-color:var(--gold); box-shadow:0 0 0 2px rgba(255,203,5,.5); }
 .pcard.dex .pcard-img{ filter:grayscale(1) brightness(.7); }
@@ -371,7 +372,7 @@ h3{ font-size:14px; }
   border:2px solid var(--line-strong); cursor:default;
   box-shadow:0 2px 5px rgba(34,48,61,.16);
 }
-.rchip-img{ width:100%; height:100%; object-fit:cover; display:block; }
+.rchip-img{ width:100%; height:100%; object-fit:cover; display:block; image-rendering:-webkit-optimize-contrast; }
 .rchip.clickable{ cursor:pointer; border-color:var(--gold); animation:pulseGold 1.2s infinite; }
 .rchip.clickable:hover{ transform:translateY(-3px); }
 .rchip.selected{ border-color:var(--green); animation:none; box-shadow:0 0 0 3px rgba(22,163,74,.35); }
@@ -437,7 +438,7 @@ h3{ font-size:14px; }
 
 /* ==================== 矮屏自适应（一屏放下，不用滚动） ==================== */
 @media (max-height:1000px){
-  .card{ width:112px; }
+  .card{ width:124px; }
   .pcard{ width:40px; }
   .rchip{ width:40px; }
   #players{ gap:8px; margin-top:8px; }
