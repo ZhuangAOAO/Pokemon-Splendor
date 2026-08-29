@@ -844,8 +844,9 @@ function init() {
 
   $('#market').addEventListener('click', onMarketClick);
   $('#pool').addEventListener('click', onPoolClick);
-  $('#players').addEventListener('click', onPlayerClick);
-  $('#my-panel').addEventListener('click', onPlayerClick); // 主角面板的退球/退还点击
+  // 玩家面板点击（退球/退还/缩略图放大）委托到整个游戏界面：
+  // 无论玩家面板渲染在左栏还是底部主角面板，点击都能命中
+  $('#screen-game').addEventListener('click', onPlayerClick);
   $('#actions').addEventListener('click', onActionsClick);
   // 卡面大图：点击遮罩关闭
   $('#zoom').addEventListener('click', () => { $('#zoom').hidden = true; });
