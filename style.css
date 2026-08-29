@@ -336,7 +336,10 @@ h3{ font-size:14px; }
 }
 .player.hero.active{ border-left-color:var(--red); }
 .player.hero.self{ border-left-color:var(--blue); }
-.hero-left{ flex:none; width:250px; display:flex; flex-direction:column; gap:10px; }
+.hero-left{ flex:none; width:270px; display:flex; flex-direction:column; gap:10px; }
+.hero-left .p-balls.pp{ flex-wrap:wrap; }
+.pball i{ font-style:normal; color:#16a34a; font-weight:900; font-size:11px; margin-left:1px; }
+.pball.master{ background:#f7f0fc; border-color:#e6d7f5; }
 .player.hero .p-avatar{ width:40px; height:40px; font-size:22px; }
 .player.hero .p-name{ font-size:18px; }
 .player.hero .p-pts{ font-size:18px; }
@@ -478,7 +481,7 @@ h3{ font-size:14px; }
   #middle-row{ width:360px; }
   .tier-row{ margin-bottom:8px; }
   .player.hero{ padding:10px 14px; gap:14px; }
-  .hero-left{ width:220px; }
+  .hero-left{ width:240px; }
   .player.hero .pcard{ width:50px; }
   .player.hero .p-cards{ min-height:74px; }
 }

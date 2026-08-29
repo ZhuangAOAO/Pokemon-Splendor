@@ -207,11 +207,19 @@ function boardEl(p, pi, isHero) {
     </div>`;
   const cardsRow = `<div class="p-cards"><span class="p-label">🃏 ${p.cards.length}</span>${cardsHtml || '<span class="p-empty">还没有宝可梦</span>'}</div>`;
   if (isHero) {
-    // 主角面板：左侧身份+球，右侧卡牌区
+    // 主角面板：左侧身份 + 购买力（手持精灵球 + 永久加成合并显示），右侧卡牌区
+    const bonus = bonusOf(p);
+    const ppHtml = '<span class="p-label" title="购买力 = 手持精灵球 + 永久加成（固定资产）">💪 购买力</span>' + COLORS.map((c) => `
+      <span class="pball ${((discarding || returning) && p.balls[c] > 0) ? 'clickable' : ''}" data-p="${pi}" data-c="${c}" title="${BALLS[c].name}：手持 ${p.balls[c]} + 加成 ${bonus[c]}">
+        ${ballHtml(c, 'sm')}<b>${p.balls[c]}</b>${bonus[c] > 0 ? `<i>+${bonus[c]}</i>` : ''}
+      </span>`).join('') + `
+      <span class="pball master ${((discarding || returning) && p.balls.master > 0) ? 'clickable' : ''}" data-p="${pi}" data-c="master" title="大师球（万能，可代替任意颜色）">
+        ${ballHtml('master', 'sm')}<b>${p.balls.master}</b>
+      </span>`;
     b.innerHTML = `
       <div class="hero-left">
         ${headHtml}
-        <div class="p-balls">${ballsHtml}</div>
+        <div class="p-balls pp">${ppHtml}</div>
       </div>
       <div class="hero-body">
         ${cardsRow}
