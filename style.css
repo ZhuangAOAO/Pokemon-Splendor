@@ -524,6 +524,23 @@ h3{ font-size:14px; }
 }
 #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
+/* ==================== 结束对局投票横幅 ==================== */
+#vote-banner{
+  position:fixed; top:70px; left:50%; transform:translateX(-50%);
+  display:flex; align-items:center; gap:10px;
+  background:#fffdf2; border:2px solid var(--gold); border-radius:14px;
+  padding:8px 16px; z-index:120; box-shadow:var(--shadow-lg);
+  animation:popIn .25s ease;
+}
+.vote-text{ font-size:13px; font-weight:800; color:#6b4e00; }
+
+/* ==================== 对局记录面板 ==================== */
+#logs-body{ max-height:52vh; overflow-y:auto; text-align:left; background:var(--field); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:14px; }
+.log-line{ font-size:13px; padding:3px 0; border-bottom:1px dashed var(--line); color:var(--ink); }
+.log-line:last-child{ border-bottom:none; }
+.log-time{ display:inline-block; min-width:52px; color:var(--ink-faint); font-weight:700; margin-right:6px; }
+.log-empty{ color:var(--ink-faint); font-size:13px; text-align:center; padding:12px; }
+
 /* ==================== 卡面大图 ==================== */
 #zoom{
   position:fixed; inset:0; background:rgba(23,34,46,.8); backdrop-filter:blur(3px);

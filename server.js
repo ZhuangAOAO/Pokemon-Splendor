@@ -42,16 +42,37 @@ const NET = global.NETWORK || { port: 3000, turnTimeoutSec: 30, maxPlayers: 4 };
 const PORT = NET.port;
 const TURN_TIMEOUT = NET.turnTimeoutSec * 1000;
 const ROOT = __dirname;
+const LOG_DIR = path.join(ROOT, 'logs');
+
+/* ==================== 日志 ==================== */
+function fileLog(tag, msg) {
+  try {
+    if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR);
+    const ts = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    fs.appendFileSync(path.join(LOG_DIR, 'server.log'), `[${ts}] [${tag}] ${msg}\n`, 'utf8');
+  } catch (e) { /* 日志写失败不影响游戏 */ }
+}
+// 统一日志：控制台 + 落盘 + 对局内记录（游戏内「记录」面板可见）
+function logEvent(tag, msg) {
+  console.log(`[${tag}] ${msg}`);
+  fileLog(tag, msg);
+  if (room.phase === 'game') {
+    room.log.push({ time: new Date().toTimeString().slice(0, 8), text: msg });
+    if (room.log.length > 100) room.log.shift();
+  }
+}
 
 /* ==================== 房间 ==================== */
 const room = {
   phase: 'lobby',  // lobby | game
   ais: [],         // 电脑玩家 [{name, level}]
   target: RULES.defaultTarget,
+  log: [],         // 对局内事件记录（游戏内可查看）
 };
 // conns: cid -> {cid, name, seat, res, connected, isHost}
 const conns = new Map();
 let skipTimer = null; // 断线自动跳过计时器
+let vote = null;      // 结束对局投票 {by, yes:[cid]}
 
 function humansList() { return [...conns.values()]; }
 function connectedHumans() { return humansList().filter((c) => c.connected); }
@@ -77,9 +98,11 @@ function broadcast() {
         target: room.target,
         ais: room.ais,
         humans: humansList().map((h) => ({ name: h.name, seat: h.seat, connected: h.connected, isHost: h.isHost })),
+        log: room.log,
+        vote: vote ? { by: vote.by, yes: vote.yes.length, total: connectedHumans().length } : null,
       },
       game: gameFor(c),
-      you: { cid: c.cid, seat: c.seat, isHost: c.isHost, name: c.name },
+      you: { cid: c.cid, seat: c.seat, isHost: c.isHost, name: c.name, voted: !!(vote && vote.yes.includes(c.cid)) },
     });
   }
 }
@@ -89,12 +112,30 @@ function broadcastToast(msg) {
 
 // 游戏核心的事件钩子：状态一变就广播给所有玩家
 HOOKS.onStateChanged = broadcast;
-HOOKS.onToast = broadcastToast;
+HOOKS.onToast = (msg) => { broadcastToast(msg); logEvent('事件', msg); };
 HOOKS.onGameOver = broadcast;
+
+/* ==================== 结束对局（投票 / 全员离线） ==================== */
+function endGameToLobby(reason) {
+  vote = null;
+  core.S = null;
+  if (skipTimer) { clearTimeout(skipTimer); skipTimer = null; }
+  room.phase = 'lobby';
+  humansList().forEach((h) => { h.seat = -1; });
+  logEvent('对局', reason);
+  broadcast();
+}
+function checkVoteComplete() {
+  if (!vote) return;
+  const req = connectedHumans().map((h) => h.cid);
+  if (req.every((cid) => vote.yes.includes(cid))) {
+    endGameToLobby(`结束投票全员通过（${vote.by} 发起），对局结束`);
+  }
+}
 
 /* ==================== 断线处理 ==================== */
 function handleDisconnect(conn) {
-  console.log(`[断开] ${conn.name}（大厅阶段=${room.phase === 'lobby'}）`);
+  logEvent('断开', `${conn.name} 离开（大厅阶段=${room.phase === 'lobby'}）`);
   conn.connected = false;
   conn.res = null;
   if (room.phase === 'lobby') {
@@ -103,6 +144,10 @@ function handleDisconnect(conn) {
     broadcast();
     return;
   }
+  // 对局中：所有人类玩家都离线 → 自动终止对局
+  if (connectedHumans().length === 0) { endGameToLobby('所有玩家离线，对局自动结束'); return; }
+  // 投票进行中：断线的人不再需要表态
+  if (vote) checkVoteComplete();
   broadcast();
   // 对局中：保留座位，轮到他（行动或进化阶段）时自动跳过
   const S = core.S;
@@ -129,13 +174,13 @@ function handleJoin(body) {
     if (humansList().some((c) => c.name === name)) return { ok: false, msg: '这个名字已被使用' };
     const cid = crypto.randomUUID();
     conns.set(cid, { cid, name, seat: -1, res: null, connected: false, isHost: humansList().length === 0 });
-    console.log(`[加入] ${name}${humansList().length === 1 ? '（房主）' : ''}，当前 ${conns.size} 人`);
+    logEvent('加入', `${name}${humansList().length === 1 ? '（房主）' : ''}，当前 ${conns.size} 人`);
     return { ok: true, cid };
   }
   // 对局中：允许断线玩家用原名字重连
   const old = humansList().find((c) => c.name === name && !c.connected);
   if (!old) return { ok: false, msg: '对局进行中，暂时不能加入' };
-  console.log(`[重连] ${name} 回到座位 ${old.seat}`);
+  logEvent('重连', `${name} 回到座位 ${old.seat}`);
   if (skipTimer) { clearTimeout(skipTimer); skipTimer = null; }
   const cid = crypto.randomUUID();
   const entry = { cid, name, seat: old.seat, res: null, connected: false, isHost: old.isHost };
@@ -159,6 +204,9 @@ function handleStart(conn) {
   core.lastCfg = cfg;
   newGame(cfg);
   room.phase = 'game';
+  room.log = []; // 每局清空对局记录
+  vote = null;
+  logEvent('对局', `对局开始：${cfg.players.map((p) => p.name + (p.type !== 'human' ? '(电脑)' : '')).join('、')}，目标 ${room.target} 分`);
   broadcast();
   scheduleAI();
   return { ok: true };
@@ -187,17 +235,41 @@ function handleRestart(conn) {
   if (core.S && !core.S.over) return { ok: false, msg: '对局还在进行中' };
   newGame(core.lastCfg);
   room.phase = 'game';
+  room.log = [];
+  vote = null;
+  logEvent('对局', '对局重新开始');
   broadcast();
   scheduleAI();
   return { ok: true };
 }
 function handleBackToLobby(conn) {
   if (!conn.isHost) return { ok: false, msg: '只有房主可以操作' };
-  core.S = null;
-  if (skipTimer) { clearTimeout(skipTimer); skipTimer = null; }
-  room.phase = 'lobby';
-  humansList().forEach((h) => { h.seat = -1; });
+  endGameToLobby('房主结束对局，返回大厅');
+  return { ok: true };
+}
+// 结束对局投票：任何人可发起，所有人类玩家同意才生效；有人反对则取消
+function handleVoteEnd(conn) {
+  if (room.phase !== 'game' || !core.S) return { ok: false, msg: '对局未在进行' };
+  if (core.S.over) return { ok: false, msg: '对局已经结束' };
+  if (vote) return { ok: false, msg: '已有人在发起结束投票' };
+  vote = { by: conn.name, yes: [conn.cid] };
+  logEvent('投票', `${conn.name} 发起结束对局投票`);
   broadcast();
+  checkVoteComplete();
+  return { ok: true };
+}
+function handleVoteAnswer(conn, ans) {
+  if (!vote) return { ok: false, msg: '没有进行中的投票' };
+  if (ans === 'no') {
+    logEvent('投票', `${conn.name} 反对，结束投票已取消`);
+    vote = null;
+    broadcast();
+    return { ok: true };
+  }
+  if (!vote.yes.includes(conn.cid)) vote.yes.push(conn.cid);
+  logEvent('投票', `${conn.name} 同意结束（${vote.yes.length}/${connectedHumans().length}）`);
+  broadcast();
+  checkVoteComplete();
   return { ok: true };
 }
 // 校验玩家的行动是否合法（服务器权威：不信任客户端）
@@ -282,8 +354,7 @@ function validAction(conn, a) {
 }
 function handleAction(conn, a) {
   const err = validAction(conn, a || {});
-  if (err) { console.log(`[行动被拒] ${conn.name} ${JSON.stringify(a)} → ${err}`); return { ok: false, msg: err }; }
-  console.log(`[行动] ${conn.name} ${a.kind}`);
+  if (err) { logEvent('行动被拒', `${conn.name} ${JSON.stringify(a)} → ${err}`); return { ok: false, msg: err }; }
   if (a.kind === 'take3') actTakeThree(a.colors);
   else if (a.kind === 'take2') actTakeTwo(a.color);
   else if (a.kind === 'return') actReturnBall(a.color);
@@ -321,7 +392,7 @@ function handleSSE(req, res, u) {
   res.write('retry: 2000\n\n');
   conn.res = res;
   conn.connected = true;
-  console.log(`[在线] ${conn.name} 已连接（座位 ${conn.seat}）`);
+  logEvent('在线', `${conn.name} 已连接（座位 ${conn.seat}）`);
   if (skipTimer) { clearTimeout(skipTimer); skipTimer = null; } // 玩家重连回来了
   broadcast();
   // 用响应流的 close 检测客户端断开（req 的 close 在请求读完就会触发，会误判）
@@ -343,6 +414,8 @@ function handleApi(req, res) {
     else if (obj.type === 'setTarget') result = handleSetTarget(conn, obj.target);
     else if (obj.type === 'restart') result = handleRestart(conn);
     else if (obj.type === 'backToLobby') result = handleBackToLobby(conn);
+    else if (obj.type === 'voteEnd') result = handleVoteEnd(conn);
+    else if (obj.type === 'voteEndAnswer') result = handleVoteAnswer(conn, obj.answer);
     else if (obj.type === 'action') result = handleAction(conn, obj.action);
     else result = { ok: false, msg: '未知请求' };
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });

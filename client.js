@@ -179,9 +179,25 @@ function renderHeader() {
   $('#turn-info').innerHTML = `轮到 <b>${p.name}</b>${myTurn ? (p.isAI ? '（电脑思考中…）' : '（请行动）') : ''}`;
   $('#target-info').textContent = `目标 ${S.target} 分`;
   $('#end-banner').hidden = !S.endTriggered;
-  // 房主联机对局进行中：显示「结束对局」按钮
-  const isHost = ONLINE && room && room.you && room.you.isHost;
-  $('#btn-stop-game').hidden = !(isHost && S && !S.over);
+  // 联机对局进行中：所有人都可以发起结束投票（投票进行中隐藏按钮，横幅代替）
+  const canStop = ONLINE && S && !S.over && !(room && room.vote);
+  $('#btn-stop-game').hidden = !canStop;
+  // 结束对局投票横幅
+  const vb = $('#vote-banner');
+  if (ONLINE && room && room.vote) {
+    vb.hidden = false;
+    const voted = room.you && room.you.voted;
+    vb.innerHTML = `
+      <span class="vote-text">${room.vote.by} 发起结束对局投票（${room.vote.yes}/${room.vote.total} 已同意）</span>
+      <button class="btn sm primary" id="vote-yes" ${voted ? 'disabled' : ''}>${voted ? '已同意' : '同意'}</button>
+      <button class="btn sm ghost" id="vote-no" ${voted ? 'disabled' : ''}>反对</button>`;
+    if (!voted) {
+      $('#vote-yes').addEventListener('click', () => postApi({ type: 'voteEndAnswer', cid: myCid, answer: 'yes' }));
+      $('#vote-no').addEventListener('click', () => postApi({ type: 'voteEndAnswer', cid: myCid, answer: 'no' }));
+    }
+  } else {
+    vb.hidden = true;
+  }
 }
 
 function renderMarket() {
@@ -1017,12 +1033,20 @@ function init() {
     if (!S || S.over) { backToSetup(); return; }
     if (confirm('确定退出当前对局？进度将丢失。')) backToSetup();
   });
-  // 房主：中途结束对局，所有人返回大厅
+  // 结束对局：任何人发起投票，需要所有在线玩家同意
   $('#btn-stop-game').addEventListener('click', () => {
     if (!ONLINE) return;
-    if (confirm('确定结束当前对局吗？所有玩家将返回大厅。')) {
-      postApi({ type: 'backToLobby', cid: myCid });
+    if (confirm('发起结束对局投票？需要所有在线玩家同意才能结束。')) {
+      postApi({ type: 'voteEnd', cid: myCid });
     }
+  });
+  // 对局记录面板
+  $('#btn-logs').addEventListener('click', () => {
+    const list = (room && room.log) || [];
+    $('#logs-body').innerHTML = list.length
+      ? list.map((e) => `<div class="log-line"><span class="log-time">${e.time}</span>${e.text}</div>`).join('')
+      : '<div class="log-empty">还没有记录</div>';
+    showModal('#modal-logs');
   });
   document.querySelectorAll('[data-close]').forEach((b) =>
     b.addEventListener('click', hideModals));
