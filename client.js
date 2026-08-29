@@ -159,6 +159,7 @@ function renderPool() {
 function renderPlayers() {
   const box = $('#players');
   box.innerHTML = '';
+  box.dataset.n = S.n; // 人数：CSS 用来自适应密度（4 人局更紧凑）
   S.players.forEach((p, pi) => {
     const b = document.createElement('div');
     b.className = 'player' + (pi === S.current ? ' active' : '') + (ONLINE && pi === mySeat ? ' self' : '');

@@ -176,8 +176,8 @@ h3{ font-size:14px; }
 #conn-status{ font-size:13px; font-weight:700; color:#15803d; background:#f0fdf4; border:1px solid #bbf7d0; padding:4px 12px; border-radius:999px; }
 .end-banner{ background:#fff3cd; border:1px solid #f3d78a; color:#8a5a00; font-weight:800; padding:4px 14px; border-radius:999px; font-size:13px; animation:pulseGold 1.2s infinite; }
 
-/* ---- 中部区域：左市场 + 右供应/行动 ---- */
-#mid-zone{ display:flex; gap:14px; align-items:stretch; }
+/* ---- 中部区域：左玩家栏 + 中市场 + 右供应/行动 ---- */
+#mid-zone{ display:flex; gap:12px; align-items:stretch; }
 #market{ flex:1; }
 
 /* ---- 市场 ---- */
@@ -195,7 +195,7 @@ h3{ font-size:14px; }
 .deck-count{ display:block; font-weight:600; font-size:11px; color:var(--ink-faint); }
 
 .card{
-  position:relative; width:148px; aspect-ratio:1335/2063; border-radius:12px;
+  position:relative; width:132px; aspect-ratio:1335/2063; border-radius:12px;
   background:linear-gradient(165deg,#ffffff, var(--blight));
   border:2px solid rgba(34,48,61,.14);
   box-shadow:var(--shadow-sm);
@@ -258,7 +258,7 @@ h3{ font-size:14px; }
 
 /* ---- 供应区（右栏） ---- */
 #middle-row{
-  flex:none; width:430px; display:flex; flex-direction:column; gap:12px;
+  flex:none; width:400px; display:flex; flex-direction:column; gap:12px;
 }
 #pool-wrap{
   background:rgba(255,255,255,.9); border:1px solid rgba(34,48,61,.06);
@@ -300,11 +300,15 @@ h3{ font-size:14px; }
 .buy-cost{ font-size:13px; display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
 .dim{ color:var(--ink-faint); font-size:12px; }
 
-/* ---- 玩家面板 ---- */
-#players{ display:grid; grid-template-columns:repeat(auto-fit,minmax(288px,1fr)); gap:12px; margin-top:12px; }
+/* ---- 玩家面板（左侧竖排） ---- */
+#players{
+  flex:none; width:292px; display:flex; flex-direction:column; gap:10px;
+  overflow-y:auto;
+}
 .player{
+  flex:none;
   background:rgba(255,255,255,.92); border:1px solid var(--line);
-  border-radius:16px; padding:9px 13px; box-shadow:var(--shadow);
+  border-radius:16px; padding:10px 13px; box-shadow:var(--shadow);
   border-left:4px solid var(--line-strong);
   transition:border-color .25s, box-shadow .25s;
 }
@@ -320,7 +324,7 @@ h3{ font-size:14px; }
   0%,100%{ box-shadow:var(--shadow), 0 0 0 3px rgba(227,53,13,.10); }
   50%{ box-shadow:var(--shadow), 0 0 0 3px rgba(227,53,13,.26); }
 }
-.p-head{ display:flex; align-items:center; gap:7px; font-size:13px; }
+.p-head{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; font-size:13px; }
 .p-avatar{
   width:30px; height:30px; flex:none; border-radius:50%;
   background:var(--field); border:2px solid var(--line);
@@ -359,6 +363,9 @@ h3{ font-size:14px; }
 }
 .pcard-img{ width:100%; height:100%; object-fit:cover; display:block; image-rendering:-webkit-optimize-contrast; }
 .pcard:hover{ transform:translateY(-3px); box-shadow:0 6px 14px rgba(34,48,61,.3); }
+/* 4 人局：左栏空间有限，缩略图更小、隐藏文字标签 */
+#players[data-n="4"] .pcard{ width:32px; }
+#players[data-n="4"] .p-label{ display:none; }
 .pcard.reserved{ border-color:var(--gold); box-shadow:0 0 0 2px rgba(255,203,5,.5); }
 .pcard.dex .pcard-img{ filter:grayscale(1) brightness(.7); }
 .pcard.dex{ opacity:.85; }
@@ -438,15 +445,15 @@ h3{ font-size:14px; }
 
 /* ==================== 矮屏自适应（一屏放下，不用滚动） ==================== */
 @media (max-height:1000px){
-  .card{ width:124px; }
-  .pcard{ width:40px; }
-  .rchip{ width:40px; }
-  #players{ gap:8px; margin-top:8px; }
-  .player{ padding:7px 11px; }
-  .p-cards{ min-height:54px; }
+  .card{ width:116px; }
+  .pcard{ width:38px; }
+  .rchip{ width:38px; }
+  #players{ width:272px; gap:8px; }
+  .player{ padding:8px 10px; }
+  .p-cards{ min-height:50px; }
   .pool-group{ padding:7px 6px; }
   .pool-group .ball{ width:32px; height:32px; }
   .pool-group .ball::after{ width:12px; height:12px; }
-  #middle-row{ width:380px; }
+  #middle-row{ width:360px; }
   .tier-row{ margin-bottom:8px; }
 }
