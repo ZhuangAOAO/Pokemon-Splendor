@@ -161,8 +161,11 @@ h3{ font-size:14px; }
 .header-left{ display:flex; align-items:center; gap:12px; }
 .header-ball{ width:26px; height:26px; }
 .header-ball::after{ width:10px; height:10px; border-width:2px; }
-.header-title{ font-weight:900; font-size:15px; letter-spacing:1px; color:var(--ink); }
-.header-title::first-letter{ color:var(--red); }
+.header-title{
+  font-weight:900; font-size:15px; letter-spacing:1px;
+  background:linear-gradient(92deg,#e3350d 10%,#ff8a00 55%,#ffcb05 95%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
 #round-info{
   font-weight:800; font-size:13px; color:var(--ink-soft);
   background:var(--field); border:1px solid var(--line); padding:4px 14px; border-radius:999px;
