@@ -157,50 +157,73 @@ function renderPool() {
 }
 
 function renderPlayers() {
-  const box = $('#players');
-  box.innerHTML = '';
-  box.dataset.n = S.n; // 人数：CSS 用来自适应密度（4 人局更紧凑）
+  const col = $('#players');
+  const heroBox = $('#my-panel');
+  col.innerHTML = '';
+  heroBox.innerHTML = '';
+  col.dataset.n = S.n; // 人数：CSS 用来自适应密度（4 人局更紧凑）
+  // 主角面板：联机=自己；本地=当前玩家。其余玩家放左侧竖排。
+  const heroSeat = ONLINE ? mySeat : S.current;
   S.players.forEach((p, pi) => {
-    const b = document.createElement('div');
-    b.className = 'player' + (pi === S.current ? ' active' : '') + (ONLINE && pi === mySeat ? ' self' : '');
-    const discarding = S.phase === 'discard' && pi === S.current;
-    const returning = S.mode === 'returnBalls' && pi === S.current && !p.isAI;
-    if (discarding) b.classList.add('discarding');
-    const typeLabel = p.isAI ? (p.aiLevel === 'easy' ? '🤖 电脑·简单' : '🤖 电脑·困难') : '🙋 人类';
-    const offline = ONLINE && !p.isAI && !isConnected(pi);
-    const nameLabel = p.name + (offline ? ' 🔌' : '') + (ONLINE && pi === mySeat ? '（你）' : '');
-    const avatar = p.isAI ? (p.aiLevel === 'easy' ? '🤖' : '🦾') : '🙋';
-    const ballRow = (c, cnt) => `
-      <span class="pball ${((discarding || returning) && cnt > 0) ? 'clickable' : ''}" data-p="${pi}" data-c="${c}">
-        ${ballHtml(c, 'sm')}<b>${cnt}</b>
-      </span>`;
-    const ballsHtml = COLORS.map((c) => ballRow(c, p.balls[c])).join('') + ballRow('master', p.balls.master);
-    // 已收服的宝可梦：卡面缩略图
-    const cardsHtml = p.cards.map((cd) => `
-      <span class="pcard" title="${cd.name}（+${BALLS[cd.bonus].name}加成）">
-        <img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy">
-      </span>`).join('');
-    // 预约 + 图鉴合并成一行（省高度）
-    const sideThumbs = [
-      ...p.reserved.map((rc) => `<span class="pcard reserved" title="${rc.name}"><img class="pcard-img" alt="${rc.name}" src="pictures/${encodeURIComponent(rc.name)}.jpg" loading="lazy"></span>`),
-      ...(p.dex || []).map((cd) => `<span class="pcard dex" title="${cd.name}"><img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy"></span>`),
-    ].join('');
-    const sideHtml = sideThumbs
-      ? `<div class="p-side" title="预约与图鉴">${p.reserved.length ? `<span class="p-label">📌 ${p.reserved.length}</span>` : ''}${(p.dex && p.dex.length) ? `<span class="p-label">📕 ${p.dex.length}</span>` : ''}${sideThumbs}</div>`
-      : '';
-    b.innerHTML = `
-      <div class="p-head">
-        <span class="p-avatar">${avatar}</span>
-        <span class="p-name">${nameLabel}</span>
-        <span class="p-type">${typeLabel}</span>
-        ${p.evolutions > 0 ? `<span class="p-evo">🔬 ${p.evolutions}</span>` : ''}
-        <span class="p-pts">★ ${p.points}</span>
-      </div>
-      <div class="p-balls">${ballsHtml}</div>
-      <div class="p-cards"><span class="p-label">🃏 ${p.cards.length}</span>${cardsHtml || '<span class="p-empty">还没有宝可梦</span>'}</div>
-      ${sideHtml}`;
-    box.appendChild(b);
+    if (pi === heroSeat) heroBox.appendChild(boardEl(p, pi, true));
+    else col.appendChild(boardEl(p, pi, false));
   });
+}
+function boardEl(p, pi, isHero) {
+  const b = document.createElement('div');
+  b.className = 'player' + (pi === S.current ? ' active' : '') + (ONLINE && pi === mySeat ? ' self' : '') + (isHero ? ' hero' : '');
+  const discarding = S.phase === 'discard' && pi === S.current;
+  const returning = S.mode === 'returnBalls' && pi === S.current && !p.isAI;
+  if (discarding) b.classList.add('discarding');
+  const typeLabel = p.isAI ? (p.aiLevel === 'easy' ? '🤖 电脑·简单' : '🤖 电脑·困难') : '🙋 人类';
+  const offline = ONLINE && !p.isAI && !isConnected(pi);
+  const nameLabel = p.name + (offline ? ' 🔌' : '') + (ONLINE && pi === mySeat ? '（你）' : '');
+  const avatar = p.isAI ? (p.aiLevel === 'easy' ? '🤖' : '🦾') : '🙋';
+  const ballRow = (c, cnt) => `
+    <span class="pball ${((discarding || returning) && cnt > 0) ? 'clickable' : ''}" data-p="${pi}" data-c="${c}">
+      ${ballHtml(c, 'sm')}<b>${cnt}</b>
+    </span>`;
+  const ballsHtml = COLORS.map((c) => ballRow(c, p.balls[c])).join('') + ballRow('master', p.balls.master);
+  // 已收服的宝可梦：卡面缩略图
+  const cardsHtml = p.cards.map((cd) => `
+    <span class="pcard" title="${cd.name}（+${BALLS[cd.bonus].name}加成）">
+      <img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy">
+    </span>`).join('');
+  // 预约 + 图鉴合并成一行（省高度）
+  const sideThumbs = [
+    ...p.reserved.map((rc) => `<span class="pcard reserved" title="${rc.name}"><img class="pcard-img" alt="${rc.name}" src="pictures/${encodeURIComponent(rc.name)}.jpg" loading="lazy"></span>`),
+    ...(p.dex || []).map((cd) => `<span class="pcard dex" title="${cd.name}"><img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy"></span>`),
+  ].join('');
+  const sideHtml = sideThumbs
+    ? `<div class="p-side" title="预约与图鉴">${p.reserved.length ? `<span class="p-label">📌 ${p.reserved.length}</span>` : ''}${(p.dex && p.dex.length) ? `<span class="p-label">📕 ${p.dex.length}</span>` : ''}${sideThumbs}</div>`
+    : '';
+  const headHtml = `
+    <div class="p-head">
+      <span class="p-avatar">${avatar}</span>
+      <span class="p-name">${nameLabel}</span>
+      <span class="p-type">${typeLabel}</span>
+      ${p.evolutions > 0 ? `<span class="p-evo">🔬 ${p.evolutions}</span>` : ''}
+      <span class="p-pts">★ ${p.points}</span>
+    </div>`;
+  const cardsRow = `<div class="p-cards"><span class="p-label">🃏 ${p.cards.length}</span>${cardsHtml || '<span class="p-empty">还没有宝可梦</span>'}</div>`;
+  if (isHero) {
+    // 主角面板：左侧身份+球，右侧卡牌区
+    b.innerHTML = `
+      <div class="hero-left">
+        ${headHtml}
+        <div class="p-balls">${ballsHtml}</div>
+      </div>
+      <div class="hero-body">
+        ${cardsRow}
+        ${sideHtml}
+      </div>`;
+  } else {
+    b.innerHTML = `${headHtml}
+      <div class="p-balls">${ballsHtml}</div>
+      ${cardsRow}
+      ${sideHtml}`;
+  }
+  return b;
 }
 // 联机：某座位的人类玩家是否在线
 function isConnected(seat) {
@@ -222,13 +245,13 @@ function renderActions() {
   if (S.phase === 'evolve') {
     const myTurn = ONLINE ? (mySeat === S.current) : !p.isAI;
     if (myTurn && !p.isAI) {
+      // 服务器/核心只会把"条件已满足"的选项放进 evoOptions
       const opts = S.evoOptions || [];
       const list = opts.map((o, i) => {
-        // 进化条件印在未进化的卡（base）上
         const needTxt = COLORS.map((c) => (o.base.evoNeed && o.base.evoNeed[c] ? `${BALLS[c].name}加成×${o.base.evoNeed[c]}` : '')).filter(Boolean).join('、');
         const gain = o.card.vp - o.base.vp;
-        return `<button class="btn evolve" id="act-evo-${i}" ${o.ok ? '' : 'disabled'}>
-          🔬 ${o.base.name} → ${o.card.name}（${gain > 0 ? '+' + gain + '分' : '0分'} · 需${needTxt}${o.ok ? '' : ' ✗不满足'}）
+        return `<button class="btn evolve" id="act-evo-${i}">
+          🔬 ${o.base.name} → ${o.card.name}（${gain > 0 ? '+' + gain + '分' : '0分'} · 需${needTxt}）
         </button>`;
       }).join('');
       box.innerHTML = `
@@ -236,7 +259,7 @@ function renderActions() {
         <div class="action-btns">${list}<button class="btn ghost" id="act-skip-evo">跳过进化</button></div>`;
       opts.forEach((o, i) => {
         const b = $('#act-evo-' + i);
-        if (b && o.ok) b.addEventListener('click', () => dispatch({ kind: 'evolve', loc: o.loc }));
+        if (b) b.addEventListener('click', () => dispatch({ kind: 'evolve', loc: o.loc }));
       });
       $('#act-skip-evo').addEventListener('click', () => dispatch({ kind: 'skipEvolve' }));
     } else {

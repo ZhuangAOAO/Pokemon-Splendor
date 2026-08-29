@@ -260,16 +260,16 @@ function actReserve(tier, idx) {
   S.mode = null; S.selCard = null;
   afterActionDone();
 }
-// 每次行动完成后的入口：先给当前玩家一次免费进化机会（每回合最多 1 次），再推进回合
+// 每次行动完成后的入口：先给当前玩家一次免费进化机会（每回合最多 1 次），再推进回合。
+// 只有存在"条件满足"的进化选项时才进入进化阶段，否则不打扰直接过。
 function afterActionDone() {
   const p = curPlayer();
-  const opts = evolveOptions(p);
+  const opts = evolveOptions(p).filter((o) => o.ok);
   if (opts.length) {
     if (p.isAI) {
       // AI 自动挑收益最高的进化（新分 - 旧分最大）
-      const best = opts.filter((o) => o.ok)
-        .sort((a, b) => (b.card.vp - b.base.vp) - (a.card.vp - a.base.vp))[0];
-      if (best) doEvolve(p, best.loc, best.card, best.base);
+      const best = opts.sort((a, b) => (b.card.vp - b.base.vp) - (a.card.vp - a.base.vp))[0];
+      doEvolve(p, best.loc, best.card, best.base);
     } else {
       // 人类玩家：进入进化阶段，等玩家选择进化或跳过
       S.phase = 'evolve';

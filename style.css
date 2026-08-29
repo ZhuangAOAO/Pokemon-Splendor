@@ -324,6 +324,27 @@ h3{ font-size:14px; }
   0%,100%{ box-shadow:var(--shadow), 0 0 0 3px rgba(227,53,13,.10); }
   50%{ box-shadow:var(--shadow), 0 0 0 3px rgba(227,53,13,.26); }
 }
+
+/* ---- 主角面板（底部横跨：联机=自己，本地=当前玩家） ---- */
+#my-panel{ margin-top:12px; }
+.player.hero{
+  display:flex; gap:18px; align-items:stretch;
+  padding:14px 18px; border-left-width:6px;
+  border-left-color:var(--gold);
+  background:linear-gradient(120deg,#fffdf6,#ffffff 45%);
+  box-shadow:var(--shadow), 0 0 0 3px rgba(255,203,5,.16);
+}
+.player.hero.active{ border-left-color:var(--red); }
+.player.hero.self{ border-left-color:var(--blue); }
+.hero-left{ flex:none; width:250px; display:flex; flex-direction:column; gap:10px; }
+.player.hero .p-avatar{ width:40px; height:40px; font-size:22px; }
+.player.hero .p-name{ font-size:18px; }
+.player.hero .p-pts{ font-size:18px; }
+.player.hero .p-balls{ margin-top:0; }
+.hero-body{ flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; }
+.player.hero .pcard{ width:60px; }
+.player.hero .p-cards{ min-height:88px; margin-top:0; }
+.player.hero .p-side{ margin-top:0; }
 .p-head{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; font-size:13px; }
 .p-avatar{
   width:30px; height:30px; flex:none; border-radius:50%;
@@ -456,4 +477,8 @@ h3{ font-size:14px; }
   .pool-group .ball::after{ width:12px; height:12px; }
   #middle-row{ width:360px; }
   .tier-row{ margin-bottom:8px; }
+  .player.hero{ padding:10px 14px; gap:14px; }
+  .hero-left{ width:220px; }
+  .player.hero .pcard{ width:50px; }
+  .player.hero .p-cards{ min-height:74px; }
 }
