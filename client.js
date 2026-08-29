@@ -871,6 +871,7 @@ function init() {
   }
 
   $('#market').addEventListener('click', onMarketClick);
+  $('#rl-wrap').addEventListener('click', onMarketClick); // 稀有/传说卡（右栏）
   $('#pool').addEventListener('click', onPoolClick);
   // 玩家面板点击（退球/退还/缩略图放大）委托到整个游戏界面：
   // 无论玩家面板渲染在左栏还是底部主角面板，点击都能命中
