@@ -32,7 +32,8 @@
 [hidden]{ display:none !important; }
 html,body{ height:100%; }
 body{
-  font-family:"Microsoft YaHei","PingFang SC","Segoe UI",sans-serif;
+  /* 幼圆：Windows 自带圆体，活泼耐看，符合宝可梦气质；无则回退雅黑 */
+  font-family:"YouYuan","幼圆","Microsoft YaHei","PingFang SC","Segoe UI",sans-serif;
   background:
     radial-gradient(1100px 700px at 12% -8%, rgba(59,130,246,.10), transparent 60%),
     radial-gradient(900px 600px at 95% 5%, rgba(227,53,13,.07), transparent 55%),

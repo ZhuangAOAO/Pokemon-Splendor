@@ -178,7 +178,7 @@ function boardEl(p, pi, isHero) {
   const typeLabel = p.isAI ? (p.aiLevel === 'easy' ? '电脑·简单' : '电脑·困难') : '人类';
   const offline = ONLINE && !p.isAI && !isConnected(pi);
   const nameLabel = p.name + (offline ? '（离线）' : '') + (ONLINE && pi === mySeat ? '（你）' : '');
-  const avatar = p.name.slice(0, 1); // 头像 = 名字首字
+  const avatar = p.name.slice(-1); // 头像 = 名字尾字
   const ballRow = (c, cnt) => `
     <span class="pball ${((discarding || returning) && cnt > 0) ? 'clickable' : ''}" data-p="${pi}" data-c="${c}">
       ${ballHtml(c, 'sm')}<b>${cnt}</b>
