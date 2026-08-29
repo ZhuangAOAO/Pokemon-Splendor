@@ -85,11 +85,11 @@
 'use strict';
 const $ = (s) => document.querySelector(s);
 const BALL_COLORS = [
-  ['red', '普通球', '#e3350d'],
-  ['blue', '超级球', '#2f6fdb'],
-  ['black', '高级球', '#2e2e36'],
-  ['pink', '治愈球', '#f58fb8'],
-  ['yellow', '快速球', '#ffcb05'],
+  ['red', '普通球', '#e3350d', '🔴'],
+  ['blue', '超级球', '#2f6fdb', '🔵'],
+  ['black', '高级球', '#2e2e36', '⚫'],
+  ['pink', '治愈球', '#f58fb8', '🌸'],
+  ['yellow', '快速球', '#ffcb05', '🟡'],
 ];
 const TIER_NAMES = { 1: '一阶', 2: '二阶', 3: '三阶' };
 
@@ -130,13 +130,13 @@ function render() {
       ${costHtml}
       <label class="fld"><span>加成色</span>
         <select data-i="${i}" data-f="bonus">
-          ${BALL_COLORS.map(([k, cn]) => `<option value="${k}" ${r.bonus === k ? 'selected' : ''}>${cn}</option>`).join('')}
+          ${BALL_COLORS.map(([k, cn, , emoji]) => `<option value="${k}" ${r.bonus === k ? 'selected' : ''}>${emoji} ${cn}</option>`).join('')}
         </select></label>
       ${r.tier <= 2 ? `
         <label class="fld"><span>进化需</span>
           <select data-i="${i}" data-f="needColor">
             <option value="none" ${r.needColor === 'none' ? 'selected' : ''}>无(默认)</option>
-            ${BALL_COLORS.map(([k, cn]) => `<option value="${k}" ${r.needColor === k ? 'selected' : ''}>${cn}</option>`).join('')}
+            ${BALL_COLORS.map(([k, cn, , emoji]) => `<option value="${k}" ${r.needColor === k ? 'selected' : ''}>${emoji} ${cn}</option>`).join('')}
           </select></label>
         <label class="fld"><span>个数</span>
           <input type="number" min="0" max="5" value="${r.needCount}" data-i="${i}" data-f="needCount"></label>
