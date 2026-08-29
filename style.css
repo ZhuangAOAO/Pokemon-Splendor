@@ -440,6 +440,14 @@ h3{ font-size:14px; }
 #players[data-n="4"] .pcard{ width:32px; }
 #players[data-n="4"] .p-label{ display:none; }
 .pcard.reserved{ border-color:var(--gold); box-shadow:0 0 0 2px rgba(255,203,5,.5); }
+/* 盲抽的卡：显示为牌背 */
+.pcard.blind{ display:flex; align-items:center; justify-content:center; background:linear-gradient(160deg,#3b5fd0,#22303d); }
+.pcard.blind .pcard-img{ display:none; }
+.pcard.blind::after{
+  content:''; width:58%; aspect-ratio:1; border-radius:50%;
+  background:linear-gradient(to bottom,#9aa8b8 0 44%,#22303d 44% 56%,#e4eaf2 56% 100%);
+  opacity:.9;
+}
 .pcard.dex .pcard-img{ filter:grayscale(1) brightness(.7); }
 .pcard.dex{ opacity:.85; }
 

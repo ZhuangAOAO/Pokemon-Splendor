@@ -85,6 +85,26 @@ const lastState = (msgs) => [...msgs].reverse().find((m) => m.type === 'state');
   const tmOk = ['本局未开放"只拿大师球"行动', '还没轮到你', '现在是电脑的回合'].includes(tm.msg);
   console.log('6.5 默认配置下"只拿大师球"被拦截：', tmOk ? '✓（' + tm.msg + '）' : '❌ ' + JSON.stringify(tm));
 
+  // 盲抽预约：本人可见、对手看到的是牌背（服务器按人打码）
+  const stNow = lastState(msgsB);
+  if (stNow && stNow.game && stNow.game.current !== 2) {
+    const curSeat = stNow.game.current;
+    const cid2 = curSeat === 0 ? A.cid : B.cid;
+    const rBlind = await api({ type: 'action', cid: cid2, action: { kind: 'reserveBlind', tier: 1 } });
+    console.log('6.6 盲抽预约：', rBlind.ok ? '✓' : '❌ ' + JSON.stringify(rBlind));
+    if (rBlind.ok) {
+      await sleep(400);
+      const mine = lastState(cid2 === A.cid ? msgsA : msgsB);
+      const opp = lastState(cid2 === A.cid ? msgsB : msgsA);
+      const mCard = mine.game.players[curSeat].reserved[0];
+      const oCard = opp.game.players[curSeat].reserved[0];
+      const good = mCard && oCard && mCard.name !== '???' && oCard.name === '???';
+      console.log('6.7 盲抽打码：自己看到「' + (mCard && mCard.name) + '」，对手看到「' + (oCard && oCard.name) + '」', good ? '✓' : '❌');
+    }
+  } else {
+    console.log('6.6/6.7 盲抽打码：跳过（当前是电脑回合）');
+  }
+
   // 7. 轮流行动直到 AI（座位2）的回合，验证 AI 在服务器上自动行动
   let aiActed = false, guard = 0;
   const before = gameState.game.turnIdx;

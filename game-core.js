@@ -225,6 +225,7 @@ function actBuyReserved(ridx) {
   const p = curPlayer();
   const card = p.reserved[ridx];
   payForCard(p, card);
+  card.blind = false; // 收服后公开
   p.reserved.splice(ridx, 1);
   p.cards.push(card);
   p.points += card.vp;
@@ -243,6 +244,20 @@ function afterBuyPointsCheck(p) {
     S.endTriggered = true;
     HOOKS.onToast('有人达到目标分，进入最终回合！');
   }
+}
+// 盲抽预约：从指定阶牌堆顶部抽一张（面朝下，只有自己知道），同样拿大师球
+const TIER_CN = { 1: '一阶', 2: '二阶', 3: '三阶', 4: '稀有', 5: '传说' };
+function actReserveBlind(tier) {
+  const p = curPlayer();
+  if (p.reserved.length >= RULES.reserveLimit) return;
+  const card = S.decks[tier].pop();
+  if (!card) return;
+  card.blind = true; // 标记为盲抽：对其他玩家保密
+  p.reserved.push(card);
+  let gotMaster = false;
+  if (S.pool.master > 0) { S.pool.master--; p.balls.master++; gotMaster = true; }
+  HOOKS.onToast(`${p.name} 从${TIER_CN[tier]}牌堆盲抽了一张卡${gotMaster ? '，并获得 1 个大师球' : ''}`);
+  afterActionDone();
 }
 // 只拿大师球、不预约：config 里 takeMasterAlone=true 时开放的行动
 function actTakeMaster() {
@@ -335,7 +350,7 @@ function doEvolve(p, loc, card, base) {
   p.dex.push(base);
   p.evolutions++;
   p.points += card.vp - base.vp;
-  if (loc.kind === 'reserved') p.reserved.splice(loc.ridx, 1);
+  if (loc.kind === 'reserved') { p.reserved.splice(loc.ridx, 1); card.blind = false; } // 进化后公开
   else S.market[loc.tier][loc.idx] = S.decks[loc.tier].pop() || null;
   p.cards.push(card);
   const gain = card.vp - base.vp;
@@ -381,6 +396,7 @@ function aiTurn(p) {
   if (move.type === 'buy') actBuy(move.tier, move.idx);
   else if (move.type === 'buyReserved') actBuyReserved(move.ridx);
   else if (move.type === 'reserve') actReserve(move.tier, move.idx);
+  else if (move.type === 'reserveBlind') actReserveBlind(move.tier);
   else if (move.type === 'takeMaster') actTakeMaster();
   else if (move.type === 'return') actReturnBall(move.color);
   else if (move.type === 'take2') actTakeTwo(move.color);
@@ -416,6 +432,11 @@ function chooseAIMove(p) {
   // 开启"只拿大师球"行动时：预约没得约了，就攒大师球当万能球用
   if (RULES.takeMasterAlone !== false && S.pool.master > 0 && p.balls.master < 3) {
     return { type: 'takeMaster' };
+  }
+  // 偶尔从牌堆盲抽（同样拿大师球），尤其是没有好明牌时
+  if (p.reserved.length < RULES.reserveLimit && S.pool.master > 0) {
+    const tiers = [1, 2, 3].filter((t) => S.decks[t].length > 0);
+    if (tiers.length && Math.random() < 0.3) return { type: 'reserveBlind', tier: pick(tiers) };
   }
 
   // 收集资源：参考全场可见卡（场上+已预约）对各颜色的需求
@@ -502,6 +523,8 @@ function randomMove(p) {
     opts.push({ type: 'reserve', tier: t.tier, idx: t.idx });
   }
   if (RULES.takeMasterAlone !== false && S.pool.master > 0) opts.push({ type: 'takeMaster' });
+  const blindTiers = [1, 2, 3].filter((t) => S.decks[t].length > 0);
+  if (p.reserved.length < RULES.reserveLimit && blindTiers.length) opts.push({ type: 'reserveBlind', tier: pick(blindTiers) });
   COLORS.forEach((c) => { if (S.pool[c] >= RULES.takeTwoMin) opts.push({ type: 'take2', color: c }); });
   const avail = COLORS.filter((c) => S.pool[c] > 0);
   if (avail.length) opts.push({ type: 'take3', colors: shuffle(avail).slice(0, Math.min(3, avail.length)) });
@@ -537,6 +560,7 @@ if (typeof module !== 'undefined' && module.exports) {
     COLORS, BALLS, RULES,
     newGame, curPlayer, allMarketCards,
     actTakeThree, actTakeTwo, actDiscardOne, actBuy, actBuyReserved, actReserve, actReturnBall, actTakeMaster,
+    actReserveBlind, TIER_CN,
     afterActionDone, advanceTurn, scheduleAI, aiTurn,
     actEvolve, actSkipEvolve, evolveOptions, sameLoc, baseNameOf,
     canAfford, payPlan, missingFor, totalBalls, totalCost, globalNeed,

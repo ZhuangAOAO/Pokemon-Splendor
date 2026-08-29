@@ -209,9 +209,14 @@ function boardEl(p, pi, isHero) {
     <span class="pcard" title="${cd.name}（+${cd.tier >= 4 ? '2×' : ''}${BALLS[cd.bonus].name}加成）">
       <img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy">
     </span>`).join('');
-  // 预约 + 图鉴合并成一行（省高度）
+  // 预约 + 图鉴合并成一行（省高度）。
+  // 盲抽的卡：本地模式只有"当前玩家（主角）"可见；联机模式服务器已按人打码
+  const seeBlind = ONLINE ? (pi === mySeat) : isHero;
   const sideThumbs = [
-    ...p.reserved.map((rc) => `<span class="pcard reserved" title="${rc.name}"><img class="pcard-img" alt="${rc.name}" src="pictures/${encodeURIComponent(rc.name)}.jpg" loading="lazy"></span>`),
+    ...p.reserved.map((rc) => {
+      const hidden = rc.blind && !seeBlind;
+      return `<span class="pcard reserved ${hidden ? 'blind' : ''}" title="${hidden ? '盲抽的卡（未知）' : rc.name}"><img class="pcard-img" alt="${hidden ? '?' : rc.name}" src="pictures/${encodeURIComponent(rc.name)}.jpg" loading="lazy"></span>`;
+    }),
     ...(p.dex || []).map((cd) => `<span class="pcard dex" title="${cd.name}"><img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy"></span>`),
   ].join('');
   const sideHtml = sideThumbs
@@ -352,7 +357,7 @@ function renderActions() {
       return;
     }
     if (S.mode === 'reserve') {
-      let mid = '<div class="action-hint">点击场上一张宝可梦，把它收进你的预约区（同时送 1 个大师球）</div>';
+      let mid = '<div class="action-hint">点击场上一张宝可梦预约，或从牌堆盲抽一张（只有你能看到）</div>';
       if (S.selCard) {
         const card = selCardCard();
         const masterInfo = S.pool.master > 0
@@ -363,12 +368,35 @@ function renderActions() {
             <div class="buy-name">预约「${card.name}」？</div>
             <div class="buy-cost">预约 = 把这张卡收进你的预约区（最多 ${RULES.reserveLimit} 张），${masterInfo}。之后任意回合都可以收服它。「取消」则什么都不发生。</div>
           </div>`;
+      } else if (S.selBlind) {
+        mid = `
+          <div class="buy-confirm">
+            <div class="buy-name">盲抽${TIER_NAMES[S.selBlind]}牌堆？</div>
+            <div class="buy-cost">从牌堆顶部抽一张卡收进你的预约区（<b>只有你能看到</b>），${S.pool.master > 0 ? '同时送你 1 个大师球' : '大师球已领完，没有球可拿'}。</div>
+          </div>`;
+        box.innerHTML = mid + `
+          <div class="action-btns">
+            <button class="btn primary" id="act-confirm">确认盲抽</button>
+            <button class="btn ghost" id="act-cancel">取消</button>
+          </div>`;
+        bindConfirmCancel('reserveBlind');
+        return;
       }
+      const blindBtns = [1, 2, 3].map((t) => {
+        const left = S.decks[t].length;
+        const ok = left > 0 && p.reserved.length < RULES.reserveLimit;
+        return `<button class="btn ghost sm" id="act-blind-${t}" ${ok ? '' : 'disabled'}>盲抽${TIER_NAMES[t]}牌堆（剩${left}）</button>`;
+      }).join('');
       box.innerHTML = mid + `
-        <div class="action-btns">
+        <div class="action-btns">${blindBtns}</div>
+        <div class="action-btns" style="margin-top:8px">
           <button class="btn primary" id="act-confirm" ${S.selCard ? '' : 'disabled'}>确认预约</button>
           <button class="btn ghost" id="act-cancel">取消</button>
         </div>`;
+      [1, 2, 3].forEach((t) => {
+        const bb = $('#act-blind-' + t);
+        if (bb) bb.addEventListener('click', () => { S.selBlind = t; S.selCard = null; render(); });
+      });
       bindConfirmCancel('reserve');
       return;
     }
@@ -443,6 +471,7 @@ function bindConfirmCancel(type) {
     else if (type === 'take2') dispatch({ kind: 'take2', color: S.selColors[0] });
     else if (type === 'returnBalls') dispatch({ kind: 'return', color: S.selColors[0] });
     else if (type === 'takeMaster') dispatch({ kind: 'takeMaster' });
+    else if (type === 'reserveBlind') dispatch({ kind: 'reserveBlind', tier: S.selBlind });
     else if (type === 'reserve' && S.selCard) dispatch({ kind: 'reserve', tier: S.selCard.tier, idx: S.selCard.idx });
     else if (type === 'buy' && S.selCard) {
       if (S.selCard.kind === 'reserved') dispatch({ kind: 'buy', reserved: true, ridx: S.selCard.ridx });
@@ -450,7 +479,7 @@ function bindConfirmCancel(type) {
     }
   });
   $('#act-cancel').addEventListener('click', () => {
-    S.mode = null; S.selColors = []; S.selCard = null;
+    S.mode = null; S.selColors = []; S.selCard = null; S.selBlind = null;
     render();
   });
 }
@@ -468,6 +497,7 @@ function dispatch(a) {
   else if (a.kind === 'takeMaster') actTakeMaster();
   else if (a.kind === 'evolve') actEvolve(a.loc);
   else if (a.kind === 'skipEvolve') actSkipEvolve();
+  else if (a.kind === 'reserveBlind') actReserveBlind(a.tier);
   else if (a.kind === 'reserve') actReserve(a.tier, a.idx);
   else if (a.kind === 'buy') {
     if (a.reserved) actBuyReserved(a.ridx);

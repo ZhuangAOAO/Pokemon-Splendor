@@ -21,7 +21,22 @@ const crypto = require('crypto');
 const { HOOKS, newGame, curPlayer, advanceTurn, scheduleAI,
   canAfford, allMarketCards, COLORS, RULES, sameLoc,
   actTakeThree, actTakeTwo, actDiscardOne, actBuy, actBuyReserved, actReserve, actReturnBall, actTakeMaster,
+  actReserveBlind,
   actEvolve, actSkipEvolve } = core;
+
+// 按接收人打码：其他玩家的盲抽卡（blind）替换为牌背占位，只有本人可见
+function gameFor(conn) {
+  const S = core.S;
+  if (!S) return null;
+  const copy = JSON.parse(JSON.stringify(S));
+  copy.players.forEach((p, i) => {
+    if (i === conn.seat) return;
+    p.reserved = (p.reserved || []).map((c) => c.blind
+      ? { id: c.id, name: '???', blind: true, tier: 0, vp: 0, cost: {}, masterCost: 0, bonus: 'yellow', evoTo: null, evoNeed: null }
+      : c);
+  });
+  return copy;
+}
 
 const NET = global.NETWORK || { port: 3000, turnTimeoutSec: 30, maxPlayers: 4 };
 const PORT = NET.port;
@@ -63,7 +78,7 @@ function broadcast() {
         ais: room.ais,
         humans: humansList().map((h) => ({ name: h.name, seat: h.seat, connected: h.connected, isHost: h.isHost })),
       },
-      game: core.S,
+      game: gameFor(c),
       you: { cid: c.cid, seat: c.seat, isHost: c.isHost, name: c.name },
     });
   }
@@ -230,6 +245,14 @@ function validAction(conn, a) {
       if (p.reserved.length >= RULES.reserveLimit) return '预约已满';
       return null;
     }
+    case 'reserveBlind': {
+      if (S.phase !== 'normal') return '现在不能预约';
+      const t = a.tier;
+      if (![1, 2, 3].includes(t)) return '只能盲抽一/二/三阶牌堆';
+      if (!S.decks[t].length) return '该牌堆已经抽完了';
+      if (p.reserved.length >= RULES.reserveLimit) return '预约已满';
+      return null;
+    }
     case 'takeMaster': {
       if (S.phase !== 'normal') return '现在不能拿大师球';
       if (RULES.takeMasterAlone === false) return '本局未开放"只拿大师球"行动';
@@ -269,6 +292,7 @@ function handleAction(conn, a) {
   else if (a.kind === 'evolve') actEvolve(a.loc);
   else if (a.kind === 'skipEvolve') actSkipEvolve();
   else if (a.kind === 'reserve') actReserve(a.tier, a.idx);
+  else if (a.kind === 'reserveBlind') actReserveBlind(a.tier);
   else if (a.kind === 'buy') { if (a.reserved) actBuyReserved(a.ridx); else actBuy(a.tier, a.idx); }
   return { ok: true };
 }
