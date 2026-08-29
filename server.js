@@ -45,11 +45,15 @@ const ROOT = __dirname;
 const LOG_DIR = path.join(ROOT, 'logs');
 
 /* ==================== 日志 ==================== */
+function localStamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
 function fileLog(tag, msg) {
   try {
     if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR);
-    const ts = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    fs.appendFileSync(path.join(LOG_DIR, 'server.log'), `[${ts}] [${tag}] ${msg}\n`, 'utf8');
+    fs.appendFileSync(path.join(LOG_DIR, 'server.log'), `[${localStamp()}] [${tag}] ${msg}\n`, 'utf8');
   } catch (e) { /* 日志写失败不影响游戏 */ }
 }
 // 统一日志：控制台 + 落盘 + 对局内记录（游戏内「记录」面板可见）
