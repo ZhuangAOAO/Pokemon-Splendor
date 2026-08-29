@@ -217,7 +217,7 @@ h3{ font-size:14px; }
   cursor:default; overflow:hidden;
   transition:transform .16s, box-shadow .16s;
 }
-.card.new{ animation:cardIn .4s cubic-bezier(.2,.9,.3,1.3); } /* 只有新补的卡播放入场动画 */
+.card.new{ animation:cardIn .7s cubic-bezier(.2,.9,.3,1.2); } /* 只有新补的卡播放入场动画 */
 .card-img{
   position:absolute; inset:0; width:100%; height:100%;
   object-fit:cover; border-radius:inherit; z-index:1;

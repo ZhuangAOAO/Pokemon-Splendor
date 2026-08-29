@@ -99,7 +99,7 @@ function spawnFloat(el, from, to, delay, duration) {
   el.style.zIndex = '300';
   el.style.pointerEvents = 'none';
   el.style.opacity = '0';
-  el.style.transition = 'transform ' + duration + 'ms cubic-bezier(.2,.8,.3,1), opacity ' + duration + 'ms ease';
+  el.style.transition = 'transform ' + duration + 'ms cubic-bezier(.35,.15,.35,1), opacity ' + duration + 'ms ease';
   document.body.appendChild(el);
   setTimeout(() => {
     el.style.transform = 'translate(' + (to.left + to.width / 2 - (from.left + from.width / 2)) + 'px,' + (to.top + to.height / 2 - (from.top + from.height / 2)) + 'px) scale(.65)';
@@ -113,7 +113,7 @@ function spawnBallFloat(c, from, to, delay) {
   el.className = 'ball';
   el.style.setProperty('--bc', BALLS[c].top);
   el.style.setProperty('--band', BALLS[c].band);
-  spawnFloat(el, from, to, delay, 1000);
+  spawnFloat(el, from, to, delay, 1500);
 }
 function spawnCardFloat(card, from, to, delay) {
   const el = document.createElement('img');
@@ -123,7 +123,7 @@ function spawnCardFloat(card, from, to, delay) {
   el.style.objectFit = 'cover';
   el.style.borderRadius = '8px';
   el.style.boxShadow = '0 10px 24px rgba(0,0,0,.4)';
-  spawnFloat(el, from, to, delay, 1100);
+  spawnFloat(el, from, to, delay, 1700);
 }
 // 对比新旧状态：谁拿了球/卡，就从源头飘一个动画到他的面板
 function floatDiff() {
@@ -145,7 +145,7 @@ function floatDiff() {
     if (who < 0) return;
     const from = poolRects[c], to = boardRect(who);
     if (!from || !to) return;
-    for (let k = 0; k < taken; k++) spawnBallFloat(c, from, to, k * 160);
+    for (let k = 0; k < taken; k++) spawnBallFloat(c, from, to, k * 240);
   });
   // 卡：玩家新增（收服/预约/进化）→ 从市场槽位（或盲抽的牌堆标签）飞向玩家
   now.players.forEach((p2, i) => {
@@ -166,7 +166,7 @@ function floatDiff() {
         }
       }
       if (!from) from = labelRects[card.tier]; // 盲抽：从牌堆标签飞出
-      if (from) spawnCardFloat(card, from, to, k * 200);
+      if (from) spawnCardFloat(card, from, to, k * 280);
     });
   });
 }
