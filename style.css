@@ -394,6 +394,8 @@ h3{ font-size:14px; }
 .hero-body .p-balls.pp{ flex-wrap:wrap; justify-content:flex-start; }
 .pball i{ font-style:normal; color:#16a34a; font-weight:900; font-size:11px; margin-left:1px; }
 .pball.master{ background:#f7f0fc; border-color:#e6d7f5; }
+.pball.total{ background:#eef2f7; border-style:dashed; color:var(--ink-soft); font-weight:800; font-size:12px; }
+.pball.total.over{ background:#fdecec; border-color:#f5c6c6; color:#b91c1c; }
 .player.hero .p-avatar{ width:40px; height:40px; font-size:22px; }
 .player.hero .p-name{ font-size:18px; }
 .player.hero .p-pts{ font-size:18px; }

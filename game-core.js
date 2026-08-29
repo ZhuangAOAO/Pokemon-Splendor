@@ -257,7 +257,7 @@ function actReserveBlind(tier) {
   let gotMaster = false;
   if (S.pool.master > 0) { S.pool.master--; p.balls.master++; gotMaster = true; }
   HOOKS.onToast(`${p.name} 从${TIER_CN[tier]}牌堆盲抽了一张卡${gotMaster ? '，并获得 1 个大师球' : ''}`);
-  afterActionDone();
+  afterGain(); // 大师球也计入手牌上限，超了要退球
 }
 // 只拿大师球、不预约：config 里 takeMasterAlone=true 时开放的行动
 function actTakeMaster() {
@@ -285,7 +285,7 @@ function actReserve(tier, idx) {
   if (S.pool.master > 0) { S.pool.master--; p.balls.master++; gotMaster = true; }
   HOOKS.onToast(`${p.name} 预约了 ${card.name}${gotMaster ? '，并获得 1 个大师球' : '（大师球已领完）'}`);
   S.mode = null; S.selCard = null;
-  afterActionDone();
+  afterGain(); // 大师球也计入手牌上限，超了要退球
 }
 // 每次行动完成后的入口：先给当前玩家一次免费进化机会（每回合最多 1 次），再推进回合。
 // 只有存在"条件满足"的进化选项时才进入进化阶段，否则不打扰直接过。

@@ -389,7 +389,8 @@ function boardEl(p, pi, isHero) {
       </span>`).join('') + `
       <span class="pball master ${((discarding || returning) && p.balls.master > 0) ? 'clickable' : ''}" data-p="${pi}" data-c="master" title="大师球（万能，可代替任意颜色）">
         ${ballHtml('master', 'sm')}<b>${p.balls.master}</b>
-      </span>`;
+      </span>
+      <span class="pball total${totalBalls(p) > RULES.handLimit ? ' over' : ''}" title="手牌总数（含大师球），上限 ${RULES.handLimit} 个">共 ${totalBalls(p)}/${RULES.handLimit}</span>`;
     b.innerHTML = `
       <div class="hero-left">
         ${headHtml}
