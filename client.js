@@ -139,7 +139,8 @@ function renderPool() {
     g.className = 'pool-group';
     g.dataset.color = c;
     const cnt = S.pool[c];
-    g.innerHTML = `${ballHtml(c)}<span class="pool-count">${cnt}</span><span class="pool-name">${BALLS[c].name}</span>`;
+    g.title = BALLS[c].name; // 名字不占画面，悬停可见
+    g.innerHTML = `${ballHtml(c)}<span class="pool-count">${cnt}</span>`;
     // 已选中的颜色也保持可点：再点一次 = 取消选择
     const selectable =
       (S.mode === 'take3' && cnt > 0) ||
@@ -152,7 +153,8 @@ function renderPool() {
   const gm = document.createElement('div');
   gm.className = 'pool-group master';
   gm.dataset.color = 'master';
-  gm.innerHTML = `${ballHtml('master')}<span class="pool-count">${S.pool.master}</span><span class="pool-name">大师球</span><span class="wild-tag">万能</span>`;
+  gm.title = '大师球（万能球，可代替任意颜色）';
+  gm.innerHTML = `${ballHtml('master')}<span class="pool-count">${S.pool.master}</span><span class="wild-tag">万能</span>`;
   pool.appendChild(gm);
 }
 
@@ -184,8 +186,9 @@ function boardEl(p, pi, isHero) {
       ${ballHtml(c, 'sm')}<b>${cnt}</b>
     </span>`;
   const ballsHtml = COLORS.map((c) => ballRow(c, p.balls[c])).join('') + ballRow('master', p.balls.master);
-  // 已收服的宝可梦：卡面缩略图
-  const cardsHtml = p.cards.map((cd) => `
+  // 已收服的宝可梦：按加成颜色分组排列（红→蓝→黑→粉→黄，组内按到手顺序）
+  const sortedCards = COLORS.flatMap((c) => p.cards.filter((cd) => cd.bonus === c));
+  const cardsHtml = sortedCards.map((cd) => `
     <span class="pcard" title="${cd.name}（+${BALLS[cd.bonus].name}加成）">
       <img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy">
     </span>`).join('');
