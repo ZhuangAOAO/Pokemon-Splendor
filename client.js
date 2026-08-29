@@ -207,8 +207,12 @@ function boardEl(p, pi, isHero) {
       <span class="p-type">${typeLabel}</span>
       ${p.evolutions > 0 ? `<span class="p-evo">进化 ${p.evolutions}</span>` : ''}
       <span class="p-pts">${p.points} 分</span>
+      ${isHero ? `<span class="p-count">${p.cards.length} 只</span>` : ''}
     </div>`;
-  const cardsRow = `<div class="p-cards"><span class="p-label">${p.cards.length} 只</span>${cardsHtml || '<span class="p-empty">还没有宝可梦</span>'}</div>`;
+  // 主角面板的卡牌行不带标签（第一张卡贴左缘，与上方球行对齐）
+  const cardsRow = isHero
+    ? `<div class="p-cards">${cardsHtml || '<span class="p-empty">还没有宝可梦</span>'}</div>`
+    : `<div class="p-cards"><span class="p-label">${p.cards.length} 只</span>${cardsHtml || '<span class="p-empty">还没有宝可梦</span>'}</div>`;
   if (isHero) {
     // 主角面板：左侧身份 + 购买力（手持精灵球 + 永久加成合并显示），右侧卡牌区
     const bonus = bonusOf(p);
