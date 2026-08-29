@@ -1,0 +1,11 @@
+# 依赖与缓存
+node_modules/
+
+# Claude Code 本地配置
+.claude/
+
+# 日志
+*.log
+
+# 卡牌图片（体积大/版权素材，不入库；想入库就删掉这一行）
+pictures/

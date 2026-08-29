@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>卡牌数值录入工具</title>
+<style>
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  [hidden]{ display:none !important; } /* hidden 属性必须真正生效，否则放大图关不掉 */
+  body{ font-family:"Microsoft YaHei","PingFang SC",sans-serif; background:#f2f5fa; color:#22303d; padding-bottom:60px; }
+  .bar{
+    position:sticky; top:0; z-index:10; background:#fff; box-shadow:0 4px 14px rgba(34,48,61,.1);
+    display:flex; align-items:center; gap:14px; padding:12px 22px; flex-wrap:wrap;
+  }
+  h1{ font-size:20px; }
+  #progress{ font-weight:800; color:#3b4cca; }
+  .btn{
+    border:none; border-radius:10px; padding:9px 18px; font-size:14px; font-weight:700;
+    cursor:pointer; font-family:inherit; transition:transform .12s;
+  }
+  .btn:hover{ transform:translateY(-2px); }
+  .btn.primary{ background:linear-gradient(180deg,#5b7ff0,#3b4cca); color:#fff; }
+  .btn.green{ background:linear-gradient(180deg,#34d399,#10b981); color:#fff; }
+  .btn.gray{ background:#eef2f7; color:#22303d; border:2px solid #dde5ef; }
+  .hint{ padding:10px 22px 0; font-size:13px; color:#5b6b7b; }
+  #list{ display:flex; flex-direction:column; gap:8px; padding:14px 22px; }
+  .row{
+    display:flex; align-items:center; gap:10px; background:#fff; border-radius:12px;
+    padding:8px 14px; box-shadow:0 2px 8px rgba(34,48,61,.08);
+  }
+  .row.dirty{ background:#f0fdf4; }
+  .thumb{ width:66px; height:102px; object-fit:cover; border-radius:8px; cursor:zoom-in; flex:none; box-shadow:0 2px 6px rgba(0,0,0,.2); }
+  .info{ width:110px; flex:none; }
+  .info b{ display:block; font-size:15px; }
+  .tier{ display:inline-block; font-size:11px; background:#eef2f7; color:#5b6b7b; padding:1px 8px; border-radius:8px; margin-top:2px; }
+  label.fld{ display:flex; flex-direction:column; align-items:center; gap:2px; font-size:11px; color:#5b6b7b; }
+  input[type=number]{
+    width:52px; padding:6px 4px; text-align:center; font-size:15px; font-weight:800;
+    border:2px solid #dde5ef; border-radius:8px; font-family:inherit;
+  }
+  input[type=number]:focus{ outline:none; border-color:#3b4cca; }
+  .dot{ width:14px; height:14px; border-radius:50%; display:inline-block; }
+  select{ padding:7px 6px; border:2px solid #dde5ef; border-radius:8px; font-size:13px; background:#fff; cursor:pointer; font-family:inherit; }
+  .ok{ color:#10b981; font-size:18px; font-weight:900; width:24px; text-align:center; }
+  #toast{
+    position:fixed; top:70px; left:50%; transform:translateX(-50%) translateY(-10px);
+    background:#22303d; color:#fff; padding:10px 24px; border-radius:999px; font-size:14px;
+    opacity:0; transition:all .3s; z-index:100; pointer-events:none;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  #zoom{ position:fixed; inset:0; background:rgba(23,34,46,.75); display:flex; align-items:center; justify-content:center; z-index:50; cursor:zoom-out; }
+  #zoom img{ max-height:92vh; max-width:92vw; border-radius:14px; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+  #verify-box{
+    position:fixed; inset:0; background:rgba(23,34,46,.6); display:none;
+    align-items:center; justify-content:center; z-index:60;
+  }
+  #verify-box .panel{ background:#fff; border-radius:16px; padding:22px 28px; width:min(680px,92vw); max-height:80vh; display:flex; flex-direction:column; gap:12px; }
+  #verify-out{ white-space:pre-wrap; font-family:Consolas,monospace; font-size:12.5px; background:#f6f8fb; border-radius:10px; padding:14px; overflow:auto; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>🎛️ 卡牌数值录入工具</h1>
+  <span id="progress">已填 0 / 0</span>
+  <span style="flex:1"></span>
+  <button id="btn-save" class="btn primary">💾 保存到 config.js</button>
+  <button id="btn-verify" class="btn green">🧪 模拟验证平衡</button>
+</div>
+<div class="hint">
+  对照卡面填写：分数、红/蓝/黑/粉/黄 费用、加成色（卡面右上角的球色）。点击缩略图可放大看细节。
+  填过数值的行会变绿并自动记住进度。保存后联机服务器需重启才生效。
+</div>
+<div id="list"></div>
+<div id="zoom" hidden><img id="zoom-img" alt="卡面大图"></div>
+<div id="verify-box"><div class="panel">
+  <h2>🧪 模拟验证结果（30 局 AI 对战）</h2>
+  <div id="verify-out">运行中…</div>
+  <button id="verify-close" class="btn gray">关闭</button>
+</div></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $ = (s) => document.querySelector(s);
+const BALL_COLORS = [
+  ['red', '普通球', '#e3350d'],
+  ['blue', '超级球', '#2f6fdb'],
+  ['black', '高级球', '#2e2e36'],
+  ['pink', '治愈球', '#f58fb8'],
+  ['yellow', '快速球', '#ffcb05'],
+];
+const TIER_NAMES = { 1: '一阶', 2: '二阶', 3: '三阶' };
+
+let rows = [];
+const dirty = new Set(JSON.parse(localStorage.getItem('cardDirty') || '[]'));
+let toastTimer = null;
+
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+function updateProgress() {
+  $('#progress').textContent = `已填 ${dirty.size} / ${rows.length}`;
+}
+function render() {
+  const list = $('#list');
+  list.innerHTML = '';
+  rows.forEach((r, i) => {
+    const row = document.createElement('div');
+    row.className = 'row' + (dirty.has(i) ? ' dirty' : '');
+    const costHtml = BALL_COLORS.map(([k, cn, hex]) => `
+      <label class="fld"><span class="dot" style="background:${hex}" title="${cn}"></span>
+      <input type="number" min="0" max="10" value="${r.cost[k]}" data-i="${i}" data-f="${k}"></label>`).join('');
+    row.innerHTML = `
+      <img class="thumb" src="pictures/${encodeURIComponent(r.name)}.jpg" alt="${r.name}" title="点击放大">
+      <div class="info"><b>${r.name}</b><span class="tier">名字不可改</span></div>
+      <label class="fld"><span>阶层</span>
+        <select data-i="${i}" data-f="tier">
+          ${[1, 2, 3].includes(r.tier) ? '' : `<option value="${r.tier}" selected>⚠️ 无效(${r.tier})</option>`}
+          <option value="1" ${r.tier === 1 ? 'selected' : ''}>一阶</option>
+          <option value="2" ${r.tier === 2 ? 'selected' : ''}>二阶</option>
+          <option value="3" ${r.tier === 3 ? 'selected' : ''}>三阶</option>
+        </select></label>
+      <label class="fld"><span>分数</span><input type="number" min="0" max="10" value="${r.vp}" data-i="${i}" data-f="vp"></label>
+      ${costHtml}
+      <label class="fld"><span>加成色</span>
+        <select data-i="${i}" data-f="bonus">
+          ${BALL_COLORS.map(([k, cn]) => `<option value="${k}" ${r.bonus === k ? 'selected' : ''}>${cn}</option>`).join('')}
+        </select></label>
+      ${dirty.has(i) ? '<span class="ok">✓</span>' : '<span class="ok"></span>'}`;
+    list.appendChild(row);
+  });
+  updateProgress();
+}
+list.addEventListener('change', (e) => {
+  const el = e.target;
+  if (!el.dataset || el.dataset.i === undefined) return;
+  const i = +el.dataset.i, f = el.dataset.f;
+  const val = el.type === 'number' ? Math.max(0, Math.min(10, +el.value || 0)) : el.value;
+  el.value = el.type === 'number' ? val : el.value;
+  if (f === 'vp') rows[i].vp = val;
+  else if (f === 'tier') rows[i].tier = +val;
+  else if (f === 'bonus') rows[i].bonus = val;
+  else rows[i].cost[f] = val;
+  dirty.add(i);
+  localStorage.setItem('cardDirty', JSON.stringify([...dirty]));
+  el.closest('.row').classList.add('dirty');
+  updateProgress();
+});
+
+// 缩略图放大
+$('#list').addEventListener('click', (e) => {
+  if (e.target.classList.contains('thumb')) {
+    $('#zoom-img').src = e.target.src;
+    $('#zoom').hidden = false;
+  }
+});
+$('#zoom').addEventListener('click', () => { $('#zoom').hidden = true; });
+
+// 保存
+$('#btn-save').addEventListener('click', async () => {
+  const r = await fetch('/api/save', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rows }),
+  });
+  const j = await r.json();
+  if (j.ok) toast(`✅ 已保存 ${j.count} 张卡到 config.js`);
+  else toast('⚠️ ' + (j.msg || '保存失败'));
+});
+
+// 模拟验证
+$('#btn-verify').addEventListener('click', async () => {
+  $('#verify-box').style.display = 'flex';
+  $('#verify-out').textContent = '运行中，约需 10~30 秒…';
+  const r = await fetch('/api/verify', { method: 'POST' });
+  const j = await r.json();
+  $('#verify-out').textContent = j.output || '（无输出）';
+});
+$('#verify-close').addEventListener('click', () => { $('#verify-box').style.display = 'none'; });
+
+// 初始加载
+(async () => {
+  const r = await fetch('/api/load');
+  rows = await r.json();
+  render();
+})();
+</script>
+</body>
+</html>
