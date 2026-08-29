@@ -82,25 +82,27 @@ function buildDecksFromTable() {
     const [name, tier, vp, r, b, k, p, y, bonus] = row;
     if (!decks[tier]) { console.error(`卡牌表第 ${i + 1} 行「${name}」阶数无效：只能是 1/2/3`); return; }
     if (!COLORS.includes(bonus)) { console.error(`卡牌表第 ${i + 1} 行「${name}」加成色无效：${bonus}`); return; }
-    // 推导进化关系：二阶/三阶卡在进化线里找上一形态
-    let evoFrom = null, evoNeed = null;
-    if (tier >= 2) {
+    // 推导进化关系：一阶/二阶卡在进化线里找下一形态。
+    // 进化条件印在"未进化的卡"上（比如波波的卡面写着进化成比比鸟需要什么）
+    let evoTo = null, evoNeed = null;
+    if (tier <= 2) {
       const base = baseNameOf(name);
       const line = EVO_LINES.find((ln) => ln.includes(base));
       if (line) {
         const li = line.indexOf(base);
-        if (li > 0) {
-          evoFrom = line[li - 1];
-          // 进化条件：优先取覆盖表，否则默认 二阶需2个 / 三阶需3个（颜色错开自身加成色）
+        if (li < line.length - 1) {
+          evoTo = line[li + 1];
+          // 进化条件：优先取覆盖表（按这张未进化卡的名字），否则默认
+          // 一阶卡进化需 2 个加成、二阶卡进化需 3 个（颜色错开自身加成色）
           evoNeed = EVO_NEEDS[name] || EVO_NEEDS[base] ||
-            { [COLORS[(COLORS.indexOf(bonus) + tier) % 5]]: tier };
+            { [COLORS[(COLORS.indexOf(bonus) + tier + 1) % 5]]: tier + 1 };
         }
       }
     }
     decks[tier].push({
       id: `${tier}-${i}`, tier, vp,
       cost: { red: r, blue: b, black: k, pink: p, yellow: y },
-      bonus, name, evoFrom, evoNeed,
+      bonus, name, evoTo, evoNeed,
     });
   });
   return decks;
@@ -291,19 +293,24 @@ function advanceTurn() {
 }
 
 /* ==================== 宝可梦进化（回合结束免费，每回合限 1 次） ==================== */
-// 当前玩家的可选进化：场上或预约区有进化卡，且自己已有其上一形态
+// 当前玩家的可选进化：自己已收服的一阶/二阶卡，且其下一形态在场上或预约区
 function evolveOptions(p) {
   const opts = [];
   const bonus = bonusOf(p);
-  const check = (card, loc) => {
-    if (!card || !card.evoFrom) return;
-    const base = p.cards.find((c) => baseNameOf(c.name) === card.evoFrom);
-    if (!base) return;
-    const ok = COLORS.every((c) => bonus[c] >= (card.evoNeed[c] || 0));
-    opts.push({ loc, card, base, ok });
-  };
-  [1, 2, 3].forEach((t) => S.market[t].forEach((c, idx) => check(c, { kind: 'market', tier: t, idx })));
-  p.reserved.forEach((c, ridx) => check(c, { kind: 'reserved', ridx }));
+  p.cards.forEach((base) => {
+    if (!base.evoTo) return;
+    const okNeed = COLORS.every((c) => bonus[c] >= (base.evoNeed[c] || 0));
+    [1, 2, 3].forEach((t) => S.market[t].forEach((card, idx) => {
+      if (card && card.tier > base.tier && baseNameOf(card.name) === base.evoTo) {
+        opts.push({ loc: { kind: 'market', tier: t, idx }, card, base, ok: okNeed });
+      }
+    }));
+    p.reserved.forEach((card, ridx) => {
+      if (card && card.tier > base.tier && baseNameOf(card.name) === base.evoTo) {
+        opts.push({ loc: { kind: 'reserved', ridx }, card, base, ok: okNeed });
+      }
+    });
+  });
   return opts;
 }
 // 执行进化：进化卡替换基础形态卡，基础卡进图鉴

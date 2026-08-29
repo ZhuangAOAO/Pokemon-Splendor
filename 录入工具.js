@@ -32,8 +32,8 @@ function readTable() {
   require('./config.js');
   const needs = global.EVOLUTION_NEEDS || {};
   return global.CARD_TABLE.map((r) => {
-    // 进化条件：优先按完整卡名查，其次按去数字后缀的基础名查
-    const need = r[1] >= 2 ? (needs[r[0]] || needs[BASE_OF(r[0])]) : null;
+    // 进化条件印在"未进化的卡"（一阶/二阶）上：优先按完整卡名查，其次按基础名查
+    const need = r[1] <= 2 ? (needs[r[0]] || needs[BASE_OF(r[0])]) : null;
     return {
       name: r[0], tier: r[1], vp: r[2],
       cost: { red: r[3], blue: r[4], black: r[5], pink: r[6], yellow: r[7] },
@@ -64,10 +64,11 @@ function writeTable(rows) {
   const eStart = eIdx >= 0 ? eIdx + 1 : -1;
   const eEnd = eStart >= 0 ? out.indexOf('};', eStart) + 2 : -1;
   if (eStart < 0 || eEnd < 0) return { ok: false, msg: 'config.js 里找不到 EVOLUTION_NEEDS，请确认 config.js 是最新版' };
-  // 同名宝可梦（如"比比鸟"/"比比鸟2"）进化条件相同：按基础名（去数字后缀）只写一条
+  // 同名宝可梦（如"波波"/"波波2"）进化条件相同：按基础名（去数字后缀）只写一条。
+  // 只有一阶/二阶卡（未进化卡）才携带进化条件
   const byBase = new Map();
   rows.forEach((r) => {
-    if (r.tier < 2 || !r.needColor || r.needColor === 'none' || !r.needCount) return;
+    if (r.tier > 2 || !r.needColor || r.needColor === 'none' || !r.needCount) return;
     byBase.set(BASE_OF(r.name), { color: r.needColor, count: r.needCount });
   });
   const entries = [...byBase.entries()]
@@ -90,7 +91,7 @@ function validRows(rows, oldRows) {
       if (!Number.isInteger(r.cost[c]) || r.cost[c] < 0 || r.cost[c] > 10) return `第 ${i + 1} 行（${o.name}）${c} 费用无效（0~10 的整数）`;
     }
     if (!COLORS.includes(r.bonus)) return `第 ${i + 1} 行（${o.name}）加成色无效`;
-    if (r.tier >= 2) {
+    if (r.tier <= 2) {
       if (r.needColor && r.needColor !== 'none' && !COLORS.includes(r.needColor)) return `第 ${i + 1} 行（${o.name}）进化条件色无效`;
       if (!Number.isInteger(r.needCount) || r.needCount < 0 || r.needCount > 5) return `第 ${i + 1} 行（${o.name}）进化条件数无效（0~5）`;
     }

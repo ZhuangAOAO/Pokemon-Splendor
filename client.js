@@ -221,7 +221,8 @@ function renderActions() {
     if (myTurn && !p.isAI) {
       const opts = S.evoOptions || [];
       const list = opts.map((o, i) => {
-        const needTxt = COLORS.map((c) => (o.card.evoNeed && o.card.evoNeed[c] ? `${BALLS[c].name}加成×${o.card.evoNeed[c]}` : '')).filter(Boolean).join('、');
+        // 进化条件印在未进化的卡（base）上
+        const needTxt = COLORS.map((c) => (o.base.evoNeed && o.base.evoNeed[c] ? `${BALLS[c].name}加成×${o.base.evoNeed[c]}` : '')).filter(Boolean).join('、');
         const gain = o.card.vp - o.base.vp;
         return `<button class="btn evolve" id="act-evo-${i}" ${o.ok ? '' : 'disabled'}>
           🔬 ${o.base.name} → ${o.card.name}（${gain > 0 ? '+' + gain + '分' : '0分'} · 需${needTxt}${o.ok ? '' : ' ✗不满足'}）

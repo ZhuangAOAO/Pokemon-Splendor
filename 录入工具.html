@@ -68,8 +68,8 @@
 </div>
 <div class="hint">
   对照卡面填写：分数、红/蓝/黑/粉/黄 费用、加成色（卡面右上角的球色）。
-  二阶/三阶卡还有「进化需」：卡面进化图标要求的加成色和个数（选「无」或个数 0 = 用默认规则，不写入）。
-  同名宝可梦（如两张「比比鸟」）进化条件相同，改一张会自动同步。
+  一阶/二阶卡（未进化的卡）有「进化需」：卡面印的进化图标要求的加成色和个数（选「无」或个数 0 = 用默认规则，不写入）。
+  同名宝可梦（如三张「波波」）进化条件相同，改一张会自动同步。
   点击缩略图可放大看细节。填过数值的行会变绿并自动记住进度。保存后联机服务器需重启才生效。
 </div>
 <div id="list"></div>
@@ -132,7 +132,7 @@ function render() {
         <select data-i="${i}" data-f="bonus">
           ${BALL_COLORS.map(([k, cn]) => `<option value="${k}" ${r.bonus === k ? 'selected' : ''}>${cn}</option>`).join('')}
         </select></label>
-      ${r.tier >= 2 ? `
+      ${r.tier <= 2 ? `
         <label class="fld"><span>进化需</span>
           <select data-i="${i}" data-f="needColor">
             <option value="none" ${r.needColor === 'none' ? 'selected' : ''}>无(默认)</option>
@@ -161,12 +161,12 @@ list.addEventListener('change', (e) => {
   dirty.add(i);
   localStorage.setItem('cardDirty', JSON.stringify([...dirty]));
   updateProgress();
-  if (f === 'tier') { render(); return; } // 阶层变了要重画（进化字段只在二阶/三阶显示）
-  // 同名宝可梦（如"比比鸟"/"比比鸟2"）进化条件相同：改一张，其余同步
+  if (f === 'tier') { render(); return; } // 阶层变了要重画（进化字段只在一阶/二阶显示）
+  // 同名宝可梦（如"波波"/"波波2"）进化条件相同：改一张，其余同步
   if (f === 'needColor' || f === 'needCount') {
     const base = rows[i].name.replace(/\d+$/, '');
     rows.forEach((r2, j) => {
-      if (j !== i && r2.name.replace(/\d+$/, '') === base && r2.tier >= 2) {
+      if (j !== i && r2.name.replace(/\d+$/, '') === base && r2.tier <= 2) {
         r2.needColor = rows[i].needColor;
         r2.needCount = rows[i].needCount;
       }
