@@ -171,7 +171,7 @@ function renderPool() {
   gm.className = 'pool-group master';
   gm.dataset.color = 'master';
   gm.title = '大师球（万能球，可代替任意颜色）';
-  gm.innerHTML = `${ballHtml('master')}<i class="spark"></i><span class="pool-count">${S.pool.master}</span>`;
+  gm.innerHTML = `${ballHtml('master')}<i class="spark"></i><i class="spark spark2"></i><span class="pool-count">${S.pool.master}</span>`;
   pool.appendChild(gm);
 }
 

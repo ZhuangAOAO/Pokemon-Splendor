@@ -309,15 +309,21 @@ h3{ font-size:14px; }
   0%,100%{ box-shadow:inset -4px -5px 6px rgba(0,0,0,.16), inset 3px 3px 4px rgba(255,255,255,.5), 0 0 5px rgba(255,255,255,.55), 0 3px 5px rgba(34,48,61,.28); }
   50%{ box-shadow:inset -4px -5px 6px rgba(0,0,0,.16), inset 3px 3px 4px rgba(255,255,255,.5), 0 0 16px rgba(255,255,255,1), 0 3px 5px rgba(34,48,61,.28); }
 }
-.spark{ /* 四角星光 */
-  position:absolute; top:1px; right:5px; width:11px; height:11px; z-index:4;
-  background:#fff; filter:drop-shadow(0 0 3px rgba(255,255,255,.9));
+.spark{ /* 四角星光（大） */
+  position:absolute; top:-3px; right:2px; width:17px; height:17px; z-index:4;
+  background:#fff;
+  filter:drop-shadow(0 0 4px rgba(255,255,255,1)) drop-shadow(0 0 12px rgba(255,240,170,.95));
   clip-path:polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
-  animation:sparkPop 1.8s ease-in-out infinite;
+  animation:sparkPop 2s ease-in-out infinite;
+}
+.spark.spark2{ /* 第二颗星（左下，错开节奏） */
+  top:auto; right:auto; bottom:-2px; left:4px; width:11px; height:11px;
+  animation-delay:1s;
 }
 @keyframes sparkPop{
-  0%,100%{ opacity:0; transform:scale(.3) rotate(0deg); }
-  50%{ opacity:1; transform:scale(1.15) rotate(45deg); }
+  0%,100%{ opacity:0; transform:scale(.2) rotate(0deg); }
+  45%{ opacity:1; transform:scale(1.35) rotate(45deg); }
+  65%{ opacity:.85; transform:scale(1) rotate(90deg); }
 }
 .pool-group.clickable{
   cursor:pointer; border-color:var(--gold); background:#fffdf2;
