@@ -153,7 +153,7 @@ function renderPool() {
   pool.innerHTML = '';
   COLORS.forEach((c) => {
     const g = document.createElement('div');
-    g.className = 'pool-group';
+    g.className = 'pool-group c-' + c; // 每种球用主题色底色，便于辨别
     g.dataset.color = c;
     const cnt = S.pool[c];
     g.title = BALLS[c].name; // 名字不占画面，悬停可见
@@ -171,7 +171,7 @@ function renderPool() {
   gm.className = 'pool-group master';
   gm.dataset.color = 'master';
   gm.title = '大师球（万能球，可代替任意颜色）';
-  gm.innerHTML = `${ballHtml('master')}<span class="pool-count">${S.pool.master}</span><span class="wild-tag">万能</span>`;
+  gm.innerHTML = `${ballHtml('master')}<span class="pool-count">${S.pool.master}</span>`;
   pool.appendChild(gm);
 }
 
