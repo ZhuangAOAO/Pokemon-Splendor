@@ -140,8 +140,9 @@ function renderPool() {
     g.dataset.color = c;
     const cnt = S.pool[c];
     g.innerHTML = `${ballHtml(c)}<span class="pool-count">${cnt}</span><span class="pool-name">${BALLS[c].name}</span>`;
+    // 已选中的颜色也保持可点：再点一次 = 取消选择
     const selectable =
-      (S.mode === 'take3' && cnt > 0 && !S.selColors.includes(c)) ||
+      (S.mode === 'take3' && cnt > 0) ||
       (S.mode === 'take2' && cnt >= RULES.takeTwoMin);
     if (selectable) g.classList.add('clickable');
     if (S.selColors.includes(c)) g.classList.add('selected');
@@ -220,7 +221,7 @@ function renderActions() {
       const avail = COLORS.filter((c) => S.pool[c] > 0).length;
       const need = Math.min(3, avail);
       box.innerHTML = `
-        <div class="action-hint">🎯 请选择 ${need} 种不同颜色的精灵球（已选 ${S.selColors.length}/${need}）</div>
+        <div class="action-hint">🎯 请选择 ${need} 种不同颜色的精灵球（已选 ${S.selColors.length}/${need}，再点一次已选颜色可取消）</div>
         <div class="action-btns">
           <button class="btn primary" id="act-confirm" ${S.selColors.length === need ? '' : 'disabled'}>确认拿取</button>
           <button class="btn ghost" id="act-cancel">取消</button>
@@ -249,16 +250,16 @@ function renderActions() {
       return;
     }
     if (S.mode === 'reserve') {
-      let mid = '<div class="action-hint">🎯 点击场上一张宝可梦进行预约（预约后可拿 1 个大师球）</div>';
+      let mid = '<div class="action-hint">🎯 点击场上一张宝可梦，把它收进你的预约区（同时送 1 个大师球）</div>';
       if (S.selCard) {
         const card = selCardCard();
         const masterInfo = S.pool.master > 0
-          ? '并立刻获得 1 个大师球（万能）'
-          : '⚠️ 供应区大师球已领完，无法获得大师球';
+          ? '同时送你 1 个大师球（万能球，可代替任意颜色的球）'
+          : '⚠️ 大师球已领完，这次预约没有球可拿';
         mid = `
           <div class="buy-confirm">
-            <div class="buy-name">预约 ${card.name}？</div>
-            <div class="buy-cost">把它收进你的预约区，${masterInfo}。之后任意回合可以收服它。</div>
+            <div class="buy-name">预约「${card.name}」？</div>
+            <div class="buy-cost">预约 = 把这张卡收进你的预约区（最多 ${RULES.reserveLimit} 张），${masterInfo}。之后任意回合都可以收服它。「取消」则什么都不发生。</div>
           </div>`;
       }
       box.innerHTML = mid + `
@@ -446,12 +447,14 @@ function onPoolClick(e) {
   if (S.phase !== 'normal' || p.isAI || c === 'master') return; // 大师球不能直接拿
   if (ONLINE && mySeat !== S.current) return;
   if (S.mode === 'take3') {
-    if (S.pool[c] <= 0 || S.selColors.includes(c)) return;
+    // 再点一次已选中的颜色 = 取消选择
+    if (S.selColors.includes(c)) { S.selColors = S.selColors.filter((x) => x !== c); render(); return; }
+    if (S.pool[c] <= 0) return;
     const avail = COLORS.filter((x) => S.pool[x] > 0).length;
     const need = Math.min(3, avail);
     if (S.selColors.length < need) { S.selColors.push(c); render(); }
   } else if (S.mode === 'take2') {
-    if (S.pool[c] >= RULES.takeTwoMin) { S.selColors = [c]; render(); }
+    if (S.pool[c] >= RULES.takeTwoMin) { S.selColors = S.selColors[0] === c ? [] : [c]; render(); }
   }
 }
 function onPlayerClick(e) {
@@ -465,9 +468,9 @@ function onPlayerClick(e) {
     else actDiscardOne(c);
     return;
   }
-  // "退还精灵球"模式：点击选择自己 1 个球
+  // "退还精灵球"模式：点击选择自己 1 个球，再点一次取消
   if (S.mode === 'returnBalls' && S.phase === 'normal' && pi === S.current && !p.isAI && p.balls[c] > 0) {
-    S.selColors = [c];
+    S.selColors = S.selColors[0] === c ? [] : [c];
     render();
   }
 }
