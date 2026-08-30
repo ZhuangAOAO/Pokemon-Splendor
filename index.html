@@ -43,12 +43,20 @@
     </div>
     <div class="setup-panel join-panel">
       <h2>加入游戏</h2>
-      <input id="join-name" class="row-name join-name" maxlength="8" placeholder="输入你的名字">
+      <input id="join-name" class="row-name join-name" maxlength="12" placeholder="输入你的名字">
+      <div class="target-row" id="room-visibility">
+        <span class="label">房间类型</span>
+        <label><input type="radio" name="visibility" value="private" checked> 私有（凭房间号加入）</label>
+        <label><input type="radio" name="visibility" value="public"> 公开（可被搜索）</label>
+      </div>
+      <input id="join-roomid" class="row-name join-name" maxlength="4" placeholder="房间号（留空 = 创建新房间）">
       <div class="setup-actions">
-        <button id="btn-join" class="btn primary lg">加入房间</button>
+        <button id="btn-join" class="btn primary lg">进入游戏</button>
+        <button id="btn-room-list" class="btn ghost lg">公开房间列表</button>
         <button class="btn ghost lg js-rules">规则说明</button>
       </div>
-      <p class="footnote">同一局域网的朋友打开同一个网址，就能一起玩</p>
+      <div id="room-list-box" hidden></div>
+      <p class="footnote">创建房间 = 留空房间号；加入朋友房间 = 输入他告诉你的 4 位房间号</p>
     </div>
   </div>
 </div>
@@ -58,6 +66,7 @@
   <div class="setup-box">
     <div class="setup-panel lobby-panel">
       <h2>游戏大厅</h2>
+      <div id="lobby-room-info"></div>
       <div id="lobby-roster"></div>
       <div id="lobby-host" hidden>
         <div class="lobby-divider">房主控制区</div>

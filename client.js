@@ -902,6 +902,9 @@ function handleServerMsg(m) {
     toast(m.msg);
   } else if (m.type === 'error') {
     toast(m.msg);
+  } else if (m.type === 'kicked') {
+    toast(m.msg || '你被移出了房间');
+    setTimeout(() => location.reload(), 1200);
   }
 }
 function renderLobby() {
@@ -911,12 +914,15 @@ function renderLobby() {
   const ais = room.ais || [];
   const total = humans.filter((h) => h.connected).length + ais.length;
 
+  $('#lobby-room-info').innerHTML = `房间号 <b>${room.id}</b> · ${room.isPublic ? '公开（可被搜索）' : '私有（仅凭房间号加入）'}`;
+
   $('#lobby-roster').innerHTML = humans.map((h) => `
     <div class="lobby-row">
       <span class="lobby-dot ${h.connected ? 'on' : 'off'}"></span>
       <span class="lobby-name">${h.name}${h.isHost ? '（房主）' : ''}${h.name === myName ? '（你）' : ''}</span>
       <span class="lobby-tag">人类</span>
       ${h.connected ? '' : '<span class="lobby-tag off">已断线</span>'}
+      ${isHost && h.name !== myName ? `<button class="btn ghost sm kick-btn" data-cid="${h.cid}">踢出</button>` : ''}
     </div>`).join('') +
     ais.map((a) => `
     <div class="lobby-row">
@@ -987,18 +993,52 @@ function openEvents(cid) {
 async function joinGame() {
   const name = $('#join-name').value.trim();
   if (!name) { toast('请输入名字'); return; }
-  const j = await postApi({ type: 'join', name });
+  const roomId = $('#join-roomid').value.trim();
+  const isPublic = (document.querySelector('input[name="visibility"]:checked') || {}).value === 'public';
+  const j = await postApi({ type: 'join', name, roomId: roomId || undefined, isPublic });
   if (j.ok) {
     myCid = j.cid;
     openEvents(j.cid);
   }
+}
+async function showRoomList() {
+  const box = $('#room-list-box');
+  const j = await postApi({ type: 'listRooms' });
+  if (!j.ok || !j.rooms) return;
+  if (!j.rooms.length) {
+    box.hidden = false;
+    box.innerHTML = '<div class="room-list-empty">暂时没有公开房间</div>';
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML = j.rooms.map((r) => `
+    <div class="room-list-row">
+      <span class="room-list-id">房间 ${r.id}</span>
+      <span class="room-list-host">房主 ${r.host} · ${r.count}/4 人${r.ais ? '（含电脑 ' + r.ais + '）' : ''}</span>
+      <button class="btn primary sm" data-room="${r.id}">加入</button>
+    </div>`).join('');
+  box.querySelectorAll('button[data-room]').forEach((b) => {
+    b.addEventListener('click', () => { $('#join-roomid').value = b.dataset.room; joinGame(); });
+  });
 }
 
 function initOnline() {
   showScreen('join');
   updateConnDot();
   $('#btn-join').addEventListener('click', joinGame);
+  $('#btn-room-list').addEventListener('click', showRoomList);
   $('#join-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinGame(); });
+  $('#join-roomid').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinGame(); });
+  // 房主踢人
+  $('#lobby-roster').addEventListener('click', (e) => {
+    const b = e.target.closest('.kick-btn');
+    if (!b) return;
+    const target = (room.humans || []).find((h) => h.cid === b.dataset.cid);
+    if (!target) return;
+    if (confirm('确定把 ' + target.name + ' 移出房间吗？')) {
+      postApi({ type: 'kick', cid: myCid, targetCid: b.dataset.cid });
+    }
+  });
   $('#btn-add-ai').addEventListener('click', () => {
     if ((room.ais || []).length + (room.humans || []).filter((h) => h.connected).length >= 4) return;
     const ais = (room.ais || []).concat([{ name: AI_NAMES[(room.ais || []).length % 4], level: 'easy' }]);

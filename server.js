@@ -124,7 +124,7 @@ function broadcastRoom(room) {
         phase: room.phase,
         target: room.target,
         ais: room.ais,
-        humans: humansList(room).map((h) => ({ name: h.name, seat: h.seat, connected: h.connected, isHost: h.isHost })),
+        humans: humansList(room).map((h) => ({ cid: h.cid, name: h.name, seat: h.seat, connected: h.connected, isHost: h.isHost })),
         log: room.log,
         vote: room.vote ? { by: room.vote.by, yes: room.vote.yes.length, total: connectedHumans(room).length } : null,
       },
@@ -287,6 +287,36 @@ function handleBackToLobby(conn) {
   return { ok: true };
 }
 // 结束对局投票：任何人可发起，所有人类玩家同意才生效；有人反对则取消
+// 公开房间列表（大厅、公开的房间可被搜索）
+function handleListRooms() {
+  const list = [];
+  for (const r of rooms.values()) {
+    if (r.phase === 'lobby' && r.isPublic) {
+      const host = connectedHumans(r)[0] || humansList(r)[0];
+      list.push({ id: r.id, host: host ? host.name : '—', count: connectedHumans(r).length, ais: r.ais.length });
+    }
+  }
+  list.sort((a, b) => Number(a.id) - Number(b.id));
+  return { ok: true, rooms: list };
+}
+// 房主踢人（仅大厅阶段）
+function handleKick(conn, targetCid) {
+  const room = conn.room;
+  if (!conn.isHost || room.phase !== 'lobby') return { ok: false, msg: '只有房主在大厅时可以踢人' };
+  const target = room.conns.get(targetCid);
+  if (!target) return { ok: false, msg: '没有这个玩家' };
+  if (target.cid === conn.cid) return { ok: false, msg: '不能踢自己' };
+  logEvent(room, '踢人', `${target.name} 被房主移出房间`);
+  room.conns.delete(target.cid);
+  connIndex.delete(target.cid);
+  promoteHostIfNeeded(room);
+  broadcastRoom(room);
+  if (target.res) {
+    sendSSE(target, { type: 'kicked', msg: '你被房主移出了房间' });
+    try { target.res.end(); } catch (e) { /* 已断开 */ }
+  }
+  return { ok: true };
+}
 function handleVoteEnd(conn) {
   const room = conn.room;
   if (room.phase !== 'game' || !room.session.S) return { ok: false, msg: '对局未在进行' };
@@ -450,6 +480,7 @@ function handleApi(req, res) {
     const conn = entry && entry.conn;
     let result;
     if (obj.type === 'join') result = handleJoin(obj);
+    else if (obj.type === 'listRooms') result = handleListRooms();
     else if (!obj.type) result = { ok: false, msg: '参数错误' };
     else if (!conn || !conn.connected) result = { ok: false, msg: '连接已失效，请刷新页面重新加入' };
     else if (obj.type === 'start') result = handleStart(conn);
@@ -459,6 +490,7 @@ function handleApi(req, res) {
     else if (obj.type === 'backToLobby') result = handleBackToLobby(conn);
     else if (obj.type === 'voteEnd') result = handleVoteEnd(conn);
     else if (obj.type === 'voteEndAnswer') result = handleVoteAnswer(conn, obj.answer);
+    else if (obj.type === 'kick') result = handleKick(conn, obj.targetCid);
     else if (obj.type === 'action') result = handleAction(conn, obj.action);
     else result = { ok: false, msg: '未知请求' };
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
