@@ -23,8 +23,16 @@ const EVO_NEEDS = window.EVOLUTION_NEEDS || {};
 
 // 卡名去掉数字后缀："波波2" → "波波"（同一进化线的多张卡共用名字判定）
 function baseNameOf(name) { return String(name).replace(/\d+$/, ''); }
+const TIER_CN = { 1: '一阶', 2: '二阶', 3: '三阶', 4: '稀有', 5: '传说' };
 
-/* ==================== 事件钩子：由环境注入 ==================== */
+/* ==================== 会话工厂：每个房间（或本地一局）一个独立会话 ==================== */
+// 服务器多房间时每房调用一次 createSession()，互不干扰；
+// 浏览器/本地单机用全局兼容层（见文件末尾）。
+function createSession() {
+let S = null;       // 当前对局状态
+let lastCfg = null; // 最近一局的设置（用于"再来一局"）
+
+/* ---- 事件钩子：由环境注入 ---- */
 const HOOKS = {
   onStateChanged: () => {},  // 状态变了（浏览器=重绘界面；服务器=广播给所有玩家）
   onToast: () => {},         // 需要提示一条消息
@@ -115,9 +123,6 @@ function buildDecksFromTable() {
 }
 
 /* ==================== 对局状态 ==================== */
-let S = null;       // 当前对局状态
-let lastCfg = null; // 最近一局的设置（用于"再来一局"）
-
 function newGame(cfg) {
   const n = cfg.players.length;
   const per = RULES.poolPerPlayer[n]; // 2人局每种基础球4个，3人局5个，4人局7个
@@ -246,7 +251,6 @@ function afterBuyPointsCheck(p) {
   }
 }
 // 盲抽预约：从指定阶牌堆顶部抽一张（面朝下，只有自己知道），同样拿大师球
-const TIER_CN = { 1: '一阶', 2: '二阶', 3: '三阶', 4: '稀有', 5: '传说' };
 function actReserveBlind(tier) {
   const p = curPlayer();
   if (p.reserved.length >= RULES.reserveLimit) return;
@@ -549,21 +553,64 @@ function finishGame() {
   HOOKS.onGameOver();
 }
 
-/* ==================== 导出（Node 用 require 加载；浏览器直接共享全局作用域） ==================== */
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
+  return {
     get S() { return S; },
     set S(v) { S = v; },
     get lastCfg() { return lastCfg; },
     set lastCfg(v) { lastCfg = v; },
     HOOKS,
-    COLORS, BALLS, RULES,
     newGame, curPlayer, allMarketCards,
     actTakeThree, actTakeTwo, actDiscardOne, actBuy, actBuyReserved, actReserve, actReturnBall, actTakeMaster,
-    actReserveBlind, TIER_CN,
+    actReserveBlind,
     afterActionDone, advanceTurn, scheduleAI, aiTurn,
-    actEvolve, actSkipEvolve, evolveOptions, sameLoc, baseNameOf,
-    canAfford, payPlan, missingFor, totalBalls, totalCost, globalNeed,
+    actEvolve, actSkipEvolve, evolveOptions, sameLoc,
+    canAfford, payPlan, missingFor, totalBalls, totalCost, globalNeed, bonusOf,
     shuffle, pick,
+  };
+}
+
+/* ==================== 导出 ==================== */
+// 浏览器/无头环境：默认单会话挂到全局（客户端与 sim.js 无需改动）
+if (typeof window !== 'undefined') {
+  const B = createSession();
+  Object.defineProperty(window, 'S', { get: () => B.S, set: (v) => { B.S = v; }, configurable: true });
+  Object.defineProperty(window, 'lastCfg', { get: () => B.lastCfg, set: (v) => { B.lastCfg = v; }, configurable: true });
+  Object.assign(window, {
+    HOOKS: B.HOOKS,
+    newGame: B.newGame, curPlayer: B.curPlayer, allMarketCards: B.allMarketCards,
+    actTakeThree: B.actTakeThree, actTakeTwo: B.actTakeTwo, actDiscardOne: B.actDiscardOne,
+    actBuy: B.actBuy, actBuyReserved: B.actBuyReserved, actReserve: B.actReserve,
+    actReturnBall: B.actReturnBall, actTakeMaster: B.actTakeMaster, actReserveBlind: B.actReserveBlind,
+    TIER_CN,
+    afterActionDone: B.afterActionDone, advanceTurn: B.advanceTurn, scheduleAI: B.scheduleAI, aiTurn: B.aiTurn,
+    actEvolve: B.actEvolve, actSkipEvolve: B.actSkipEvolve, evolveOptions: B.evolveOptions,
+    sameLoc: B.sameLoc, baseNameOf,
+    canAfford: B.canAfford, payPlan: B.payPlan, missingFor: B.missingFor,
+    totalBalls: B.totalBalls, totalCost: B.totalCost, globalNeed: B.globalNeed, bonusOf: B.bonusOf,
+    shuffle: B.shuffle, pick: B.pick,
+  });
+}
+// Node：导出工厂（多房间各建一个会话）+ 单会话兼容导出（服务器房间化改造前的过渡）
+if (typeof module !== 'undefined' && module.exports) {
+  const D = createSession();
+  module.exports = {
+    createSession,
+    get S() { return D.S; },
+    set S(v) { D.S = v; },
+    get lastCfg() { return D.lastCfg; },
+    set lastCfg(v) { D.lastCfg = v; },
+    HOOKS: D.HOOKS,
+    COLORS, BALLS, RULES,
+    newGame: D.newGame, curPlayer: D.curPlayer, allMarketCards: D.allMarketCards,
+    actTakeThree: D.actTakeThree, actTakeTwo: D.actTakeTwo, actDiscardOne: D.actDiscardOne,
+    actBuy: D.actBuy, actBuyReserved: D.actBuyReserved, actReserve: D.actReserve,
+    actReturnBall: D.actReturnBall, actTakeMaster: D.actTakeMaster, actReserveBlind: D.actReserveBlind,
+    TIER_CN,
+    afterActionDone: D.afterActionDone, advanceTurn: D.advanceTurn, scheduleAI: D.scheduleAI, aiTurn: D.aiTurn,
+    actEvolve: D.actEvolve, actSkipEvolve: D.actSkipEvolve, evolveOptions: D.evolveOptions,
+    sameLoc: D.sameLoc, baseNameOf,
+    canAfford: D.canAfford, payPlan: D.payPlan, missingFor: D.missingFor,
+    totalBalls: D.totalBalls, totalCost: D.totalCost, globalNeed: D.globalNeed,
+    shuffle: D.shuffle, pick: D.pick,
   };
 }
