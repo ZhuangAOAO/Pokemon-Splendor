@@ -7,22 +7,35 @@
 <style>
   *{ box-sizing:border-box; margin:0; padding:0; }
   [hidden]{ display:none !important; }
-  body{ font-family:"YouYuan","幼圆","Microsoft YaHei","PingFang SC",sans-serif; background:linear-gradient(160deg,#eef4fb,#f8f4ec); color:#22303d; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
-  .panel{ background:#fff; border-radius:20px; box-shadow:0 14px 40px rgba(34,48,61,.14); padding:26px 28px; width:560px; }
-  h1{ font-size:22px; margin-bottom:12px; }
-  h1 span{ color:#e3350d; }
-  .row{ display:flex; gap:8px; margin-bottom:10px; }
-  input{ flex:1; padding:9px 14px; border-radius:12px; border:2px solid #dde5ef; font-size:14px; font-family:inherit; background:#f5f8fc; }
-  input:focus{ outline:none; border-color:#2f56c8; background:#fff; }
-  .btn{ border:none; border-radius:12px; padding:10px 18px; font-size:14px; font-weight:800; cursor:pointer; font-family:inherit; }
-  .btn.primary{ background:linear-gradient(180deg,#5b7ff0,#3b5fd0); color:#fff; }
-  .btn.green{ background:linear-gradient(180deg,#34d399,#10b981); color:#fff; }
-  .btn.red{ background:linear-gradient(180deg,#f87171,#dc2626); color:#fff; }
-  .btn.ghost{ background:#fff; border:2px solid #dde5ef; }
+  body{ font-family:"YouYuan","幼圆","Microsoft YaHei","PingFang SC",sans-serif; background:#eef2f7; color:#22303d; }
+  .btn{ border:none; border-radius:10px; padding:8px 16px; font-size:13px; font-weight:800; cursor:pointer; font-family:inherit; background:#fff; border:2px solid #dde5ef; }
+  .btn.green{ background:linear-gradient(180deg,#34d399,#10b981); color:#fff; border:none; }
+  .btn.red{ background:linear-gradient(180deg,#f87171,#dc2626); color:#fff; border:none; }
+  .btn.primary{ background:linear-gradient(180deg,#5b7ff0,#3b5fd0); color:#fff; border:none; }
+
+  /* ---- 登录页 ---- */
+  #login-box{ min-height:100vh; display:flex; align-items:center; justify-content:center; }
+  .login-card{ background:#fff; border-radius:18px; box-shadow:0 14px 40px rgba(34,48,61,.14); padding:28px 32px; width:420px; }
+  .login-card h1{ font-size:22px; margin-bottom:12px; }
+  .login-card h1 span{ color:#e3350d; }
+  .login-card input{ width:100%; padding:10px 14px; border-radius:12px; border:2px solid #dde5ef; font-size:14px; font-family:inherit; background:#f5f8fc; margin-bottom:10px; }
+  .login-card input:focus{ outline:none; border-color:#2f56c8; background:#fff; }
+  .login-card .btn{ width:100%; padding:12px; font-size:15px; }
   .hint{ color:#93a2b3; font-size:12px; text-align:center; margin-top:14px; }
 
-  /* ---- 滑动标签 ---- */
-  .tabs{ position:relative; display:flex; background:#f0f3f8; border-radius:12px; padding:4px; margin-bottom:12px; }
+  /* ---- 后台看板 ---- */
+  #review-box{ min-height:100vh; display:flex; flex-direction:column; }
+  .topbar{
+    position:sticky; top:0; z-index:10; background:#fff; box-shadow:0 2px 10px rgba(34,48,61,.08);
+    display:flex; align-items:center; gap:12px; padding:12px 28px;
+  }
+  .topbar h1{ font-size:18px; }
+  .topbar h1 span{ color:#e3350d; }
+  .topbar .spacer{ flex:1; }
+  .content{ max-width:960px; width:100%; margin:0 auto; padding:18px 24px 40px; }
+
+  /* 滑动标签 */
+  .tabs{ position:relative; display:flex; background:#dfe5ee; border-radius:12px; padding:4px; margin-bottom:14px; max-width:520px; }
   .tab-indicator{
     position:absolute; top:4px; bottom:4px; left:4px;
     width:calc((100% - 8px) / 3);
@@ -33,31 +46,46 @@
   .tab.active{ color:#e3350d; }
   .tab .cnt{ font-size:11px; color:#93a2b3; margin-left:2px; }
 
-  /* ---- 内容面板：横向滑动切换 ---- */
-  .panels-viewport{ overflow:hidden; border-radius:14px; }
+  /* 内容面板：横向滑动切换 */
+  .panels-viewport{ overflow:hidden; border-radius:12px; background:#fff; box-shadow:0 2px 8px rgba(34,48,61,.06); }
   .panels-track{ display:flex; transition:transform .35s cubic-bezier(.3,.8,.3,1); }
-  .panel{ flex:none; width:100%; max-height:46vh; overflow-y:auto; padding:2px; }
+  .panel{ flex:none; width:100%; max-height:64vh; overflow-y:auto; }
 
-  .item{ display:flex; align-items:center; gap:10px; background:#f5f8fc; border:1px solid #dde5ef; border-radius:12px; padding:10px 14px; margin-bottom:8px; }
-  .item .name{ font-weight:900; flex:1; }
-  .item .time{ font-size:12px; color:#93a2b3; }
-  .empty{ color:#93a2b3; text-align:center; padding:24px 12px; font-size:14px; }
-  .bar{ display:flex; gap:8px; margin-top:12px; }
-  .bar .btn{ flex:1; }
+  /* 表格列表 */
+  table{ width:100%; border-collapse:collapse; font-size:14px; }
+  thead th{
+    position:sticky; top:0; background:#f5f8fc; text-align:left;
+    padding:10px 16px; font-size:12px; color:#5b6b7b; border-bottom:2px solid #e3e9f2; white-space:nowrap;
+  }
+  tbody td{ padding:10px 16px; border-bottom:1px solid #eef2f7; white-space:nowrap; }
+  tbody tr:hover{ background:#f8fafd; }
+  td.name{ font-weight:900; }
+  td.info{ color:#5b6b7b; font-size:13px; }
+  td.time{ color:#93a2b3; font-size:12px; }
+  td.ops{ text-align:right; }
+  td.ops .btn{ padding:5px 12px; font-size:12px; margin-left:6px; }
+  .empty{ color:#93a2b3; text-align:center; padding:36px 12px; font-size:14px; }
 </style>
 </head>
 <body>
-<div class="panel">
-  <div id="login-box">
+<div id="login-box">
+  <div class="login-card">
     <h1>账号审核 · <span>璀璨宝石宝可梦</span></h1>
-    <div class="row"><input id="ad-name" maxlength="12" placeholder="管理员用户名"></div>
-    <div class="row"><input id="ad-pass" type="password" placeholder="密码"></div>
-    <div class="row"><button id="ad-login" class="btn primary" style="flex:1">登录</button></div>
+    <input id="ad-name" maxlength="12" placeholder="管理员用户名">
+    <input id="ad-pass" type="password" placeholder="密码">
+    <button id="ad-login" class="btn primary">登录</button>
     <div class="hint">管理员账号用「初始化管理员.js」创建；普通玩家在游戏页面注册</div>
   </div>
+</div>
 
-  <div id="review-box" hidden>
-    <h1>账号审核</h1>
+<div id="review-box" hidden>
+  <div class="topbar">
+    <h1>账号审核 · <span>璀璨宝石宝可梦</span></h1>
+    <div class="spacer"></div>
+    <button id="ad-refresh" class="btn">刷新</button>
+    <button id="ad-logout" class="btn">退出登录</button>
+  </div>
+  <div class="content">
     <div class="tabs">
       <div class="tab-indicator" id="tab-indicator"></div>
       <button class="tab active" data-i="0">待审核<span class="cnt" id="cnt-0"></span></button>
@@ -71,17 +99,12 @@
         <div class="panel" id="panel-2"></div>
       </div>
     </div>
-    <div class="bar">
-      <button id="ad-refresh" class="btn ghost">刷新</button>
-      <button id="ad-logout" class="btn ghost">退出登录</button>
-    </div>
   </div>
 </div>
 <script>
 'use strict';
 const $ = (s) => document.querySelector(s);
 let token = localStorage.getItem('adToken') || '';
-let curTab = 0;
 function toast(msg) {
   const t = document.createElement('div');
   t.textContent = msg;
@@ -100,7 +123,6 @@ async function api(body) {
 }
 // 滑动切换标签：指示块与内容面板同步平滑移动
 function setTab(i) {
-  curTab = i;
   $('#tab-indicator').style.transform = `translateX(${i * 100}%)`;
   $('#panels-track').style.transform = `translateX(${-i * 100}%)`;
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', +t.dataset.i === i));
@@ -108,16 +130,22 @@ function setTab(i) {
 document.querySelectorAll('.tab').forEach((t) => {
   t.addEventListener('click', () => setTab(+t.dataset.i));
 });
-function rowHtml(u, actions) {
-  const info = u.source === 'backdoor'
-    ? `后门 · ${u.remark || '无备注'} · ${u.createdAt}`
-    : `${u.realName} · ${u.gradYear || '届数未填'}届 · ${u.createdAt}`;
-  return `
-    <div class="item">
-      <span class="name">${u.name}</span>
-      <span class="time">${info}</span>
-      ${actions}
-    </div>`;
+function tableHtml(users, actionsFor) {
+  if (!users.length) return '<div class="empty">暂无记录</div>';
+  return `<table>
+    <thead><tr><th>用户名</th><th>信息</th><th>申请时间</th><th style="text-align:right">操作</th></tr></thead>
+    <tbody>${users.map((u) => {
+      const info = u.source === 'backdoor'
+        ? `后门 · ${u.remark || '无备注'}`
+        : `${u.realName} · ${u.gradYear || '届数未填'}届`;
+      return `<tr>
+        <td class="name">${u.name}</td>
+        <td class="info">${info}</td>
+        <td class="time">${u.createdAt}</td>
+        <td class="ops">${actionsFor(u)}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
 }
 async function refresh() {
   const j = await api({ type: 'adminList', token });
@@ -129,22 +157,16 @@ async function refresh() {
     users.filter((u) => u.status === 'denied'),
   ];
   groups.forEach((g, i) => { $('#cnt-' + i).textContent = g.length ? g.length : ''; });
-  $('#panel-0').innerHTML = groups[0].length
-    ? groups[0].map((u) => rowHtml(u, `
-        <button class="btn green" data-name="${u.name}" data-act="approve">通过</button>
-        <button class="btn red" data-name="${u.name}" data-act="deny">拒绝</button>`)).join('')
-    : '<div class="empty">没有待审核的申请</div>';
-  $('#panel-1').innerHTML = groups[1].length
-    ? groups[1].map((u) => rowHtml(u, `
-        <button class="btn red" data-name="${u.name}" data-act="deny">撤销</button>`)).join('')
-    : '<div class="empty">还没有已通过的账号</div>';
-  $('#panel-2').innerHTML = groups[2].length
-    ? groups[2].map((u) => rowHtml(u, `
-        <button class="btn green" data-name="${u.name}" data-act="approve">重新通过</button>`)).join('')
-    : '<div class="empty">没有已拒绝的申请</div>';
+  $('#panel-0').innerHTML = tableHtml(groups[0], (u) => `
+    <button class="btn green" data-name="${u.name}" data-act="approve">通过</button>
+    <button class="btn red" data-name="${u.name}" data-act="deny">拒绝</button>`);
+  $('#panel-1').innerHTML = tableHtml(groups[1], (u) => `
+    <button class="btn red" data-name="${u.name}" data-act="deny">撤销</button>`);
+  $('#panel-2').innerHTML = tableHtml(groups[2], (u) => `
+    <button class="btn green" data-name="${u.name}" data-act="approve">重新通过</button>`);
 }
 function showLogin() { $('#login-box').hidden = false; $('#review-box').hidden = true; }
-function showReview() { $('#login-box').hidden = true; $('#review-box').hidden = false; setTab(0); refresh(); }
+function showReview() { $('#login-box').hidden = true; $('#review-box').hidden = false; refresh(); }
 $('#ad-login').addEventListener('click', async () => {
   const j = await api({ type: 'login', name: $('#ad-name').value.trim(), password: $('#ad-pass').value });
   if (!j.ok) { toast(j.msg || '登录失败'); return; }
