@@ -1060,6 +1060,10 @@ function initOnline() {
     postApi({ type: 'setAIs', cid: myCid, ais });
   });
   $('#btn-lobby-start').addEventListener('click', () => postApi({ type: 'start', cid: myCid }));
+  // 退出大厅回到主页面（加入界面）
+  $('#btn-lobby-leave').addEventListener('click', () => {
+    if (confirm('确定退出大厅吗？')) location.reload();
+  });
 }
 
 /* ==================== 初始化 ==================== */
