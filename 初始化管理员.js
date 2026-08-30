@@ -1,10 +1,11 @@
 'use strict';
 
 /* ================================================================
-   初始化管理员账号
+   初始化管理员账号（写入 MySQL）
    用法：node 初始化管理员.js 用户名 密码
    例：  node 初始化管理员.js admin mypass123
-   账号数据保存在 data/users.json（密码加密存储，不保存明文）
+   数据库连接信息读取 data/db.json（与 server.js 相同），
+   格式：{ "host": "127.0.0.1", "port": 3306, "user": "root", "password": "密码", "database": "splendor" }
    ================================================================ */
 
 const crypto = require('crypto');
@@ -24,29 +25,58 @@ if (!password || password.length < 6) {
   process.exit(1);
 }
 
-const DATA_DIR = path.join(__dirname, 'data');
-const FILE = path.join(DATA_DIR, 'users.json');
+// 读取全局配置 + 本地 db.json
+global.window = global;
+require('./config.js');
+let dbConfig = Object.assign({}, global.MYSQL || {});
+try {
+  const local = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'db.json'), 'utf8'));
+  dbConfig = Object.assign(dbConfig, local);
+} catch (e) { /* 没有本地配置就用默认 */ }
 
-let db = { users: [] };
-try { db = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch (e) { /* 首次运行 */ }
+const mysql = require('mysql2/promise');
 
-if (db.users.some((u) => u.name === name)) {
-  console.log('该用户名已存在。如需重置密码，请手动编辑 data/users.json。');
-  process.exit(1);
-}
-
-const salt = crypto.randomBytes(16).toString('hex');
-db.users.push({
-  name,
-  salt,
-  hash: crypto.scryptSync(password, salt, 64).toString('hex'),
-  role: 'admin',
-  status: 'approved',
-  welcomed: true,
-  createdAt: new Date().toISOString().slice(0, 10),
-});
-
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-fs.writeFileSync(FILE, JSON.stringify(db, null, 2), 'utf8');
-console.log('管理员账号已创建：' + name);
-console.log('现在可以启动服务器，用这个账号登录 ' + __dirname + '/admin.html 进行审核。');
+(async () => {
+  let pool = null;
+  try {
+    const bare = mysql.createPool(Object.assign({}, dbConfig, { database: undefined, waitForConnections: true, connectionLimit: 5 }));
+    await bare.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+    await bare.end();
+    pool = mysql.createPool(Object.assign({}, dbConfig, { waitForConnections: true, connectionLimit: 5, charset: 'utf8mb4' }));
+    await pool.query(`CREATE TABLE IF NOT EXISTS users (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(16) NOT NULL UNIQUE,
+      salt VARCHAR(64) NOT NULL,
+      hash VARCHAR(128) NOT NULL,
+      role VARCHAR(8) NOT NULL DEFAULT 'user',
+      status VARCHAR(10) NOT NULL DEFAULT 'pending',
+      real_name VARCHAR(20) NOT NULL DEFAULT '',
+      grad_year INT NOT NULL DEFAULT 0,
+      nickname VARCHAR(20) NOT NULL DEFAULT '',
+      remark VARCHAR(40) NOT NULL DEFAULT '',
+      source VARCHAR(10) NOT NULL DEFAULT 'public',
+      welcomed TINYINT(1) NOT NULL DEFAULT 0,
+      created_at VARCHAR(20) NOT NULL DEFAULT ''
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+    const [rows] = await pool.query('SELECT id FROM users WHERE name = ? LIMIT 1', [name]);
+    if (rows.length) {
+      console.log('该用户名已存在。如需重置密码，请用管理员在数据库里操作或联系开发者。');
+      await pool.end();
+      process.exit(1);
+    }
+    const salt = crypto.randomBytes(16).toString('hex');
+    await pool.query(
+      'INSERT INTO users (name, salt, hash, role, status, welcomed, created_at) VALUES (?,?,?,?,?,?,?)',
+      [name, salt, crypto.scryptSync(password, salt, 64).toString('hex'), 'admin', 'approved', 1, new Date().toISOString().slice(0, 10)]);
+    console.log('管理员账号已创建：' + name);
+    console.log('现在可以启动服务器，用这个账号登录 admin.html 进行审核。');
+    await pool.end();
+    process.exit(0);
+  } catch (e) {
+    console.error('MySQL 连接失败：' + e.message);
+    console.error('请在 data/db.json 里配置正确的连接信息：');
+    console.error('{ "host": "127.0.0.1", "port": 3306, "user": "root", "password": "你的密码", "database": "splendor" }');
+    if (pool) await pool.end().catch(() => {});
+    process.exit(1);
+  }
+})();

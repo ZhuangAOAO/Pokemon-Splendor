@@ -189,82 +189,105 @@ function handleDisconnect(room, conn) {
   }
 }
 
-/* ==================== 账号系统 ==================== */
-const DATA_DIR = path.join(ROOT, 'data');
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
-const STATS_FILE = path.join(DATA_DIR, 'stats.json');
-const sessions = new Map(); // token -> {name, role}
+/* ==================== 数据库（MySQL） ==================== */
+// 连接信息默认在 data/db.json（已被 .gitignore 忽略），格式：
+// { "host": "127.0.0.1", "port": 3306, "user": "root", "password": "密码", "database": "splendor" }
+let dbConfig = Object.assign({}, global.MYSQL || {});
+try {
+  const localDb = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'db.json'), 'utf8'));
+  dbConfig = Object.assign(dbConfig, localDb);
+} catch (e) { /* 没有本地配置就用默认 */ }
+const mysql = require('mysql2/promise');
+let pool = null;
 
-/* ---- 战绩（data/stats.json，按账号记录） ---- */
-function loadStats() {
-  try { return JSON.parse(fs.readFileSync(STATS_FILE, 'utf8')); }
-  catch (e) { return { players: {} }; }
+async function initDb() {
+  // 先连服务器（不指定库）确保数据库存在；只创建自己的库，不碰其他数据
+  const bare = mysql.createPool(Object.assign({}, dbConfig, { database: undefined, waitForConnections: true, connectionLimit: 5 }));
+  await bare.query(`CREATE DATABASE IF NOT EXISTS \`${dbConfig.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+  await bare.end();
+  pool = mysql.createPool(Object.assign({}, dbConfig, { waitForConnections: true, connectionLimit: 5, charset: 'utf8mb4' }));
+  await pool.query(`CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(16) NOT NULL UNIQUE,
+    salt VARCHAR(64) NOT NULL,
+    hash VARCHAR(128) NOT NULL,
+    role VARCHAR(8) NOT NULL DEFAULT 'user',
+    status VARCHAR(10) NOT NULL DEFAULT 'pending',
+    real_name VARCHAR(20) NOT NULL DEFAULT '',
+    grad_year INT NOT NULL DEFAULT 0,
+    nickname VARCHAR(20) NOT NULL DEFAULT '',
+    remark VARCHAR(40) NOT NULL DEFAULT '',
+    source VARCHAR(10) NOT NULL DEFAULT 'public',
+    welcomed TINYINT(1) NOT NULL DEFAULT 0,
+    created_at VARCHAR(20) NOT NULL DEFAULT ''
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS stats (
+    account VARCHAR(16) NOT NULL PRIMARY KEY,
+    nickname VARCHAR(20) NOT NULL DEFAULT '',
+    wins INT NOT NULL DEFAULT 0,
+    games INT NOT NULL DEFAULT 0,
+    points INT NOT NULL DEFAULT 0,
+    evolutions INT NOT NULL DEFAULT 0
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  logEvent(null, '数据库', `MySQL 连接成功（数据库 ${dbConfig.database}）`);
 }
-function saveStats(stats) {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(STATS_FILE, JSON.stringify(stats, null, 2), 'utf8');
+async function findUserDb(name) {
+  const [rows] = await pool.query('SELECT * FROM users WHERE name = ? LIMIT 1', [name]);
+  return rows[0] || null;
 }
 // 终局记录战绩：胜场（平局共享）、场次、总分、进化次数
-function recordGameStats(room) {
+async function recordGameStats(room) {
   const S = room.session.S;
   if (!S || !S.over) return;
-  const stats = loadStats();
   const rank = S.players.slice().sort((a, b) =>
     (b.points - a.points) || (b.evolutions - a.evolutions) || (a.cards.length - b.cards.length));
   const top = rank[0];
   const winners = rank.filter((p) => p.points === top.points && p.evolutions === top.evolutions && p.cards.length === top.cards.length)
     .map((p) => p.name);
-  S.players.forEach((p, i) => {
-    if (p.isAI) return;
+  for (let i = 0; i < S.players.length; i++) {
+    const p = S.players[i];
+    if (p.isAI) continue;
     const conn = [...room.conns.values()].find((c) => c.seat === i);
     const account = conn ? conn.accountName : null;
-    if (!account) return;
-    const st = stats.players[account] || { wins: 0, games: 0, points: 0, evolutions: 0, nickname: p.name };
-    st.games++; st.points += p.points; st.evolutions += p.evolutions; st.nickname = p.name;
-    if (winners.includes(p.name)) st.wins++;
-    stats.players[account] = st;
-  });
-  saveStats(stats);
+    if (!account) continue;
+    const win = winners.includes(p.name) ? 1 : 0;
+    try {
+      await pool.query(`INSERT INTO stats (account, nickname, wins, games, points, evolutions) VALUES (?,?,?,?,?,?)
+        ON DUPLICATE KEY UPDATE nickname=VALUES(nickname), wins=wins+VALUES(wins), games=games+VALUES(games),
+        points=points+VALUES(points), evolutions=evolutions+VALUES(evolutions)`,
+        [account, p.name, win, 1, p.points, p.evolutions]);
+    } catch (e) { console.error('[战绩] 写入失败：' + e.message); }
+  }
   logEvent(room, '战绩', '本局战绩已记录');
 }
 // 排行榜：胜场 → 胜率 → 场次排序
-function handleLeaderboard(body) {
-  const u = authUser(body.token);
+async function handleLeaderboard(body) {
+  const u = await authUser(body.token);
   if (!u) return { ok: false, msg: '请先登录' };
-  const stats = loadStats();
-  const list = Object.entries(stats.players).map(([account, s]) => ({
-    account,
-    nickname: s.nickname || account,
-    wins: s.wins || 0,
-    games: s.games || 0,
+  const [rows] = await pool.query('SELECT * FROM stats');
+  const list = rows.map((s) => ({
+    account: s.account,
+    nickname: s.nickname || s.account,
+    wins: s.wins,
+    games: s.games,
     winRate: s.games ? Math.round((s.wins / s.games) * 100) : 0,
     avgPoints: s.games ? Number((s.points / s.games).toFixed(1)) : 0,
-    evolutions: s.evolutions || 0,
+    evolutions: s.evolutions,
   }));
   list.sort((a, b) => (b.wins - a.wins) || (b.winRate - a.winRate) || (b.games - a.games));
   return { ok: true, list: list.slice(0, 50) };
 }
 
-function loadUsers() {
-  try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); }
-  catch (e) { return { users: [] }; }
-}
-function saveUsers(db) {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  fs.writeFileSync(USERS_FILE, JSON.stringify(db, null, 2), 'utf8');
-}
 function hashPassword(password, salt) {
   return crypto.scryptSync(String(password), salt, 64).toString('hex');
 }
-function findUser(db, name) { return db.users.find((u) => u.name === name); }
-function authUser(token) {
+async function authUser(token) {
   const s = sessions.get(token);
   if (!s) return null;
-  const db = loadUsers();
-  const u = findUser(db, s.name);
-  return u ? { name: u.name, role: u.role, status: u.status } : null;
+  const rec = await findUserDb(s.name);
+  return rec ? { name: rec.name, role: rec.role, status: rec.status } : null;
 }
-function handleRegister(body) {
+async function handleRegister(body) {
   const name = String(body.name || '').trim();
   const password = String(body.password || '');
   const realName = String(body.realName || '').trim();
@@ -273,61 +296,62 @@ function handleRegister(body) {
   if (password.length < 6) return { ok: false, msg: '密码至少 6 位' };
   if (realName.length < 2 || realName.length > 12) return { ok: false, msg: '请填写真实姓名（2~12 字）' };
   if (!/^\d{4}$/.test(gradYear) || +gradYear < 1990 || +gradYear > 2030) return { ok: false, msg: '届数请填写 4 位高中毕业年份（如 2023）' };
-  const db = loadUsers();
-  if (findUser(db, name)) return { ok: false, msg: '这个名字已被注册' };
+  if (await findUserDb(name)) return { ok: false, msg: '这个名字已被注册' };
   const salt = crypto.randomBytes(16).toString('hex');
-  db.users.push({ name, salt, hash: hashPassword(password, salt), role: 'user', status: 'pending', welcomed: false, realName, gradYear: +gradYear, createdAt: localStamp() });
-  saveUsers(db);
-  logEvent(null, '账号', `${name}（${realName} · ${gradYear}届）提交注册申请，等待审核`);
+  try {
+    await pool.query(
+      'INSERT INTO users (name, salt, hash, role, status, real_name, grad_year, welcomed, source, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      [name, salt, hashPassword(password, salt), 'user', 'pending', realName, +gradYear, 0, 'public', localStamp()]);
+  } catch (e) { console.error('[账号] 注册写入失败：' + e.message); return { ok: false, msg: '注册失败，请稍后再试' }; }
+  logEvent(null, '账号', name + '（' + realName + ' · ' + gradYear + '届）提交注册申请，等待审核');
   return { ok: true, msg: '申请已提交，请等待管理员审核' };
 }
-function handleLogin(body) {
+async function handleLogin(body) {
   const name = String(body.name || '').trim();
   const password = String(body.password || '');
-  const db = loadUsers();
-  const u = findUser(db, name);
+  const u = await findUserDb(name);
   if (!u || u.hash !== hashPassword(password, u.salt)) return { ok: false, msg: '用户名或密码错误' };
   if (u.status === 'pending') return { ok: false, msg: '你的申请还在审核中，请等待管理员通过' };
   if (u.status === 'denied') return { ok: false, msg: '你的申请未通过审核' };
   const token = crypto.randomUUID();
   sessions.set(token, { name: u.name, role: u.role });
   let welcome = false;
-  if (!u.welcomed) { u.welcomed = true; saveUsers(db); welcome = true; }
-  logEvent(null, '账号', `${name} 登录`);
-  return { ok: true, token, name: u.name, role: u.role, nickname: u.nickname || u.realName || u.name, welcome };
+  if (!u.welcomed) {
+    welcome = true;
+    await pool.query('UPDATE users SET welcomed = 1 WHERE name = ?', [u.name]);
+  }
+  logEvent(null, '账号', name + ' 登录');
+  return { ok: true, token, name: u.name, role: u.role, nickname: u.nickname || u.real_name || u.name, welcome };
 }
-function handleWhoami(body) {
-  const u = authUser(body.token);
+async function handleWhoami(body) {
+  const u = await authUser(body.token);
   if (!u) return { ok: false, msg: '登录已过期' };
-  const db = loadUsers();
-  const rec = findUser(db, u.name);
-  return { ok: true, name: u.name, role: u.role, nickname: (rec && (rec.nickname || rec.realName)) || u.name };
+  const rec = await findUserDb(u.name);
+  return { ok: true, name: u.name, role: u.role, nickname: (rec && (rec.nickname || rec.real_name)) || u.name };
 }
 // 设置游戏内昵称（默认是真实姓名）
-function handleSetNickname(body) {
-  const u = authUser(body.token);
+async function handleSetNickname(body) {
+  const u = await authUser(body.token);
   if (!u) return { ok: false, msg: '登录已过期' };
   const nickname = String(body.nickname || '').trim();
   if (nickname.length < 2 || nickname.length > 12) return { ok: false, msg: '昵称需 2~12 个字符' };
-  const db = loadUsers();
-  const rec = findUser(db, u.name);
-  if (!rec) return { ok: false, msg: '账号不存在' };
-  rec.nickname = nickname;
-  saveUsers(db);
-  logEvent(null, '账号', `${u.name} 设置昵称为 ${nickname}`);
+  await pool.query('UPDATE users SET nickname = ? WHERE name = ?', [nickname, u.name]);
+  logEvent(null, '账号', u.name + ' 设置昵称为 ' + nickname);
   return { ok: true, nickname };
 }
-function handleLogout(body) {
-  sessions.delete(body.token);
-  return { ok: true };
-}
-function handleAdminList(body) {
-  const u = authUser(body.token);
+async function handleAdminList(body) {
+  const u = await authUser(body.token);
   if (!u || u.role !== 'admin') return { ok: false, msg: '需要管理员权限' };
-  const db = loadUsers();
-  const users = db.users.filter((x) => x.role !== 'admin')
-    .map((x) => ({ name: x.name, realName: x.realName || '—', gradYear: x.gradYear || 0, remark: x.remark || '', source: x.source || 'public', status: x.status, createdAt: x.createdAt }))
-    .sort((a, b) => (a.status === 'pending' ? -1 : 1) - (b.status === 'pending' ? -1 : 1) || a.name.localeCompare(b.name));
+  const [rows] = await pool.query("SELECT * FROM users WHERE role != ? ORDER BY name", ['admin']);
+  const users = rows.map((x) => ({
+    name: x.name,
+    realName: x.real_name || '—',
+    gradYear: x.grad_year || 0,
+    remark: x.remark || '',
+    source: x.source || 'public',
+    status: x.status,
+    createdAt: x.created_at,
+  })).sort((a, b) => (a.status === 'pending' ? -1 : 1) - (b.status === 'pending' ? -1 : 1) || a.name.localeCompare(b.name));
   const stats = {
     pending: users.filter((x) => x.status === 'pending').length,
     approved: users.filter((x) => x.status === 'approved').length,
@@ -336,64 +360,59 @@ function handleAdminList(body) {
   return { ok: true, users, stats };
 }
 // 修改密码（登录用户自助）
-function handleChangePassword(body) {
-  const u = authUser(body.token);
+async function handleChangePassword(body) {
+  const u = await authUser(body.token);
   if (!u) return { ok: false, msg: '登录已过期' };
   const oldPassword = String(body.oldPassword || '');
   const newPassword = String(body.newPassword || '');
   if (newPassword.length < 6) return { ok: false, msg: '新密码至少 6 位' };
-  const db = loadUsers();
-  const rec = findUser(db, u.name);
+  const rec = await findUserDb(u.name);
   if (!rec) return { ok: false, msg: '账号不存在' };
   if (rec.hash !== hashPassword(oldPassword, rec.salt)) return { ok: false, msg: '原密码不正确' };
-  rec.salt = crypto.randomBytes(16).toString('hex');
-  rec.hash = hashPassword(newPassword, rec.salt);
-  saveUsers(db);
-  logEvent(null, '账号', `${u.name} 修改了密码`);
+  const salt = crypto.randomBytes(16).toString('hex');
+  await pool.query('UPDATE users SET salt = ?, hash = ? WHERE name = ?', [salt, hashPassword(newPassword, salt), u.name]);
+  logEvent(null, '账号', u.name + ' 修改了密码');
   return { ok: true, msg: '密码已修改' };
 }
 // 后门注册：管理员为非一中用户直接创建账号（即时通过，可填身份备注）
-function handleBackdoorRegister(body) {
-  const u = authUser(body.token);
+async function handleBackdoorRegister(body) {
+  const u = await authUser(body.token);
   if (!u || u.role !== 'admin') return { ok: false, msg: '需要管理员权限' };
   const name = String(body.name || '').trim();
   const password = String(body.password || '');
   const remark = String(body.remark || '').trim().slice(0, 30);
   if (name.length < 2 || name.length > 12) return { ok: false, msg: '用户名需 2~12 个字符' };
   if (password.length < 6) return { ok: false, msg: '密码至少 6 位' };
-  const db = loadUsers();
-  if (findUser(db, name)) return { ok: false, msg: '这个名字已被注册' };
+  if (await findUserDb(name)) return { ok: false, msg: '这个名字已被注册' };
   const salt = crypto.randomBytes(16).toString('hex');
-  db.users.push({ name, salt, hash: hashPassword(password, salt), role: 'user', status: 'approved', welcomed: false, source: 'backdoor', remark, createdAt: localStamp() });
-  saveUsers(db);
-  logEvent(null, '账号', `管理员通过后门注册创建了账号 ${name}${remark ? '（' + remark + '）' : ''}`);
+  try {
+    await pool.query(
+      'INSERT INTO users (name, salt, hash, role, status, welcomed, source, remark, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+      [name, salt, hashPassword(password, salt), 'user', 'approved', 0, 'backdoor', remark, localStamp()]);
+  } catch (e) { console.error('[账号] 后门注册写入失败：' + e.message); return { ok: false, msg: '创建失败，请稍后再试' }; }
+  logEvent(null, '账号', '管理员通过后门注册创建了账号 ' + name + (remark ? '（' + remark + '）' : ''));
   return { ok: true, msg: '账号 ' + name + ' 已创建并直接通过' };
 }
-function handleAdminReview(body) {
-  const u = authUser(body.token);
+async function handleAdminReview(body) {
+  const u = await authUser(body.token);
   if (!u || u.role !== 'admin') return { ok: false, msg: '需要管理员权限' };
   if (!['approve', 'deny'].includes(body.action)) return { ok: false, msg: '参数错误' };
-  const db = loadUsers();
-  const target = findUser(db, String(body.name || ''));
+  const target = await findUserDb(String(body.name || ''));
   if (!target) return { ok: false, msg: '没有这个用户' };
   if (target.role === 'admin') return { ok: false, msg: '不能操作管理员账号' };
   const newStatus = body.action === 'approve' ? 'approved' : 'denied';
   if (target.status === newStatus) return { ok: false, msg: '该用户已经是这个状态' };
-  target.status = newStatus;
-  target.welcomed = false;
-  saveUsers(db);
-  logEvent(null, '账号', `${target.name} 被管理员${newStatus === 'approved' ? '通过' : '拒绝'}`);
+  await pool.query('UPDATE users SET status = ?, welcomed = 0 WHERE name = ?', [newStatus, target.name]);
+  logEvent(null, '账号', target.name + ' 被管理员' + (newStatus === 'approved' ? '通过' : '拒绝'));
   return { ok: true };
 }
-
 /* ==================== 请求处理 ==================== */
-function handleJoin(body) {
+async function handleJoin(body) {
   // 联机必须先登录：显示名 = 昵称（未设置时用真实姓名/账号名）
-  const u = authUser(body.token);
+  const u = await authUser(body.token);
   if (!u) return { ok: false, msg: '请先登录' };
-  const db = loadUsers();
-  const rec = findUser(db, u.name);
-  const name = (rec && (rec.nickname || rec.realName)) || u.name;
+  const rec = await findUserDb(u.name);
+  const name = (rec && (rec.nickname || rec.real_name)) || u.name;
   if (!name) return { ok: false, msg: '名字不能为空' };
   let room = body.roomId ? rooms.get(String(body.roomId)) : null;
   // 没有房间号：创建新房间（isPublic 由客户端指定）
@@ -675,23 +694,23 @@ function handleSSE(req, res, u) {
 function handleApi(req, res) {
   let body = '';
   req.on('data', (chunk) => { body += chunk; if (body.length > 10000) req.destroy(); });
-  req.on('end', () => {
+  req.on('end', async () => {
     let obj;
     try { obj = JSON.parse(body || '{}'); } catch (e) { obj = {}; }
     const entry = connIndex.get(obj.cid);
     const conn = entry && entry.conn;
     let result;
-    if (obj.type === 'register') result = handleRegister(obj);
-    else if (obj.type === 'login') result = handleLogin(obj);
-    else if (obj.type === 'whoami') result = handleWhoami(obj);
-    else if (obj.type === 'setNickname') result = handleSetNickname(obj);
-    else if (obj.type === 'changePassword') result = handleChangePassword(obj);
-    else if (obj.type === 'leaderboard') result = handleLeaderboard(obj);
+    if (obj.type === 'register') result = await handleRegister(obj);
+    else if (obj.type === 'login') result = await handleLogin(obj);
+    else if (obj.type === 'whoami') result = await handleWhoami(obj);
+    else if (obj.type === 'setNickname') result = await handleSetNickname(obj);
+    else if (obj.type === 'changePassword') result = await handleChangePassword(obj);
+    else if (obj.type === 'leaderboard') result = await handleLeaderboard(obj);
     else if (obj.type === 'logout') result = handleLogout(obj);
-    else if (obj.type === 'adminList') result = handleAdminList(obj);
-    else if (obj.type === 'adminReview') result = handleAdminReview(obj);
-    else if (obj.type === 'backdoorRegister') result = handleBackdoorRegister(obj);
-    else if (obj.type === 'join') result = handleJoin(obj);
+    else if (obj.type === 'adminList') result = await handleAdminList(obj);
+    else if (obj.type === 'adminReview') result = await handleAdminReview(obj);
+    else if (obj.type === 'backdoorRegister') result = await handleBackdoorRegister(obj);
+    else if (obj.type === 'join') result = await handleJoin(obj);
     else if (obj.type === 'listRooms') result = handleListRooms();
     else if (!obj.type) result = { ok: false, msg: '参数错误' };
     else if (!conn || !conn.connected) result = { ok: false, msg: '连接已失效，请刷新页面重新加入' };
@@ -726,6 +745,16 @@ const server = http.createServer((req, res) => {
   });
 });
 
+// 先连数据库（建库建表），失败则给出清晰提示后退出
+initDb().then(() => {
+  startServer();
+}).catch((e) => {
+  console.error('[数据库] MySQL 连接失败：' + e.message);
+  console.error('[数据库] 请在 data/db.json 里配置正确的连接信息：');
+  console.error('[数据库] { "host": "127.0.0.1", "port": 3306, "user": "root", "password": "你的密码", "database": "splendor" }');
+  process.exit(1);
+});
+function startServer() {
 server.listen(PORT, () => {
   console.log('════════════════════════════════════════════');
   console.log('  璀璨宝石·宝可梦 联机服务器已启动！');
@@ -742,3 +771,5 @@ server.listen(PORT, () => {
   console.log('  按 Ctrl+C 停止服务器');
   console.log('════════════════════════════════════════════');
 });
+
+}

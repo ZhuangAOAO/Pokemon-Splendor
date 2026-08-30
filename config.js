@@ -57,6 +57,18 @@ window.SOUND = {
   volume: 0.4,               // 音量 0~1
 };
 
+/* ---------- 6. 数据库（MySQL） ----------
+   连接信息默认放在 data/db.json（已被 .gitignore 忽略，不会进 git），格式：
+   { "host": "127.0.0.1", "port": 3306, "user": "root", "password": "你的密码", "database": "splendor" }
+   没有该文件时使用下面的默认值 */
+window.MYSQL = {
+  host: '127.0.0.1',
+  port: 3306,
+  user: 'root',
+  password: '',
+  database: 'splendor',
+};
+
 /* ---------- 5. 卡牌表（90 张） ----------
    每一行 = 一张卡，格式：
    [名称, 阶(1/2/3/4/5), 分数, 红, 蓝, 黑, 粉, 黄, 加成色, 大师球费]
