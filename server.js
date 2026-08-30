@@ -257,13 +257,15 @@ function handleAdminList(body) {
   const u = authUser(body.token);
   if (!u || u.role !== 'admin') return { ok: false, msg: '需要管理员权限' };
   const db = loadUsers();
-  const pending = db.users.filter((x) => x.status === 'pending').map((x) => ({ name: x.name, realName: x.realName || '—', gradYear: x.gradYear || 0, createdAt: x.createdAt }));
+  const users = db.users.filter((x) => x.role !== 'admin')
+    .map((x) => ({ name: x.name, realName: x.realName || '—', gradYear: x.gradYear || 0, status: x.status, createdAt: x.createdAt }))
+    .sort((a, b) => (a.status === 'pending' ? -1 : 1) - (b.status === 'pending' ? -1 : 1) || a.name.localeCompare(b.name));
   const stats = {
-    pending: pending.length,
-    approved: db.users.filter((x) => x.status === 'approved').length,
-    denied: db.users.filter((x) => x.status === 'denied').length,
+    pending: users.filter((x) => x.status === 'pending').length,
+    approved: users.filter((x) => x.status === 'approved').length,
+    denied: users.filter((x) => x.status === 'denied').length,
   };
-  return { ok: true, pending, stats };
+  return { ok: true, users, stats };
 }
 function handleAdminReview(body) {
   const u = authUser(body.token);
@@ -271,12 +273,14 @@ function handleAdminReview(body) {
   if (!['approve', 'deny'].includes(body.action)) return { ok: false, msg: '参数错误' };
   const db = loadUsers();
   const target = findUser(db, String(body.name || ''));
-  if (!target) return { ok: false, msg: '没有这个申请' };
-  if (target.status !== 'pending') return { ok: false, msg: '该申请已处理' };
-  target.status = body.action === 'approve' ? 'approved' : 'denied';
+  if (!target) return { ok: false, msg: '没有这个用户' };
+  if (target.role === 'admin') return { ok: false, msg: '不能操作管理员账号' };
+  const newStatus = body.action === 'approve' ? 'approved' : 'denied';
+  if (target.status === newStatus) return { ok: false, msg: '该用户已经是这个状态' };
+  target.status = newStatus;
   target.welcomed = false;
   saveUsers(db);
-  logEvent(null, '账号', `${target.name} 的申请被管理员${body.action === 'approve' ? '通过' : '拒绝'}`);
+  logEvent(null, '账号', `${target.name} 被管理员${newStatus === 'approved' ? '通过' : '拒绝'}`);
   return { ok: true };
 }
 
