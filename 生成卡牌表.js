@@ -146,6 +146,12 @@ window.NETWORK = {
   maxPlayers: 4,             // 最多几个人类玩家
 };
 
+/* ---------- 5. 音效（WebAudio 合成，无需音频文件） ---------- */
+window.SOUND = {
+  enabled: true,             // 默认开启（玩家可在顶栏手动开关）
+  volume: 0.4,               // 音量 0~1
+};
+
 `;
 
 const CARD_HEADER = `/* ---------- 5. 卡牌表（80 张） ----------

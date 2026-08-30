@@ -10,6 +10,49 @@ const $ = (sel) => document.querySelector(sel);
 const ONLINE = location.protocol !== 'file:';
 const TIER_NAMES = { 1: '一阶', 2: '二阶', 3: '三阶', 4: '稀有', 5: '传说' };
 
+/* ==================== 音效（WebAudio 合成，零资源文件） ==================== */
+const SOUND_CFG = window.SOUND || { enabled: true, volume: 0.4 };
+let audioCtx = null;
+let soundOn = localStorage.getItem('spSound') ? (localStorage.getItem('spSound') === 'on') : (SOUND_CFG.enabled !== false);
+function ensureAudio() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    audioCtx = new AC();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+function tone(freq, dur, type, vol, when) {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const t0 = ctx.currentTime + (when || 0);
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type || 'sine';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(vol, t0 + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(t0);
+  osc.stop(t0 + dur + 0.05);
+}
+function playSound(name) {
+  if (!soundOn) return;
+  const v = SOUND_CFG.volume;
+  switch (name) {
+    case 'take': tone(520, 0.09, 'triangle', v); tone(680, 0.09, 'triangle', v, 0.07); break;
+    case 'buy': tone(523, 0.12, 'sine', v); tone(659, 0.12, 'sine', v, 0.1); tone(784, 0.22, 'sine', v, 0.2); break;
+    case 'reserve': tone(440, 0.1, 'square', v * 0.5); break;
+    case 'evolve': tone(392, 0.1, 'triangle', v); tone(523, 0.1, 'triangle', v, 0.09); tone(659, 0.1, 'triangle', v, 0.18); tone(784, 0.25, 'triangle', v, 0.27); break;
+    case 'master': tone(880, 0.1, 'sine', v); tone(1175, 0.16, 'sine', v, 0.08); break;
+    case 'turn': tone(784, 0.12, 'sine', v * 0.8); break;
+    case 'win': [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.22, 'triangle', v, i * 0.13)); break;
+    case 'error': tone(170, 0.18, 'sawtooth', v * 0.5); break;
+  }
+}
+
 /* ---- 联机身份 ---- */
 let mySeat = -1;   // 联机：自己的座位号
 let myName = '';   // 联机：自己的账号名
@@ -22,6 +65,7 @@ let connOk = true; // 联机：连接状态
 let overShown = false; // 本局结算框是否已弹出
 let prevSnap = null;      // 上一次状态快照（漂移动画差分用）
 const lastMarketIds = {}; // 每个市场槽位上次的卡 id（只给新补的卡播入场动画）
+let prevMyTurn = false;   // 轮到自己时的提示音触发
 
 /* ---- 核心事件钩子：本地模式下由 game-core 驱动界面 ---- */
 HOOKS.onStateChanged = () => { if (!ONLINE) render(); };
@@ -148,6 +192,7 @@ function floatDiff() {
     if (who < 0) return;
     const from = poolRects[c], to = boardRect(who);
     if (!from || !to) return;
+    playSound(c === 'master' ? 'master' : 'take');
     for (let k = 0; k < taken; k++) spawnBallFloat(c, from, to, k * 240);
   });
   // 卡：玩家新增（收服/预约/进化）→ 从市场槽位（或盲抽的牌堆标签）飞向玩家
@@ -155,6 +200,10 @@ function floatDiff() {
     const prevIds = new Set((prev.players[i].cardIds || []).concat(prev.players[i].resIds || []));
     const newIds = (p2.cardIds || []).concat(p2.resIds || []).filter((id) => !prevIds.has(id));
     if (!newIds.length) return;
+    // 音效：进化优先于预约，其余按收服处理
+    if ((p2.evolutions || 0) > (prev.players[i].evolutions || 0)) playSound('evolve');
+    else if (newIds.some((id) => (p2.resIds || []).includes(id))) playSound('reserve');
+    else playSound('buy');
     const to = boardRect(i);
     if (!to) return;
     newIds.forEach((id, k) => {
@@ -182,6 +231,9 @@ function renderHeader() {
   $('#turn-info').innerHTML = `轮到 <b>${p.name}</b>${myTurn ? (p.isAI ? '（电脑思考中…）' : '（请行动）') : ''}`;
   $('#target-info').textContent = `目标 ${S.target} 分`;
   $('#end-banner').hidden = !S.endTriggered;
+  // 轮到自己时的提示音（上升沿触发）
+  if (myTurn && !prevMyTurn && !S.over) playSound('turn');
+  prevMyTurn = myTurn;
   // 联机对局进行中：所有人都可以发起结束投票（投票进行中隐藏按钮，横幅代替）
   const canStop = ONLINE && S && !S.over && !(room && room.vote);
   $('#btn-stop-game').hidden = !canStop;
@@ -669,6 +721,7 @@ function hideModals() { $('#modal-overlay').hidden = true; }
 function showGameOver() {
   if (!S || overShown) return;
   overShown = true;
+  playSound('win');
   // 平局判定（官方规则）：先比分数 → 再比进化次数 → 再比宝可梦数量
   const rank = S.players.slice().sort((a, b) =>
     (b.points - a.points) || (b.evolutions - a.evolutions) || (a.cards.length - b.cards.length));
@@ -887,10 +940,11 @@ async function postApi(obj) {
       body: JSON.stringify(obj),
     });
     const j = await r.json().catch(() => ({}));
-    if (!j.ok) toast(j.msg || '请求失败');
+    if (!j.ok) { toast(j.msg || '请求失败'); playSound('error'); }
     return j;
   } catch (err) {
     toast('与服务器通信失败');
+    playSound('error');
     return { ok: false };
   }
 }
@@ -1159,6 +1213,56 @@ function init() {
     if (confirm('发起结束对局投票？需要所有在线玩家同意才能结束。')) {
       postApi({ type: 'voteEnd', cid: myCid });
     }
+  });
+  // 音效开关
+  const soundBtn = $('#btn-sound');
+  soundBtn.textContent = soundOn ? '音效：开' : '音效：关';
+  soundBtn.addEventListener('click', () => {
+    soundOn = !soundOn;
+    localStorage.setItem('spSound', soundOn ? 'on' : 'off');
+    soundBtn.textContent = soundOn ? '音效：开' : '音效：关';
+    if (soundOn) playSound('turn');
+  });
+  // 修改密码
+  $('#link-password').addEventListener('click', (e) => {
+    e.preventDefault();
+    $('#password-box').hidden = !$('#password-box').hidden;
+  });
+  $('#btn-password-cancel').addEventListener('click', () => { $('#password-box').hidden = true; });
+  $('#btn-password').addEventListener('click', async () => {
+    const oldPass = $('#pw-old').value;
+    const newPass = $('#pw-new').value;
+    const newPass2 = $('#pw-new2').value;
+    if (newPass !== newPass2) { toast('两次输入的新密码不一致'); return; }
+    const j = await postApi({ type: 'changePassword', token: myToken, oldPassword: oldPass, newPassword: newPass });
+    if (j.ok) {
+      toast(j.msg || '密码已修改');
+      $('#password-box').hidden = true;
+      $('#pw-old').value = ''; $('#pw-new').value = ''; $('#pw-new2').value = '';
+    }
+  });
+  // 排行榜
+  $('#link-leaderboard').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const j = await postApi({ type: 'leaderboard', token: myToken });
+    if (!j.ok) return;
+    const list = j.list || [];
+    $('#lb-body').innerHTML = list.length
+      ? `<table class="lb-table">
+          <thead><tr><th>名次</th><th>昵称</th><th>胜场</th><th>场次</th><th>胜率</th><th>平均分</th><th>进化</th></tr></thead>
+          <tbody>${list.map((r, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td class="lb-name">${r.nickname}</td>
+              <td>${r.wins}</td>
+              <td>${r.games}</td>
+              <td>${r.winRate}%</td>
+              <td>${r.avgPoints}</td>
+              <td>${r.evolutions}</td>
+            </tr>`).join('')}</tbody>
+        </table>`
+      : '<div class="lb-empty">还没有战绩记录，快去开局吧！</div>';
+    showModal('#modal-leaderboard');
   });
   // 对局记录面板
   $('#btn-logs').addEventListener('click', () => {

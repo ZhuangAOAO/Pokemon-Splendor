@@ -96,6 +96,16 @@
       </div>
       <div id="room-list-box" hidden></div>
       <p class="footnote">创建房间 = 留空房间号；加入朋友房间 = 输入他告诉你的 4 位房间号</p>
+      <p class="footnote" id="user-links"><a href="#" id="link-password">修改密码</a> · <a href="#" id="link-leaderboard">排行榜</a></p>
+      <div id="password-box" hidden>
+        <input id="pw-old" type="password" class="row-name join-name" placeholder="原密码">
+        <input id="pw-new" type="password" class="row-name join-name" placeholder="新密码（至少 6 位）">
+        <input id="pw-new2" type="password" class="row-name join-name" placeholder="确认新密码">
+        <div class="setup-actions">
+          <button id="btn-password" class="btn primary">确认修改</button>
+          <button id="btn-password-cancel" class="btn ghost">取消</button>
+        </div>
+      </div>
       <p class="footnote" id="admin-links" hidden><a href="/admin.html">管理台</a> · <a href="/backdoor.html">后门注册</a></p>
     </div>
   </div>
@@ -138,6 +148,7 @@
     <div class="header-right">
       <span id="conn-status" hidden></span>
       <span id="target-info"></span>
+      <button id="btn-sound" class="btn ghost sm">音效：开</button>
       <button id="btn-stop-game" class="btn ghost sm" hidden>结束对局</button>
       <button id="btn-logs" class="btn ghost sm">记录</button>
       <button id="btn-rules" class="btn ghost sm js-rules">规则</button>
@@ -234,6 +245,12 @@
   <div class="modal" id="modal-logs" hidden>
     <h2>对局记录</h2>
     <div id="logs-body"></div>
+    <button class="btn primary" data-close>关闭</button>
+  </div>
+
+  <div class="modal" id="modal-leaderboard" hidden>
+    <h2>排行榜</h2>
+    <div id="lb-body"></div>
     <button class="btn primary" data-close>关闭</button>
   </div>
 </div>

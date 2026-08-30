@@ -73,7 +73,7 @@ function createRoom(isPublic) {
   // 会话事件钩子：状态一变就广播给本房所有玩家
   session.HOOKS.onStateChanged = () => broadcastRoom(room);
   session.HOOKS.onToast = (m) => { broadcastToast(room, m); logEvent(room, '事件', m); };
-  session.HOOKS.onGameOver = () => broadcastRoom(room);
+  session.HOOKS.onGameOver = () => { recordGameStats(room); broadcastRoom(room); };
   rooms.set(room.id, room);
   logEvent(null, '房间', `创建房间 ${room.id}（${room.isPublic ? '公开' : '私有'}）`);
   return room;
@@ -192,7 +192,58 @@ function handleDisconnect(room, conn) {
 /* ==================== 账号系统 ==================== */
 const DATA_DIR = path.join(ROOT, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const STATS_FILE = path.join(DATA_DIR, 'stats.json');
 const sessions = new Map(); // token -> {name, role}
+
+/* ---- 战绩（data/stats.json，按账号记录） ---- */
+function loadStats() {
+  try { return JSON.parse(fs.readFileSync(STATS_FILE, 'utf8')); }
+  catch (e) { return { players: {} }; }
+}
+function saveStats(stats) {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(STATS_FILE, JSON.stringify(stats, null, 2), 'utf8');
+}
+// 终局记录战绩：胜场（平局共享）、场次、总分、进化次数
+function recordGameStats(room) {
+  const S = room.session.S;
+  if (!S || !S.over) return;
+  const stats = loadStats();
+  const rank = S.players.slice().sort((a, b) =>
+    (b.points - a.points) || (b.evolutions - a.evolutions) || (a.cards.length - b.cards.length));
+  const top = rank[0];
+  const winners = rank.filter((p) => p.points === top.points && p.evolutions === top.evolutions && p.cards.length === top.cards.length)
+    .map((p) => p.name);
+  S.players.forEach((p, i) => {
+    if (p.isAI) return;
+    const conn = [...room.conns.values()].find((c) => c.seat === i);
+    const account = conn ? conn.accountName : null;
+    if (!account) return;
+    const st = stats.players[account] || { wins: 0, games: 0, points: 0, evolutions: 0, nickname: p.name };
+    st.games++; st.points += p.points; st.evolutions += p.evolutions; st.nickname = p.name;
+    if (winners.includes(p.name)) st.wins++;
+    stats.players[account] = st;
+  });
+  saveStats(stats);
+  logEvent(room, '战绩', '本局战绩已记录');
+}
+// 排行榜：胜场 → 胜率 → 场次排序
+function handleLeaderboard(body) {
+  const u = authUser(body.token);
+  if (!u) return { ok: false, msg: '请先登录' };
+  const stats = loadStats();
+  const list = Object.entries(stats.players).map(([account, s]) => ({
+    account,
+    nickname: s.nickname || account,
+    wins: s.wins || 0,
+    games: s.games || 0,
+    winRate: s.games ? Math.round((s.wins / s.games) * 100) : 0,
+    avgPoints: s.games ? Number((s.points / s.games).toFixed(1)) : 0,
+    evolutions: s.evolutions || 0,
+  }));
+  list.sort((a, b) => (b.wins - a.wins) || (b.winRate - a.winRate) || (b.games - a.games));
+  return { ok: true, list: list.slice(0, 50) };
+}
 
 function loadUsers() {
   try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); }
@@ -284,6 +335,23 @@ function handleAdminList(body) {
   };
   return { ok: true, users, stats };
 }
+// 修改密码（登录用户自助）
+function handleChangePassword(body) {
+  const u = authUser(body.token);
+  if (!u) return { ok: false, msg: '登录已过期' };
+  const oldPassword = String(body.oldPassword || '');
+  const newPassword = String(body.newPassword || '');
+  if (newPassword.length < 6) return { ok: false, msg: '新密码至少 6 位' };
+  const db = loadUsers();
+  const rec = findUser(db, u.name);
+  if (!rec) return { ok: false, msg: '账号不存在' };
+  if (rec.hash !== hashPassword(oldPassword, rec.salt)) return { ok: false, msg: '原密码不正确' };
+  rec.salt = crypto.randomBytes(16).toString('hex');
+  rec.hash = hashPassword(newPassword, rec.salt);
+  saveUsers(db);
+  logEvent(null, '账号', `${u.name} 修改了密码`);
+  return { ok: true, msg: '密码已修改' };
+}
 // 后门注册：管理员为非一中用户直接创建账号（即时通过，可填身份备注）
 function handleBackdoorRegister(body) {
   const u = authUser(body.token);
@@ -337,7 +405,7 @@ function handleJoin(body) {
     if (connectedHumans(room).length >= NET.maxPlayers) return { ok: false, msg: '房间已满（最多 ' + NET.maxPlayers + ' 人）' };
     if (humansList(room).some((c) => c.name === name)) return { ok: false, msg: '这个名字已被使用' };
     const cid = crypto.randomUUID();
-    const conn = { cid, name, seat: -1, res: null, connected: false, isHost: humansList(room).length === 0, room };
+    const conn = { cid, name, accountName: u.name, seat: -1, res: null, connected: false, isHost: humansList(room).length === 0, room };
     room.conns.set(cid, conn);
     connIndex.set(cid, { room, conn });
     logEvent(room, '加入', `${name}${conn.isHost ? '（房主）' : ''}，当前 ${room.conns.size} 人`);
@@ -349,7 +417,7 @@ function handleJoin(body) {
   logEvent(room, '重连', `${name} 回到座位 ${old.seat}`);
   if (room.skipTimer) { clearTimeout(room.skipTimer); room.skipTimer = null; }
   const cid = crypto.randomUUID();
-  const conn = { cid, name, seat: old.seat, res: null, connected: false, isHost: old.isHost, room };
+  const conn = { cid, name, accountName: u.name, seat: old.seat, res: null, connected: false, isHost: old.isHost, room };
   room.conns.delete(old.cid);
   connIndex.delete(old.cid);
   room.conns.set(cid, conn);
@@ -617,6 +685,8 @@ function handleApi(req, res) {
     else if (obj.type === 'login') result = handleLogin(obj);
     else if (obj.type === 'whoami') result = handleWhoami(obj);
     else if (obj.type === 'setNickname') result = handleSetNickname(obj);
+    else if (obj.type === 'changePassword') result = handleChangePassword(obj);
+    else if (obj.type === 'leaderboard') result = handleLeaderboard(obj);
     else if (obj.type === 'logout') result = handleLogout(obj);
     else if (obj.type === 'adminList') result = handleAdminList(obj);
     else if (obj.type === 'adminReview') result = handleAdminReview(obj);

@@ -166,6 +166,13 @@ h3{ font-size:14px; }
 .reg-notice b{ color:#8a5a00; }
 #admin-entry{ color:var(--ink-faint); font-size:12px; }
 #admin-entry:hover{ color:var(--blue); }
+#user-links a{ color:var(--ink-faint); font-size:12px; margin:0 6px; }
+#user-links a:hover{ color:var(--blue); }
+.lb-table{ width:100%; border-collapse:collapse; font-size:14px; text-align:left; }
+.lb-table th{ background:#f5f8fc; padding:8px 12px; font-size:12px; color:#5b6b7b; border-bottom:2px solid #e3e9f2; white-space:nowrap; }
+.lb-table td{ padding:8px 12px; border-bottom:1px solid #eef2f7; white-space:nowrap; }
+.lb-table .lb-name{ font-weight:900; }
+.lb-empty{ color:#93a2b3; text-align:center; padding:20px; font-size:14px; }
 .join-as{ text-align:center; margin-bottom:12px; }
 .nick-label{ display:block; font-size:12px; color:var(--ink-soft); margin-bottom:4px; }
 
