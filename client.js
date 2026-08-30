@@ -185,6 +185,9 @@ function renderHeader() {
   // 结束对局投票横幅
   const vb = $('#vote-banner');
   if (ONLINE && room && room.vote) {
+    clearTimeout(voteFadeTimer); // 新一轮投票出现，取消待执行的淡出
+    vb.style.opacity = '';
+    vb.style.transition = '';
     vb.hidden = false;
     const voted = !!(room.you && room.you.voted);
     const offlineCount = (room.humans || []).filter((h) => !h.connected).length;
@@ -196,9 +199,21 @@ function renderHeader() {
       $('#vote-yes').addEventListener('click', () => postApi({ type: 'voteEndAnswer', cid: myCid, answer: 'yes' }));
       $('#vote-no').addEventListener('click', () => postApi({ type: 'voteEndAnswer', cid: myCid, answer: 'no' }));
     }
-  } else {
-    vb.hidden = true;
+  } else if (!ONLINE || !S) {
+    vb.hidden = true; // 本地模式或大厅：不显示
   }
+}
+let voteFadeTimer = null;
+// 对局结束回大厅：横幅短暂停留后淡出消失
+function fadeVoteBanner() {
+  const vb = $('#vote-banner');
+  if (vb.hidden) return;
+  vb.innerHTML = '<span class="vote-text">对局已结束，已返回大厅</span>';
+  voteFadeTimer = setTimeout(() => {
+    vb.style.transition = 'opacity .6s ease';
+    vb.style.opacity = '0';
+    setTimeout(() => { vb.hidden = true; vb.style.opacity = ''; vb.style.transition = ''; }, 650);
+  }, 1500);
 }
 
 function renderMarket() {
@@ -897,6 +912,7 @@ function handleServerMsg(m) {
       S = null;
       showScreen('lobby');
       renderLobby();
+      fadeVoteBanner(); // 投票结束后横幅短暂停留再淡出
     }
   } else if (m.type === 'toast') {
     toast(m.msg);
