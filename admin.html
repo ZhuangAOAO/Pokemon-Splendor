@@ -8,8 +8,8 @@
   *{ box-sizing:border-box; margin:0; padding:0; }
   [hidden]{ display:none !important; }
   body{ font-family:"YouYuan","幼圆","Microsoft YaHei","PingFang SC",sans-serif; background:linear-gradient(160deg,#eef4fb,#f8f4ec); color:#22303d; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
-  .panel{ background:#fff; border-radius:20px; box-shadow:0 14px 40px rgba(34,48,61,.14); padding:28px 32px; width:520px; }
-  h1{ font-size:22px; margin-bottom:14px; }
+  .panel{ background:#fff; border-radius:20px; box-shadow:0 14px 40px rgba(34,48,61,.14); padding:26px 28px; width:560px; }
+  h1{ font-size:22px; margin-bottom:12px; }
   h1 span{ color:#e3350d; }
   .row{ display:flex; gap:8px; margin-bottom:10px; }
   input{ flex:1; padding:9px 14px; border-radius:12px; border:2px solid #dde5ef; font-size:14px; font-family:inherit; background:#f5f8fc; }
@@ -19,15 +19,31 @@
   .btn.green{ background:linear-gradient(180deg,#34d399,#10b981); color:#fff; }
   .btn.red{ background:linear-gradient(180deg,#f87171,#dc2626); color:#fff; }
   .btn.ghost{ background:#fff; border:2px solid #dde5ef; }
-  .stats{ display:flex; gap:8px; margin:12px 0; flex-wrap:wrap; }
-  .stat{ background:#f5f8fc; border:1px solid #dde5ef; border-radius:10px; padding:6px 14px; font-size:13px; font-weight:700; }
+  .hint{ color:#93a2b3; font-size:12px; text-align:center; margin-top:14px; }
+
+  /* ---- 滑动标签 ---- */
+  .tabs{ position:relative; display:flex; background:#f0f3f8; border-radius:12px; padding:4px; margin-bottom:12px; }
+  .tab-indicator{
+    position:absolute; top:4px; bottom:4px; left:4px;
+    width:calc((100% - 8px) / 3);
+    background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(34,48,61,.14);
+    transition:transform .35s cubic-bezier(.3,.8,.3,1);
+  }
+  .tab{ flex:1; border:none; background:transparent; padding:10px 6px; font-size:14px; font-weight:800; cursor:pointer; position:relative; z-index:1; color:#5b6b7b; border-radius:10px; font-family:inherit; transition:color .25s; }
+  .tab.active{ color:#e3350d; }
+  .tab .cnt{ font-size:11px; color:#93a2b3; margin-left:2px; }
+
+  /* ---- 内容面板：横向滑动切换 ---- */
+  .panels-viewport{ overflow:hidden; border-radius:14px; }
+  .panels-track{ display:flex; transition:transform .35s cubic-bezier(.3,.8,.3,1); }
+  .panel{ flex:none; width:100%; max-height:46vh; overflow-y:auto; padding:2px; }
+
   .item{ display:flex; align-items:center; gap:10px; background:#f5f8fc; border:1px solid #dde5ef; border-radius:12px; padding:10px 14px; margin-bottom:8px; }
   .item .name{ font-weight:900; flex:1; }
   .item .time{ font-size:12px; color:#93a2b3; }
-  .empty{ color:#93a2b3; text-align:center; padding:16px; font-size:14px; }
-  .section-title{ font-size:14px; font-weight:900; color:#5b6b7b; margin:16px 0 8px; border-top:2px dashed #dde5ef; padding-top:12px; }
-  .section-title:first-of-type{ border-top:none; padding-top:0; }
-  .hint{ color:#93a2b3; font-size:12px; text-align:center; margin-top:14px; }
+  .empty{ color:#93a2b3; text-align:center; padding:24px 12px; font-size:14px; }
+  .bar{ display:flex; gap:8px; margin-top:12px; }
+  .bar .btn{ flex:1; }
 </style>
 </head>
 <body>
@@ -39,18 +55,25 @@
     <div class="row"><button id="ad-login" class="btn primary" style="flex:1">登录</button></div>
     <div class="hint">管理员账号用「初始化管理员.js」创建；普通玩家在游戏页面注册</div>
   </div>
+
   <div id="review-box" hidden>
     <h1>账号审核</h1>
-    <div class="stats" id="stats"></div>
-    <div class="section-title">待审核</div>
-    <div id="pending-list"></div>
-    <div class="section-title">已通过</div>
-    <div id="approved-list"></div>
-    <div class="section-title">已拒绝</div>
-    <div id="denied-list"></div>
-    <div class="row">
-      <button id="ad-refresh" class="btn ghost" style="flex:1">刷新</button>
-      <button id="ad-logout" class="btn ghost" style="flex:1">退出登录</button>
+    <div class="tabs">
+      <div class="tab-indicator" id="tab-indicator"></div>
+      <button class="tab active" data-i="0">待审核<span class="cnt" id="cnt-0"></span></button>
+      <button class="tab" data-i="1">已通过<span class="cnt" id="cnt-1"></span></button>
+      <button class="tab" data-i="2">已拒绝<span class="cnt" id="cnt-2"></span></button>
+    </div>
+    <div class="panels-viewport">
+      <div class="panels-track" id="panels-track">
+        <div class="panel" id="panel-0"></div>
+        <div class="panel" id="panel-1"></div>
+        <div class="panel" id="panel-2"></div>
+      </div>
+    </div>
+    <div class="bar">
+      <button id="ad-refresh" class="btn ghost">刷新</button>
+      <button id="ad-logout" class="btn ghost">退出登录</button>
     </div>
   </div>
 </div>
@@ -58,6 +81,7 @@
 'use strict';
 const $ = (s) => document.querySelector(s);
 let token = localStorage.getItem('adToken') || '';
+let curTab = 0;
 function toast(msg) {
   const t = document.createElement('div');
   t.textContent = msg;
@@ -74,6 +98,16 @@ async function api(body) {
     return { ok: false };
   }
 }
+// 滑动切换标签：指示块与内容面板同步平滑移动
+function setTab(i) {
+  curTab = i;
+  $('#tab-indicator').style.transform = `translateX(${i * 100}%)`;
+  $('#panels-track').style.transform = `translateX(${-i * 100}%)`;
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', +t.dataset.i === i));
+}
+document.querySelectorAll('.tab').forEach((t) => {
+  t.addEventListener('click', () => setTab(+t.dataset.i));
+});
 function rowHtml(u, actions) {
   const info = u.source === 'backdoor'
     ? `后门 · ${u.remark || '无备注'} · ${u.createdAt}`
@@ -88,30 +122,29 @@ function rowHtml(u, actions) {
 async function refresh() {
   const j = await api({ type: 'adminList', token });
   if (!j.ok) { toast(j.msg || '登录已过期'); showLogin(); return; }
-  $('#stats').innerHTML = `
-    <span class="stat">待审核 ${j.stats.pending}</span>
-    <span class="stat">已通过 ${j.stats.approved}</span>
-    <span class="stat">已拒绝 ${j.stats.denied}</span>`;
   const users = j.users || [];
-  const pending = users.filter((u) => u.status === 'pending');
-  const approved = users.filter((u) => u.status === 'approved');
-  const denied = users.filter((u) => u.status === 'denied');
-  $('#pending-list').innerHTML = pending.length
-    ? pending.map((u) => rowHtml(u, `
+  const groups = [
+    users.filter((u) => u.status === 'pending'),
+    users.filter((u) => u.status === 'approved'),
+    users.filter((u) => u.status === 'denied'),
+  ];
+  groups.forEach((g, i) => { $('#cnt-' + i).textContent = g.length ? g.length : ''; });
+  $('#panel-0').innerHTML = groups[0].length
+    ? groups[0].map((u) => rowHtml(u, `
         <button class="btn green" data-name="${u.name}" data-act="approve">通过</button>
         <button class="btn red" data-name="${u.name}" data-act="deny">拒绝</button>`)).join('')
     : '<div class="empty">没有待审核的申请</div>';
-  $('#approved-list').innerHTML = approved.length
-    ? approved.map((u) => rowHtml(u, `
+  $('#panel-1').innerHTML = groups[1].length
+    ? groups[1].map((u) => rowHtml(u, `
         <button class="btn red" data-name="${u.name}" data-act="deny">撤销</button>`)).join('')
     : '<div class="empty">还没有已通过的账号</div>';
-  $('#denied-list').innerHTML = denied.length
-    ? denied.map((u) => rowHtml(u, `
+  $('#panel-2').innerHTML = groups[2].length
+    ? groups[2].map((u) => rowHtml(u, `
         <button class="btn green" data-name="${u.name}" data-act="approve">重新通过</button>`)).join('')
     : '<div class="empty">没有已拒绝的申请</div>';
 }
 function showLogin() { $('#login-box').hidden = false; $('#review-box').hidden = true; }
-function showReview() { $('#login-box').hidden = true; $('#review-box').hidden = false; refresh(); }
+function showReview() { $('#login-box').hidden = true; $('#review-box').hidden = false; setTab(0); refresh(); }
 $('#ad-login').addEventListener('click', async () => {
   const j = await api({ type: 'login', name: $('#ad-name').value.trim(), password: $('#ad-pass').value });
   if (!j.ok) { toast(j.msg || '登录失败'); return; }
@@ -121,8 +154,8 @@ $('#ad-login').addEventListener('click', async () => {
   showReview();
 });
 $('#ad-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#ad-login').click(); });
-['pending-list', 'approved-list', 'denied-list'].forEach((id) => {
-  document.getElementById(id).addEventListener('click', async (e) => {
+[0, 1, 2].forEach((i) => {
+  $('#panel-' + i).addEventListener('click', async (e) => {
     const b = e.target.closest('button');
     if (!b || !b.dataset.name) return;
     const actText = b.dataset.act === 'approve' ? '通过' : '拒绝';
