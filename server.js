@@ -1,42 +1,21 @@
 'use strict';
 
 /* ================================================================
-   璀璨宝石·宝可梦 — 联机服务器
+   璀璨宝石·宝可梦 — 联机服务器（多房间版）
    零依赖，只需要 Node.js：node server.js
-   ────────────────────────────────────────────────────────────────
-   · 静态文件服务 + 房间/对局编排 + SSE 推送（服务器权威制）
-   · 对局状态在服务器上，浏览器只发送操作、接收状态并渲染
-   · 以后部署到公网服务器：把整个文件夹拷上去运行即可（可换端口）
+   · 静态文件服务 + 多房间编排 + SSE 推送（服务器权威制）
+   · 每个房间独立会话（game-core 的 createSession）
    ================================================================ */
 
 require('./config.js');            // 数据配置（挂到全局）
-const core = require('./game-core.js'); // 游戏核心逻辑
+const core = require('./game-core.js'); // 游戏核心逻辑（工厂）
+const { COLORS, RULES, sameLoc } = core;
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-
-const { HOOKS, newGame, curPlayer, advanceTurn, scheduleAI,
-  canAfford, allMarketCards, COLORS, RULES, sameLoc,
-  actTakeThree, actTakeTwo, actDiscardOne, actBuy, actBuyReserved, actReserve, actReturnBall, actTakeMaster,
-  actReserveBlind,
-  actEvolve, actSkipEvolve } = core;
-
-// 按接收人打码：其他玩家的盲抽卡（blind）替换为牌背占位，只有本人可见
-function gameFor(conn) {
-  const S = core.S;
-  if (!S) return null;
-  const copy = JSON.parse(JSON.stringify(S));
-  copy.players.forEach((p, i) => {
-    if (i === conn.seat) return;
-    p.reserved = (p.reserved || []).map((c) => c.blind
-      ? { id: c.id, name: '???', blind: true, tier: 0, vp: 0, cost: {}, masterCost: 0, bonus: 'yellow', evoTo: null, evoNeed: null }
-      : c);
-  });
-  return copy;
-}
 
 const NET = global.NETWORK || { port: 3000, turnTimeoutSec: 30, maxPlayers: 4 };
 const PORT = NET.port;
@@ -56,36 +35,65 @@ function fileLog(tag, msg) {
     fs.appendFileSync(path.join(LOG_DIR, 'server.log'), `[${localStamp()}] [${tag}] ${msg}\n`, 'utf8');
   } catch (e) { /* 日志写失败不影响游戏 */ }
 }
-// 统一日志：控制台 + 落盘 + 对局内记录（游戏内「记录」面板可见）
-function logEvent(tag, msg) {
-  console.log(`[${tag}] ${msg}`);
-  fileLog(tag, msg);
-  if (room.phase === 'game') {
+// 统一日志：控制台 + 落盘 + 房间内记录（游戏内「记录」面板可见）
+function logEvent(room, tag, msg) {
+  console.log(`[房${room ? room.id : '-'}] [${tag}] ${msg}`);
+  fileLog(tag, `${room ? '[房' + room.id + '] ' : ''}${msg}`);
+  if (room && room.phase === 'game') {
     room.log.push({ time: new Date().toTimeString().slice(0, 8), text: msg });
     if (room.log.length > 100) room.log.shift();
   }
 }
 
 /* ==================== 房间 ==================== */
-const room = {
-  phase: 'lobby',  // lobby | game
-  ais: [],         // 电脑玩家 [{name, level}]
-  target: RULES.defaultTarget,
-  log: [],         // 对局内事件记录（游戏内可查看）
-};
-// conns: cid -> {cid, name, seat, res, connected, isHost}
-const conns = new Map();
-let skipTimer = null; // 断线自动跳过计时器
-let vote = null;      // 结束对局投票 {by, yes:[cid]}
+// rooms: roomId -> {id, isPublic, phase, ais, target, log, conns:Map, vote, skipTimer, session}
+const rooms = new Map();
+// connIndex: cid -> {room, conn}（快速定位连接所属房间）
+const connIndex = new Map();
 
-function humansList() { return [...conns.values()]; }
-function connectedHumans() { return humansList().filter((c) => c.connected); }
-function promoteHostIfNeeded() {
+function newRoomId() {
+  let id;
+  do { id = String(Math.floor(1000 + Math.random() * 9000)); } while (rooms.has(id));
+  return id;
+}
+function createRoom(isPublic) {
+  const session = core.createSession();
+  const room = {
+    id: newRoomId(),
+    isPublic: !!isPublic,
+    phase: 'lobby',   // lobby | game
+    ais: [],          // 电脑玩家 [{name, level}]
+    target: RULES.defaultTarget,
+    log: [],
+    conns: new Map(), // cid -> conn
+    vote: null,
+    skipTimer: null,
+    session,
+  };
+  // 会话事件钩子：状态一变就广播给本房所有玩家
+  session.HOOKS.onStateChanged = () => broadcastRoom(room);
+  session.HOOKS.onToast = (m) => { broadcastToast(room, m); logEvent(room, '事件', m); };
+  session.HOOKS.onGameOver = () => broadcastRoom(room);
+  rooms.set(room.id, room);
+  logEvent(null, '房间', `创建房间 ${room.id}（${room.isPublic ? '公开' : '私有'}）`);
+  return room;
+}
+function deleteRoomIfEmpty(room) {
+  if (room.phase === 'lobby' && room.conns.size === 0 && rooms.has(room.id)) {
+    rooms.delete(room.id);
+    logEvent(null, '房间', `房间 ${room.id} 已解散`);
+  }
+}
+
+/* ---- 房间内连接辅助 ---- */
+function humansList(room) { return [...room.conns.values()]; }
+function connectedHumans(room) { return humansList(room).filter((c) => c.connected); }
+function promoteHostIfNeeded(room) {
   let host = null;
-  for (const c of conns.values()) { if (c.isHost) host = c; }
+  for (const c of room.conns.values()) { if (c.isHost) host = c; }
   if (host && host.connected) return;
-  for (const c of conns.values()) c.isHost = false;
-  const next = connectedHumans()[0];
+  for (const c of room.conns.values()) c.isHost = false;
+  const next = connectedHumans(room)[0];
   if (next) next.isHost = true;
 }
 
@@ -93,77 +101,89 @@ function promoteHostIfNeeded() {
 function sendSSE(conn, obj) {
   if (conn && conn.res) conn.res.write('data: ' + JSON.stringify(obj) + '\n\n');
 }
-function broadcast() {
-  for (const c of conns.values()) {
+// 按接收人打码：其他玩家的盲抽卡替换为牌背占位，只有本人可见
+function gameFor(room, conn) {
+  const S = room.session.S;
+  if (!S) return null;
+  const copy = JSON.parse(JSON.stringify(S));
+  copy.players.forEach((p, i) => {
+    if (i === conn.seat) return;
+    p.reserved = (p.reserved || []).map((c) => c.blind
+      ? { id: c.id, name: '???', blind: true, tier: 0, vp: 0, cost: {}, masterCost: 0, bonus: 'yellow', evoTo: null, evoNeed: null }
+      : c);
+  });
+  return copy;
+}
+function broadcastRoom(room) {
+  for (const c of room.conns.values()) {
     sendSSE(c, {
       type: 'state',
       room: {
+        id: room.id,
+        isPublic: room.isPublic,
         phase: room.phase,
         target: room.target,
         ais: room.ais,
-        humans: humansList().map((h) => ({ name: h.name, seat: h.seat, connected: h.connected, isHost: h.isHost })),
+        humans: humansList(room).map((h) => ({ name: h.name, seat: h.seat, connected: h.connected, isHost: h.isHost })),
         log: room.log,
-        vote: vote ? { by: vote.by, yes: vote.yes.length, total: connectedHumans().length } : null,
+        vote: room.vote ? { by: room.vote.by, yes: room.vote.yes.length, total: connectedHumans(room).length } : null,
       },
-      game: gameFor(c),
-      you: { cid: c.cid, seat: c.seat, isHost: c.isHost, name: c.name, voted: !!(vote && vote.yes.includes(c.cid)) },
+      game: gameFor(room, c),
+      you: { cid: c.cid, seat: c.seat, isHost: c.isHost, name: c.name, voted: !!(room.vote && room.vote.yes.includes(c.cid)) },
     });
   }
 }
-function broadcastToast(msg) {
-  for (const c of conns.values()) sendSSE(c, { type: 'toast', msg });
+function broadcastToast(room, msg) {
+  for (const c of room.conns.values()) sendSSE(c, { type: 'toast', msg });
 }
 
-// 游戏核心的事件钩子：状态一变就广播给所有玩家
-HOOKS.onStateChanged = broadcast;
-HOOKS.onToast = (msg) => { broadcastToast(msg); logEvent('事件', msg); };
-HOOKS.onGameOver = broadcast;
-
-/* ==================== 结束对局（投票 / 全员离线） ==================== */
-function endGameToLobby(reason) {
-  vote = null;
-  core.S = null;
-  if (skipTimer) { clearTimeout(skipTimer); skipTimer = null; }
+/* ==================== 结束对局（投票 / 全员离线 / 房主） ==================== */
+function endGameToLobby(room, reason) {
+  room.vote = null;
+  room.session.S = null;
+  if (room.skipTimer) { clearTimeout(room.skipTimer); room.skipTimer = null; }
   room.phase = 'lobby';
-  humansList().forEach((h) => { h.seat = -1; });
-  logEvent('对局', reason);
-  broadcast();
+  humansList(room).forEach((h) => { h.seat = -1; });
+  logEvent(room, '对局', reason);
+  broadcastRoom(room);
 }
-function checkVoteComplete() {
-  if (!vote) return;
-  const req = connectedHumans().map((h) => h.cid);
-  if (req.every((cid) => vote.yes.includes(cid))) {
-    endGameToLobby(`结束投票全员通过（${vote.by} 发起），对局结束`);
+function checkVoteComplete(room) {
+  if (!room.vote) return;
+  const req = connectedHumans(room).map((h) => h.cid);
+  if (req.every((cid) => room.vote.yes.includes(cid))) {
+    endGameToLobby(room, `结束投票全员通过（${room.vote.by} 发起），对局结束`);
   }
 }
 
 /* ==================== 断线处理 ==================== */
-function handleDisconnect(conn) {
-  logEvent('断开', `${conn.name} 离开（大厅阶段=${room.phase === 'lobby'}）`);
+function handleDisconnect(room, conn) {
+  logEvent(room, '断开', `${conn.name} 离开（大厅阶段=${room.phase === 'lobby'}）`);
   conn.connected = false;
   conn.res = null;
   if (room.phase === 'lobby') {
-    conns.delete(conn.cid);
-    promoteHostIfNeeded();
-    broadcast();
+    room.conns.delete(conn.cid);
+    connIndex.delete(conn.cid);
+    promoteHostIfNeeded(room);
+    broadcastRoom(room);
+    deleteRoomIfEmpty(room);
     return;
   }
   // 对局中：所有人类玩家都离线 → 自动终止对局
-  if (connectedHumans().length === 0) { endGameToLobby('所有玩家离线，对局自动结束'); return; }
+  if (connectedHumans(room).length === 0) { endGameToLobby(room, '所有玩家离线，对局自动结束'); return; }
   // 投票进行中：断线的人不再需要表态
-  if (vote) checkVoteComplete();
-  broadcast();
+  if (room.vote) checkVoteComplete(room);
+  broadcastRoom(room);
   // 对局中：保留座位，轮到他（行动或进化阶段）时自动跳过
-  const S = core.S;
-  if (S && !S.over && (S.phase === 'normal' || S.phase === 'evolve') && S.current === conn.seat && !curPlayer().isAI) {
-    if (skipTimer) clearTimeout(skipTimer);
-    skipTimer = setTimeout(() => {
-      skipTimer = null;
-      const s2 = core.S;
-      if (s2 && !s2.over && (s2.phase === 'normal' || s2.phase === 'evolve') && s2.current === conn.seat && !curPlayer().isAI) {
-        broadcastToast(`${conn.name} 断线，自动跳过回合`);
-        if (s2.phase === 'evolve') actSkipEvolve();
-        else advanceTurn();
+  const S = room.session.S;
+  if (S && !S.over && (S.phase === 'normal' || S.phase === 'evolve') && S.current === conn.seat && !room.session.curPlayer().isAI) {
+    if (room.skipTimer) clearTimeout(room.skipTimer);
+    room.skipTimer = setTimeout(() => {
+      room.skipTimer = null;
+      const s2 = room.session.S;
+      if (s2 && !s2.over && (s2.phase === 'normal' || s2.phase === 'evolve') && s2.current === conn.seat && !room.session.curPlayer().isAI) {
+        broadcastToast(room, `${conn.name} 断线，自动跳过回合`);
+        if (s2.phase === 'evolve') room.session.actSkipEvolve();
+        else room.session.advanceTurn();
       }
     }, TURN_TIMEOUT);
   }
@@ -173,29 +193,40 @@ function handleDisconnect(conn) {
 function handleJoin(body) {
   const name = String(body.name || '').trim().slice(0, 8);
   if (!name) return { ok: false, msg: '名字不能为空' };
+  let room = body.roomId ? rooms.get(String(body.roomId)) : null;
+  // 没有房间号：创建新房间（isPublic 由客户端指定）
+  if (!room) {
+    if (body.roomId) return { ok: false, msg: '房间不存在，请检查房间号' };
+    room = createRoom(body.isPublic === true);
+  }
   if (room.phase === 'lobby') {
-    if (connectedHumans().length >= NET.maxPlayers) return { ok: false, msg: '房间已满（最多 ' + NET.maxPlayers + ' 人）' };
-    if (humansList().some((c) => c.name === name)) return { ok: false, msg: '这个名字已被使用' };
+    if (connectedHumans(room).length >= NET.maxPlayers) return { ok: false, msg: '房间已满（最多 ' + NET.maxPlayers + ' 人）' };
+    if (humansList(room).some((c) => c.name === name)) return { ok: false, msg: '这个名字已被使用' };
     const cid = crypto.randomUUID();
-    conns.set(cid, { cid, name, seat: -1, res: null, connected: false, isHost: humansList().length === 0 });
-    logEvent('加入', `${name}${humansList().length === 1 ? '（房主）' : ''}，当前 ${conns.size} 人`);
-    return { ok: true, cid };
+    const conn = { cid, name, seat: -1, res: null, connected: false, isHost: humansList(room).length === 0, room };
+    room.conns.set(cid, conn);
+    connIndex.set(cid, { room, conn });
+    logEvent(room, '加入', `${name}${conn.isHost ? '（房主）' : ''}，当前 ${room.conns.size} 人`);
+    return { ok: true, cid, roomId: room.id };
   }
   // 对局中：允许断线玩家用原名字重连
-  const old = humansList().find((c) => c.name === name && !c.connected);
+  const old = humansList(room).find((c) => c.name === name && !c.connected);
   if (!old) return { ok: false, msg: '对局进行中，暂时不能加入' };
-  logEvent('重连', `${name} 回到座位 ${old.seat}`);
-  if (skipTimer) { clearTimeout(skipTimer); skipTimer = null; }
+  logEvent(room, '重连', `${name} 回到座位 ${old.seat}`);
+  if (room.skipTimer) { clearTimeout(room.skipTimer); room.skipTimer = null; }
   const cid = crypto.randomUUID();
-  const entry = { cid, name, seat: old.seat, res: null, connected: false, isHost: old.isHost };
-  conns.delete(old.cid);
-  conns.set(cid, entry);
-  return { ok: true, cid };
+  const conn = { cid, name, seat: old.seat, res: null, connected: false, isHost: old.isHost, room };
+  room.conns.delete(old.cid);
+  connIndex.delete(old.cid);
+  room.conns.set(cid, conn);
+  connIndex.set(cid, { room, conn });
+  return { ok: true, cid, roomId: room.id };
 }
 function handleStart(conn) {
+  const room = conn.room;
   if (!conn.isHost) return { ok: false, msg: '只有房主可以开始' };
   if (room.phase !== 'lobby') return { ok: false, msg: '对局已开始' };
-  const humans = connectedHumans();
+  const humans = connectedHumans(room);
   const total = humans.length + room.ais.length;
   if (total < 2) return { ok: false, msg: '至少需要 2 名玩家' };
   if (total > 4) return { ok: false, msg: '最多 4 名玩家' };
@@ -205,84 +236,91 @@ function handleStart(conn) {
     players: humans.map((h) => ({ name: h.name, type: 'human' }))
       .concat(room.ais.map((a) => ({ name: a.name, type: a.level }))),
   };
-  core.lastCfg = cfg;
-  newGame(cfg);
+  room.session.lastCfg = cfg;
+  room.session.newGame(cfg);
   room.phase = 'game';
-  room.log = []; // 每局清空对局记录
-  vote = null;
-  logEvent('对局', `对局开始：${cfg.players.map((p) => p.name + (p.type !== 'human' ? '(电脑)' : '')).join('、')}，目标 ${room.target} 分`);
-  broadcast();
-  scheduleAI();
+  room.log = [];
+  room.vote = null;
+  logEvent(room, '对局', `对局开始：${cfg.players.map((p) => p.name + (p.type !== 'human' ? '(电脑)' : '')).join('、')}，目标 ${room.target} 分`);
+  broadcastRoom(room);
+  room.session.scheduleAI();
   return { ok: true };
 }
 function handleSetAIs(conn, ais) {
+  const room = conn.room;
   if (!conn.isHost || room.phase !== 'lobby') return { ok: false, msg: '只有房主在大厅时可以设置' };
   const list = (Array.isArray(ais) ? ais : []).slice(0, 4).map((a) => ({
     name: String((a && a.name) || '电脑').trim().slice(0, 8) || '电脑',
     level: a && a.level === 'hard' ? 'hard' : 'easy',
   }));
-  if (connectedHumans().length + list.length > 4) return { ok: false, msg: '总共最多 4 名玩家' };
+  if (connectedHumans(room).length + list.length > 4) return { ok: false, msg: '总共最多 4 名玩家' };
   room.ais = list;
-  broadcast();
+  broadcastRoom(room);
   return { ok: true };
 }
 function handleSetTarget(conn, target) {
+  const room = conn.room;
   if (!conn.isHost || room.phase !== 'lobby') return { ok: false, msg: '只有房主在大厅时可以设置' };
   if (!RULES.targets.includes(target)) return { ok: false, msg: '无效的目标分数' };
   room.target = target;
-  broadcast();
+  broadcastRoom(room);
   return { ok: true };
 }
 function handleRestart(conn) {
+  const room = conn.room;
   if (!conn.isHost) return { ok: false, msg: '只有房主可以操作' };
-  if (!core.lastCfg) return { ok: false, msg: '没有可重开的对局' };
-  if (core.S && !core.S.over) return { ok: false, msg: '对局还在进行中' };
-  newGame(core.lastCfg);
+  if (!room.session.lastCfg) return { ok: false, msg: '没有可重开的对局' };
+  if (room.session.S && !room.session.S.over) return { ok: false, msg: '对局还在进行中' };
+  room.session.newGame(room.session.lastCfg);
   room.phase = 'game';
   room.log = [];
-  vote = null;
-  logEvent('对局', '对局重新开始');
-  broadcast();
-  scheduleAI();
+  room.vote = null;
+  logEvent(room, '对局', '对局重新开始');
+  broadcastRoom(room);
+  room.session.scheduleAI();
   return { ok: true };
 }
 function handleBackToLobby(conn) {
+  const room = conn.room;
   if (!conn.isHost) return { ok: false, msg: '只有房主可以操作' };
-  endGameToLobby('房主结束对局，返回大厅');
+  endGameToLobby(room, '房主结束对局，返回大厅');
   return { ok: true };
 }
 // 结束对局投票：任何人可发起，所有人类玩家同意才生效；有人反对则取消
 function handleVoteEnd(conn) {
-  if (room.phase !== 'game' || !core.S) return { ok: false, msg: '对局未在进行' };
-  if (core.S.over) return { ok: false, msg: '对局已经结束' };
-  if (vote) return { ok: false, msg: '已有人在发起结束投票' };
-  vote = { by: conn.name, yes: [conn.cid] };
-  logEvent('投票', `${conn.name} 发起结束对局投票`);
-  broadcast();
-  checkVoteComplete();
+  const room = conn.room;
+  if (room.phase !== 'game' || !room.session.S) return { ok: false, msg: '对局未在进行' };
+  if (room.session.S.over) return { ok: false, msg: '对局已经结束' };
+  if (room.vote) return { ok: false, msg: '已有人在发起结束投票' };
+  room.vote = { by: conn.name, yes: [conn.cid] };
+  logEvent(room, '投票', `${conn.name} 发起结束对局投票`);
+  broadcastRoom(room);
+  checkVoteComplete(room);
   return { ok: true };
 }
 function handleVoteAnswer(conn, ans) {
-  if (!vote) return { ok: false, msg: '没有进行中的投票' };
+  const room = conn.room;
+  if (!room.vote) return { ok: false, msg: '没有进行中的投票' };
   if (ans === 'no') {
-    logEvent('投票', `${conn.name} 反对，结束投票已取消`);
-    vote = null;
-    broadcast();
+    logEvent(room, '投票', `${conn.name} 反对，结束投票已取消`);
+    room.vote = null;
+    broadcastRoom(room);
     return { ok: true };
   }
-  if (!vote.yes.includes(conn.cid)) vote.yes.push(conn.cid);
-  logEvent('投票', `${conn.name} 同意结束（${vote.yes.length}/${connectedHumans().length}）`);
-  broadcast();
-  checkVoteComplete();
+  if (!room.vote.yes.includes(conn.cid)) room.vote.yes.push(conn.cid);
+  logEvent(room, '投票', `${conn.name} 同意结束（${room.vote.yes.length}/${connectedHumans(room).length}）`);
+  broadcastRoom(room);
+  checkVoteComplete(room);
   return { ok: true };
 }
 // 校验玩家的行动是否合法（服务器权威：不信任客户端）
 function validAction(conn, a) {
-  const S = core.S;
+  const room = conn.room;
+  const S = room.session.S;
   if (room.phase !== 'game' || !S || S.over) return '对局尚未开始';
   if (S.current !== conn.seat) return '还没轮到你';
-  if (curPlayer().isAI) return '现在是电脑的回合';
-  const p = curPlayer();
+  if (room.session.curPlayer().isAI) return '现在是电脑的回合';
+  const p = room.session.curPlayer();
   switch (a.kind) {
     case 'take3': {
       if (S.phase !== 'normal') return '现在不能拿球';
@@ -350,25 +388,27 @@ function validAction(conn, a) {
       if (S.phase !== 'normal') return '现在不能收服';
       const card = a.reserved ? p.reserved[a.ridx] : (S.market[a.tier] && S.market[a.tier][a.idx]);
       if (!card) return '没有这张卡';
-      if (!canAfford(p, card)) return '精灵球不够';
+      if (!room.session.canAfford(p, card)) return '精灵球不够';
       return null;
     }
     default: return '未知行动';
   }
 }
 function handleAction(conn, a) {
+  const room = conn.room;
   const err = validAction(conn, a || {});
-  if (err) { logEvent('行动被拒', `${conn.name} ${JSON.stringify(a)} → ${err}`); return { ok: false, msg: err }; }
-  if (a.kind === 'take3') actTakeThree(a.colors);
-  else if (a.kind === 'take2') actTakeTwo(a.color);
-  else if (a.kind === 'return') actReturnBall(a.color);
-  else if (a.kind === 'discard') actDiscardOne(a.color);
-  else if (a.kind === 'takeMaster') actTakeMaster();
-  else if (a.kind === 'evolve') actEvolve(a.loc);
-  else if (a.kind === 'skipEvolve') actSkipEvolve();
-  else if (a.kind === 'reserve') actReserve(a.tier, a.idx);
-  else if (a.kind === 'reserveBlind') actReserveBlind(a.tier);
-  else if (a.kind === 'buy') { if (a.reserved) actBuyReserved(a.ridx); else actBuy(a.tier, a.idx); }
+  if (err) return { ok: false, msg: err };
+  const s = room.session;
+  if (a.kind === 'take3') s.actTakeThree(a.colors);
+  else if (a.kind === 'take2') s.actTakeTwo(a.color);
+  else if (a.kind === 'return') s.actReturnBall(a.color);
+  else if (a.kind === 'discard') s.actDiscardOne(a.color);
+  else if (a.kind === 'takeMaster') s.actTakeMaster();
+  else if (a.kind === 'evolve') s.actEvolve(a.loc);
+  else if (a.kind === 'skipEvolve') s.actSkipEvolve();
+  else if (a.kind === 'reserve') s.actReserve(a.tier, a.idx);
+  else if (a.kind === 'reserveBlind') s.actReserveBlind(a.tier);
+  else if (a.kind === 'buy') { if (a.reserved) s.actBuyReserved(a.ridx); else s.actBuy(a.tier, a.idx); }
   return { ok: true };
 }
 
@@ -378,15 +418,12 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.gif': 'image/gif',
   '.ico': 'image/x-icon',
 };
 function handleSSE(req, res, u) {
   const cid = u.searchParams.get('cid');
-  const conn = conns.get(cid);
+  const entry = connIndex.get(cid);
+  const conn = entry && entry.conn;
   if (!conn || conn.res) { res.writeHead(400); return res.end(); }
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -396,11 +433,12 @@ function handleSSE(req, res, u) {
   res.write('retry: 2000\n\n');
   conn.res = res;
   conn.connected = true;
-  logEvent('在线', `${conn.name} 已连接（座位 ${conn.seat}）`);
-  if (skipTimer) { clearTimeout(skipTimer); skipTimer = null; } // 玩家重连回来了
-  broadcast();
+  const room = entry.room;
+  if (room.skipTimer) { clearTimeout(room.skipTimer); room.skipTimer = null; } // 玩家重连回来了
+  logEvent(room, '在线', `${conn.name} 已连接（座位 ${conn.seat}）`);
+  broadcastRoom(room);
   // 用响应流的 close 检测客户端断开（req 的 close 在请求读完就会触发，会误判）
-  res.on('close', () => { if (conn.res === res) handleDisconnect(conn); });
+  res.on('close', () => { if (conn.res === res) handleDisconnect(room, conn); });
 }
 function handleApi(req, res) {
   let body = '';
@@ -408,7 +446,8 @@ function handleApi(req, res) {
   req.on('end', () => {
     let obj;
     try { obj = JSON.parse(body || '{}'); } catch (e) { obj = {}; }
-    const conn = conns.get(obj.cid);
+    const entry = connIndex.get(obj.cid);
+    const conn = entry && entry.conn;
     let result;
     if (obj.type === 'join') result = handleJoin(obj);
     else if (!obj.type) result = { ok: false, msg: '参数错误' };

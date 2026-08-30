@@ -48,9 +48,9 @@ const lastState = (msgs) => [...msgs].reverse().find((m) => m.type === 'state');
 
 (async () => {
   const A = await api({ type: 'join', name: '测试A' });
-  const B = await api({ type: 'join', name: '测试B' });
-  if (!A.ok || !B.ok) { console.log('❌ 加入失败', A, B); process.exit(1); }
-  console.log('1. 加入：✓');
+  const B = await api({ type: 'join', name: '测试B', roomId: A.roomId });
+  if (!A.ok || !B.ok || A.roomId !== B.roomId) { console.log('❌ 加入失败', A, B); process.exit(1); }
+  console.log('1. 加入（房间 ' + A.roomId + '）：✓');
 
   const msgsA = [], msgsB = [];
   const pA = sseTo(A.cid, msgsA, 30000);
