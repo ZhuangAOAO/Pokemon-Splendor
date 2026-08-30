@@ -59,8 +59,13 @@ function toast(msg) {
   setTimeout(() => t.remove(), 2200);
 }
 async function api(body) {
-  const r = await fetch('/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  return r.json();
+  try {
+    const r = await fetch('/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return r.json();
+  } catch (e) {
+    toast('无法连接服务器：请通过 http://服务器地址/admin.html 打开本页（不能直接双击文件）');
+    return { ok: false };
+  }
 }
 async function refresh() {
   const j = await api({ type: 'adminList', token });
