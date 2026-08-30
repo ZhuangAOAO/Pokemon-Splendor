@@ -147,6 +147,9 @@ h3{ font-size:14px; }
 .lobby-tag.off{ background:#fdecec; border-color:#f5c6c6; color:#b91c1c; }
 .lobby-divider{ margin:16px 0 10px; font-size:13px; font-weight:800; color:var(--ink-soft); border-top:2px dashed var(--line-strong); padding-top:12px; }
 #lobby-host .target-row{ margin:10px 0; }
+/* 房间类型：两个选项等宽对齐 */
+#room-visibility{ gap:8px; }
+#room-visibility label{ flex:1; text-align:center; white-space:nowrap; }
 #lobby-room-info{ background:var(--field); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:10px; font-size:14px; }
 #lobby-room-info b{ color:var(--red); font-size:18px; letter-spacing:1px; }
 .kick-btn{ color:#b91c1c; border-color:#f5c6c6; }
