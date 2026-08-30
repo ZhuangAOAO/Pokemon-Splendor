@@ -1056,8 +1056,10 @@ async function doRegister() {
   const name = $('#reg-name').value.trim();
   const pass = $('#reg-pass').value;
   const pass2 = $('#reg-pass2').value;
+  const realName = $('#reg-real').value.trim();
+  const gradYear = $('#reg-grad').value.trim();
   if (pass !== pass2) { toast('两次输入的密码不一致'); return; }
-  const j = await postApi({ type: 'register', name, password: pass });
+  const j = await postApi({ type: 'register', name, password: pass, realName, gradYear });
   if (j.ok) toast(j.msg || '申请已提交，请等待管理员审核');
 }
 function initOnline() {

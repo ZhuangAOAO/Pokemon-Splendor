@@ -216,14 +216,18 @@ function authUser(token) {
 function handleRegister(body) {
   const name = String(body.name || '').trim();
   const password = String(body.password || '');
+  const realName = String(body.realName || '').trim();
+  const gradYear = String(body.gradYear || '').trim();
   if (name.length < 2 || name.length > 12) return { ok: false, msg: '用户名需 2~12 个字符' };
   if (password.length < 6) return { ok: false, msg: '密码至少 6 位' };
+  if (realName.length < 2 || realName.length > 12) return { ok: false, msg: '请填写真实姓名（2~12 字）' };
+  if (!/^\d{4}$/.test(gradYear) || +gradYear < 1990 || +gradYear > 2030) return { ok: false, msg: '届数请填写 4 位高中毕业年份（如 2023）' };
   const db = loadUsers();
   if (findUser(db, name)) return { ok: false, msg: '这个名字已被注册' };
   const salt = crypto.randomBytes(16).toString('hex');
-  db.users.push({ name, salt, hash: hashPassword(password, salt), role: 'user', status: 'pending', welcomed: false, createdAt: localStamp() });
+  db.users.push({ name, salt, hash: hashPassword(password, salt), role: 'user', status: 'pending', welcomed: false, realName, gradYear: +gradYear, createdAt: localStamp() });
   saveUsers(db);
-  logEvent(null, '账号', `${name} 提交注册申请，等待审核`);
+  logEvent(null, '账号', `${name}（${realName} · ${gradYear}届）提交注册申请，等待审核`);
   return { ok: true, msg: '申请已提交，请等待管理员审核' };
 }
 function handleLogin(body) {
@@ -253,7 +257,7 @@ function handleAdminList(body) {
   const u = authUser(body.token);
   if (!u || u.role !== 'admin') return { ok: false, msg: '需要管理员权限' };
   const db = loadUsers();
-  const pending = db.users.filter((x) => x.status === 'pending').map((x) => ({ name: x.name, createdAt: x.createdAt }));
+  const pending = db.users.filter((x) => x.status === 'pending').map((x) => ({ name: x.name, realName: x.realName || '—', gradYear: x.gradYear || 0, createdAt: x.createdAt }));
   const stats = {
     pending: pending.length,
     approved: db.users.filter((x) => x.status === 'approved').length,

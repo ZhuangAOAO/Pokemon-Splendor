@@ -73,7 +73,7 @@ async function refresh() {
     ? j.pending.map((u) => `
       <div class="item">
         <span class="name">${u.name}</span>
-        <span class="time">申请于 ${u.createdAt}</span>
+        <span class="time">${u.realName} · ${u.gradYear || '届数未填'}届 · 申请于 ${u.createdAt}</span>
         <button class="btn green" data-name="${u.name}" data-act="approve">通过</button>
         <button class="btn red" data-name="${u.name}" data-act="deny">拒绝</button>
       </div>`).join('')

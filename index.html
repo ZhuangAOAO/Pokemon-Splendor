@@ -54,9 +54,12 @@
         </div>
       </div>
       <div id="register-form" hidden>
-        <input id="reg-name" class="row-name join-name" maxlength="12" placeholder="用户名（2~12 字）">
+        <div class="reg-notice">目前游戏服务于<b>汕头一中大学生校友青年联合会</b>，注册请填写真实信息，管理员审核通过后方可游戏</div>
+        <input id="reg-name" class="row-name join-name" maxlength="12" placeholder="用户名（2~12 字，登录用）">
         <input id="reg-pass" class="row-name join-name" type="password" placeholder="密码（至少 6 位）">
         <input id="reg-pass2" class="row-name join-name" type="password" placeholder="确认密码">
+        <input id="reg-real" class="row-name join-name" maxlength="12" placeholder="姓名（真实姓名）">
+        <input id="reg-grad" class="row-name join-name" maxlength="4" placeholder="届数（高中毕业年份，如 2023）">
         <div class="setup-actions">
           <button id="btn-register" class="btn primary lg">提交申请</button>
         </div>

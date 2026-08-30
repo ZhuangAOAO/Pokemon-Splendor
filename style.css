@@ -162,6 +162,8 @@ h3{ font-size:14px; }
 .login-panel{ width:440px; }
 .login-tabs{ display:flex; gap:8px; margin-bottom:14px; }
 .login-tabs .btn{ flex:1; }
+.reg-notice{ background:#fff6dc; border:1px solid #f3e2a8; border-radius:12px; padding:10px 14px; font-size:13px; line-height:1.6; color:#6b4e00; margin-bottom:12px; }
+.reg-notice b{ color:#8a5a00; }
 .join-as{ text-align:center; font-weight:800; color:var(--red); margin-bottom:12px; font-size:15px; }
 
 /* ==================== 游戏界面 ==================== */
