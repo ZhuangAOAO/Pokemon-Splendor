@@ -338,7 +338,7 @@ function boardEl(p, pi, isHero) {
   const discarding = S.phase === 'discard' && pi === S.current;
   const returning = S.mode === 'returnBalls' && pi === S.current && !p.isAI;
   if (discarding) b.classList.add('discarding');
-  const typeLabel = p.isAI ? (p.aiLevel === 'easy' ? '电脑·简单' : '电脑·困难') : '人类';
+  const typeLabel = p.isAI ? (p.aiLevel === 'easy' ? '电脑·简单' : '电脑·困难') : ''; // 真人玩家不显示标签
   const offline = ONLINE && !p.isAI && !isConnected(pi);
   const nameLabel = p.name + (offline ? '（离线）' : '') + (ONLINE && pi === mySeat ? '（你）' : '');
   const avatar = p.name.slice(-1); // 头像 = 名字尾字
@@ -370,7 +370,7 @@ function boardEl(p, pi, isHero) {
     <div class="p-head">
       <span class="p-avatar">${avatar}</span>
       <span class="p-name">${nameLabel}</span>
-      <span class="p-type">${typeLabel}</span>
+      ${typeLabel ? `<span class="p-type">${typeLabel}</span>` : ''}
       ${pi === S.firstPlayer ? `<span class="p-first">先手</span>` : ''}
       ${p.evolutions > 0 ? `<span class="p-evo">进化 ${p.evolutions}</span>` : ''}
       <span class="p-pts">${p.points} 分</span>
@@ -804,7 +804,7 @@ function addPlayerRow(pc) {
     <span class="row-idx"></span>
     <input class="row-name" maxlength="8" value="${pc.name}">
     <select class="row-type">
-      <option value="human" ${pc.type === 'human' ? 'selected' : ''}>人类</option>
+      <option value="human" ${pc.type === 'human' ? 'selected' : ''}>玩家</option>
       <option value="easy" ${pc.type === 'easy' ? 'selected' : ''}>电脑·简单</option>
       <option value="hard" ${pc.type === 'hard' ? 'selected' : ''}>电脑·困难</option>
     </select>
@@ -920,7 +920,6 @@ function renderLobby() {
     <div class="lobby-row">
       <span class="lobby-dot ${h.connected ? 'on' : 'off'}"></span>
       <span class="lobby-name">${h.name}${h.isHost ? '（房主）' : ''}${h.name === myName ? '（你）' : ''}</span>
-      <span class="lobby-tag">人类</span>
       ${h.connected ? '' : '<span class="lobby-tag off">已断线</span>'}
       ${isHost && h.name !== myName ? `<button class="btn ghost sm kick-btn" data-cid="${h.cid}">踢出</button>` : ''}
     </div>`).join('') +
