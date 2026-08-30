@@ -12,8 +12,9 @@ const TIER_NAMES = { 1: '一阶', 2: '二阶', 3: '三阶', 4: '稀有', 5: '传
 
 /* ---- 联机身份 ---- */
 let mySeat = -1;   // 联机：自己的座位号
-let myName = '';   // 联机：自己的名字
+let myName = '';   // 联机：自己的账号名
 let myCid = null;  // 联机：连接编号
+let myToken = '';  // 联机：登录令牌
 let room = null;   // 联机：房间信息（最新一次广播）
 let connOk = true; // 联机：连接状态
 let overShown = false; // 本局结算框是否已弹出
@@ -52,7 +53,7 @@ function toast(msg) {
 
 /* ==================== 屏幕切换 ==================== */
 function showScreen(id) {
-  ['setup', 'join', 'lobby', 'game'].forEach((s) => {
+  ['setup', 'login', 'join', 'lobby', 'game'].forEach((s) => {
     const el = document.getElementById('screen-' + s);
     if (el) el.hidden = (s !== id);
   });
@@ -1006,11 +1007,9 @@ function openEvents(cid) {
   es.onerror = () => { connOk = false; updateConnDot(); }; // EventSource 会自动重连
 }
 async function joinGame() {
-  const name = $('#join-name').value.trim();
-  if (!name) { toast('请输入名字'); return; }
   const roomId = $('#join-roomid').value.trim();
   const isPublic = (document.querySelector('input[name="visibility"]:checked') || {}).value === 'public';
-  const j = await postApi({ type: 'join', name, roomId: roomId || undefined, isPublic });
+  const j = await postApi({ type: 'join', token: myToken, roomId: roomId || undefined, isPublic });
   if (j.ok) {
     myCid = j.cid;
     openEvents(j.cid);
@@ -1037,13 +1036,52 @@ async function showRoomList() {
   });
 }
 
-function initOnline() {
+function enterJoinScreen() {
+  $('#join-as').textContent = `以「${myName}」的身份加入`;
   showScreen('join');
+}
+async function doLogin() {
+  const name = $('#login-name').value.trim();
+  const pass = $('#login-pass').value;
+  if (!name || !pass) { toast('请输入用户名和密码'); return; }
+  const j = await postApi({ type: 'login', name, password: pass });
+  if (!j.ok) return; // postApi 已提示错误
+  myToken = j.token;
+  myName = j.name;
+  localStorage.setItem('spToken', j.token);
+  if (j.welcome) toast('你的申请已通过，欢迎加入！');
+  enterJoinScreen();
+}
+async function doRegister() {
+  const name = $('#reg-name').value.trim();
+  const pass = $('#reg-pass').value;
+  const pass2 = $('#reg-pass2').value;
+  if (pass !== pass2) { toast('两次输入的密码不一致'); return; }
+  const j = await postApi({ type: 'register', name, password: pass });
+  if (j.ok) toast(j.msg || '申请已提交，请等待管理员审核');
+}
+function initOnline() {
   updateConnDot();
   $('#btn-join').addEventListener('click', joinGame);
   $('#btn-room-list').addEventListener('click', showRoomList);
-  $('#join-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinGame(); });
   $('#join-roomid').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinGame(); });
+  // 登录 / 注册
+  $('#btn-login').addEventListener('click', doLogin);
+  $('#btn-register').addEventListener('click', doRegister);
+  $('#tab-login').addEventListener('click', () => { $('#login-form').hidden = false; $('#register-form').hidden = true; });
+  $('#tab-register').addEventListener('click', () => { $('#login-form').hidden = true; $('#register-form').hidden = false; });
+  $('#login-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+  $('#reg-pass2').addEventListener('keydown', (e) => { if (e.key === 'Enter') doRegister(); });
+  // 自动登录（localStorage 有令牌时直接进入加入界面）
+  const saved = localStorage.getItem('spToken');
+  if (saved) {
+    postApi({ type: 'whoami', token: saved }).then((j) => {
+      if (j.ok) { myToken = saved; myName = j.name; enterJoinScreen(); }
+      else showScreen('login');
+    });
+  } else {
+    showScreen('login');
+  }
   // 房主踢人
   $('#lobby-roster').addEventListener('click', (e) => {
     const b = e.target.closest('.kick-btn');
@@ -1089,7 +1127,11 @@ function init() {
     b.addEventListener('click', () => showModal('#modal-rules')));
   $('#btn-exit').addEventListener('click', () => {
     if (ONLINE) {
-      if (confirm('确定退出房间吗？对局会在服务器上继续。')) location.reload();
+      if (confirm('确定退出房间吗？对局会在服务器上继续。')) {
+        postApi({ type: 'logout', token: myToken });
+        localStorage.removeItem('spToken');
+        location.reload();
+      }
       return;
     }
     if (!S || S.over) { backToSetup(); return; }

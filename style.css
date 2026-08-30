@@ -158,6 +158,11 @@ h3{ font-size:14px; }
 .room-list-id{ font-weight:900; color:var(--red); }
 .room-list-host{ flex:1; color:var(--ink-soft); font-size:13px; }
 .room-list-empty{ text-align:center; color:var(--ink-faint); font-size:13px; padding:10px; }
+/* 登录界面 */
+.login-panel{ width:440px; }
+.login-tabs{ display:flex; gap:8px; margin-bottom:14px; }
+.login-tabs .btn{ flex:1; }
+.join-as{ text-align:center; font-weight:800; color:var(--red); margin-bottom:12px; font-size:15px; }
 
 /* ==================== 游戏界面 ==================== */
 #screen-game{ max-width:1380px; margin:0 auto; padding:12px 18px 22px; }

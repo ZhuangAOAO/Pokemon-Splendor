@@ -189,9 +189,99 @@ function handleDisconnect(room, conn) {
   }
 }
 
+/* ==================== 账号系统 ==================== */
+const DATA_DIR = path.join(ROOT, 'data');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const sessions = new Map(); // token -> {name, role}
+
+function loadUsers() {
+  try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); }
+  catch (e) { return { users: [] }; }
+}
+function saveUsers(db) {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(USERS_FILE, JSON.stringify(db, null, 2), 'utf8');
+}
+function hashPassword(password, salt) {
+  return crypto.scryptSync(String(password), salt, 64).toString('hex');
+}
+function findUser(db, name) { return db.users.find((u) => u.name === name); }
+function authUser(token) {
+  const s = sessions.get(token);
+  if (!s) return null;
+  const db = loadUsers();
+  const u = findUser(db, s.name);
+  return u ? { name: u.name, role: u.role, status: u.status } : null;
+}
+function handleRegister(body) {
+  const name = String(body.name || '').trim();
+  const password = String(body.password || '');
+  if (name.length < 2 || name.length > 12) return { ok: false, msg: '用户名需 2~12 个字符' };
+  if (password.length < 6) return { ok: false, msg: '密码至少 6 位' };
+  const db = loadUsers();
+  if (findUser(db, name)) return { ok: false, msg: '这个名字已被注册' };
+  const salt = crypto.randomBytes(16).toString('hex');
+  db.users.push({ name, salt, hash: hashPassword(password, salt), role: 'user', status: 'pending', welcomed: false, createdAt: localStamp() });
+  saveUsers(db);
+  logEvent(null, '账号', `${name} 提交注册申请，等待审核`);
+  return { ok: true, msg: '申请已提交，请等待管理员审核' };
+}
+function handleLogin(body) {
+  const name = String(body.name || '').trim();
+  const password = String(body.password || '');
+  const db = loadUsers();
+  const u = findUser(db, name);
+  if (!u || u.hash !== hashPassword(password, u.salt)) return { ok: false, msg: '用户名或密码错误' };
+  if (u.status === 'pending') return { ok: false, msg: '你的申请还在审核中，请等待管理员通过' };
+  if (u.status === 'denied') return { ok: false, msg: '你的申请未通过审核' };
+  const token = crypto.randomUUID();
+  sessions.set(token, { name: u.name, role: u.role });
+  let welcome = false;
+  if (!u.welcomed) { u.welcomed = true; saveUsers(db); welcome = true; }
+  logEvent(null, '账号', `${name} 登录`);
+  return { ok: true, token, name: u.name, role: u.role, welcome };
+}
+function handleWhoami(body) {
+  const u = authUser(body.token);
+  return u ? { ok: true, name: u.name, role: u.role } : { ok: false, msg: '登录已过期' };
+}
+function handleLogout(body) {
+  sessions.delete(body.token);
+  return { ok: true };
+}
+function handleAdminList(body) {
+  const u = authUser(body.token);
+  if (!u || u.role !== 'admin') return { ok: false, msg: '需要管理员权限' };
+  const db = loadUsers();
+  const pending = db.users.filter((x) => x.status === 'pending').map((x) => ({ name: x.name, createdAt: x.createdAt }));
+  const stats = {
+    pending: pending.length,
+    approved: db.users.filter((x) => x.status === 'approved').length,
+    denied: db.users.filter((x) => x.status === 'denied').length,
+  };
+  return { ok: true, pending, stats };
+}
+function handleAdminReview(body) {
+  const u = authUser(body.token);
+  if (!u || u.role !== 'admin') return { ok: false, msg: '需要管理员权限' };
+  if (!['approve', 'deny'].includes(body.action)) return { ok: false, msg: '参数错误' };
+  const db = loadUsers();
+  const target = findUser(db, String(body.name || ''));
+  if (!target) return { ok: false, msg: '没有这个申请' };
+  if (target.status !== 'pending') return { ok: false, msg: '该申请已处理' };
+  target.status = body.action === 'approve' ? 'approved' : 'denied';
+  target.welcomed = false;
+  saveUsers(db);
+  logEvent(null, '账号', `${target.name} 的申请被管理员${body.action === 'approve' ? '通过' : '拒绝'}`);
+  return { ok: true };
+}
+
 /* ==================== 请求处理 ==================== */
 function handleJoin(body) {
-  const name = String(body.name || '').trim().slice(0, 8);
+  // 联机必须先登录：显示名 = 账号名
+  const u = authUser(body.token);
+  if (!u) return { ok: false, msg: '请先登录' };
+  const name = u.name;
   if (!name) return { ok: false, msg: '名字不能为空' };
   let room = body.roomId ? rooms.get(String(body.roomId)) : null;
   // 没有房间号：创建新房间（isPublic 由客户端指定）
@@ -479,7 +569,13 @@ function handleApi(req, res) {
     const entry = connIndex.get(obj.cid);
     const conn = entry && entry.conn;
     let result;
-    if (obj.type === 'join') result = handleJoin(obj);
+    if (obj.type === 'register') result = handleRegister(obj);
+    else if (obj.type === 'login') result = handleLogin(obj);
+    else if (obj.type === 'whoami') result = handleWhoami(obj);
+    else if (obj.type === 'logout') result = handleLogout(obj);
+    else if (obj.type === 'adminList') result = handleAdminList(obj);
+    else if (obj.type === 'adminReview') result = handleAdminReview(obj);
+    else if (obj.type === 'join') result = handleJoin(obj);
     else if (obj.type === 'listRooms') result = handleListRooms();
     else if (!obj.type) result = { ok: false, msg: '参数错误' };
     else if (!conn || !conn.connected) result = { ok: false, msg: '连接已失效，请刷新页面重新加入' };

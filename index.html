@@ -33,17 +33,50 @@
   </div>
 </div>
 
+<!-- ==================== 联机模式：登录/注册界面（http:// 打开时） ==================== -->
+<div id="screen-login" hidden>
+  <div class="setup-box">
+    <div class="logo">
+      <span class="ball xl logo-ball" style="--bc:#e3350d;--band:#24303d"></span>
+      <h1>璀璨宝石 <span class="accent">·</span> 宝可梦</h1>
+      <p class="subtitle">联机版 · 登录后开始游戏</p>
+    </div>
+    <div class="setup-panel login-panel">
+      <div class="login-tabs">
+        <button id="tab-login" class="btn primary sm">登录</button>
+        <button id="tab-register" class="btn ghost sm">注册申请</button>
+      </div>
+      <div id="login-form">
+        <input id="login-name" class="row-name join-name" maxlength="12" placeholder="用户名">
+        <input id="login-pass" class="row-name join-name" type="password" placeholder="密码">
+        <div class="setup-actions">
+          <button id="btn-login" class="btn primary lg">登录</button>
+        </div>
+      </div>
+      <div id="register-form" hidden>
+        <input id="reg-name" class="row-name join-name" maxlength="12" placeholder="用户名（2~12 字）">
+        <input id="reg-pass" class="row-name join-name" type="password" placeholder="密码（至少 6 位）">
+        <input id="reg-pass2" class="row-name join-name" type="password" placeholder="确认密码">
+        <div class="setup-actions">
+          <button id="btn-register" class="btn primary lg">提交申请</button>
+        </div>
+      </div>
+      <p class="footnote">注册后需管理员审核通过，才能进入游戏</p>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== 联机模式：加入界面（http:// 打开时） ==================== -->
 <div id="screen-join" hidden>
   <div class="setup-box">
     <div class="logo">
       <span class="ball xl logo-ball" style="--bc:#e3350d;--band:#24303d"></span>
       <h1>璀璨宝石 <span class="accent">·</span> 宝可梦</h1>
-      <p class="subtitle">局域网联机版 · 第一个加入的人是房主</p>
+      <p class="subtitle">局域网联机版</p>
     </div>
     <div class="setup-panel join-panel">
       <h2>加入游戏</h2>
-      <input id="join-name" class="row-name join-name" maxlength="12" placeholder="输入你的名字">
+      <div class="join-as" id="join-as"></div>
       <div class="target-row" id="room-visibility">
         <span class="label">房间类型</span>
         <label><input type="radio" name="visibility" value="private" checked> 私有（凭房间号加入）</label>
