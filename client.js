@@ -15,6 +15,7 @@ let mySeat = -1;   // 联机：自己的座位号
 let myName = '';   // 联机：自己的账号名
 let myCid = null;  // 联机：连接编号
 let myToken = '';  // 联机：登录令牌
+let myRole = '';   // 联机：账号角色（admin 才显示管理入口）
 let room = null;   // 联机：房间信息（最新一次广播）
 let connOk = true; // 联机：连接状态
 let overShown = false; // 本局结算框是否已弹出
@@ -1038,6 +1039,7 @@ async function showRoomList() {
 
 function enterJoinScreen() {
   $('#join-as').textContent = `以「${myName}」的身份加入`;
+  $('#admin-links').hidden = myRole !== 'admin'; // 管理入口只对管理员显示
   showScreen('join');
 }
 async function doLogin() {
@@ -1048,6 +1050,7 @@ async function doLogin() {
   if (!j.ok) return; // postApi 已提示错误
   myToken = j.token;
   myName = j.name;
+  myRole = j.role || '';
   localStorage.setItem('spToken', j.token);
   if (j.welcome) toast('你的申请已通过，欢迎加入！');
   enterJoinScreen();
@@ -1078,7 +1081,7 @@ function initOnline() {
   const saved = localStorage.getItem('spToken');
   if (saved) {
     postApi({ type: 'whoami', token: saved }).then((j) => {
-      if (j.ok) { myToken = saved; myName = j.name; enterJoinScreen(); }
+      if (j.ok) { myToken = saved; myName = j.name; myRole = j.role || ''; enterJoinScreen(); }
       else showScreen('login');
     });
   } else {
