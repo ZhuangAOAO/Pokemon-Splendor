@@ -92,7 +92,7 @@ h3{ font-size:14px; }
 .btn.sm{ padding:7px 14px; font-size:13px; border-radius:10px; }
 
 /* ==================== 设置 / 加入 / 大厅 ==================== */
-#screen-setup, #screen-join, #screen-lobby{
+#screen-setup, #screen-join, #screen-lobby, #screen-login{
   min-height:100vh; display:flex; align-items:center; justify-content:center;
   position:relative; overflow:hidden;
 }
