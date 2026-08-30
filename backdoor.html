@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>后门注册 - 璀璨宝石宝可梦</title>
+<style>
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  [hidden]{ display:none !important; }
+  body{ font-family:"YouYuan","幼圆","Microsoft YaHei","PingFang SC",sans-serif; background:linear-gradient(160deg,#eef4fb,#f8f4ec); color:#22303d; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .panel{ background:#fff; border-radius:20px; box-shadow:0 14px 40px rgba(34,48,61,.14); padding:28px 32px; width:520px; }
+  h1{ font-size:22px; margin-bottom:6px; }
+  h1 span{ color:#e3350d; }
+  .sub{ color:#93a2b3; font-size:13px; margin-bottom:14px; }
+  .row{ display:flex; gap:8px; margin-bottom:10px; }
+  input{ flex:1; padding:9px 14px; border-radius:12px; border:2px solid #dde5ef; font-size:14px; font-family:inherit; background:#f5f8fc; }
+  input:focus{ outline:none; border-color:#2f56c8; background:#fff; }
+  .btn{ border:none; border-radius:12px; padding:10px 18px; font-size:14px; font-weight:800; cursor:pointer; font-family:inherit; }
+  .btn.primary{ background:linear-gradient(180deg,#5b7ff0,#3b5fd0); color:#fff; }
+  .btn.ghost{ background:#fff; border:2px solid #dde5ef; }
+  .section-title{ font-size:14px; font-weight:900; color:#5b6b7b; margin:16px 0 8px; border-top:2px dashed #dde5ef; padding-top:12px; }
+  .item{ display:flex; align-items:center; gap:10px; background:#f5f8fc; border:1px solid #dde5ef; border-radius:12px; padding:8px 14px; margin-bottom:6px; }
+  .item .name{ font-weight:900; flex:1; }
+  .item .time{ font-size:12px; color:#93a2b3; }
+  .empty{ color:#93a2b3; text-align:center; padding:12px; font-size:14px; }
+  .hint{ color:#93a2b3; font-size:12px; text-align:center; margin-top:14px; }
+</style>
+</head>
+<body>
+<div class="panel">
+  <div id="login-box">
+    <h1>后门注册 · <span>璀璨宝石宝可梦</span></h1>
+    <div class="sub">管理员专用：为非一中用户直接创建账号（即时通过）</div>
+    <div class="row"><input id="bd-name" maxlength="12" placeholder="管理员用户名"></div>
+    <div class="row"><input id="bd-pass" type="password" placeholder="密码"></div>
+    <div class="row"><button id="bd-login" class="btn primary" style="flex:1">登录</button></div>
+    <div class="hint">请通过 http://服务器地址/backdoor.html 打开本页</div>
+  </div>
+  <div id="reg-box" hidden>
+    <h1>后门注册</h1>
+    <div class="sub">为非一中用户创建账号，创建后立即通过，无需审核</div>
+    <div class="row"><input id="nu-name" maxlength="12" placeholder="用户名（2~12 字）"></div>
+    <div class="row"><input id="nu-pass" type="password" placeholder="密码（至少 6 位）"></div>
+    <div class="row"><input id="nu-remark" maxlength="30" placeholder="身份备注（如：朋友 / 家长 / 外校同学）"></div>
+    <div class="row"><button id="nu-create" class="btn primary" style="flex:1">创建账号</button></div>
+    <div class="section-title">已创建的后门账号</div>
+    <div id="bd-list"></div>
+    <div class="row">
+      <button id="bd-refresh" class="btn ghost" style="flex:1">刷新</button>
+      <button id="bd-logout" class="btn ghost" style="flex:1">退出登录</button>
+    </div>
+  </div>
+</div>
+<script>
+'use strict';
+const $ = (s) => document.querySelector(s);
+let token = localStorage.getItem('bdToken') || '';
+function toast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;top:18px;left:50%;transform:translateX(-50%);background:#22303d;color:#fff;padding:10px 22px;border-radius:999px;font-size:14px;z-index:99;';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
+}
+async function api(body) {
+  try {
+    const r = await fetch('/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return r.json();
+  } catch (e) {
+    toast('无法连接服务器：请通过 http://服务器地址/backdoor.html 打开本页（不能直接双击文件）');
+    return { ok: false };
+  }
+}
+async function refresh() {
+  const j = await api({ type: 'adminList', token });
+  if (!j.ok) { toast(j.msg || '登录已过期'); showLogin(); return; }
+  const backdoorUsers = (j.users || []).filter((u) => u.source === 'backdoor');
+  $('#bd-list').innerHTML = backdoorUsers.length
+    ? backdoorUsers.map((u) => `
+      <div class="item">
+        <span class="name">${u.name}</span>
+        <span class="time">${u.remark || '无备注'} · ${u.createdAt}</span>
+      </div>`).join('')
+    : '<div class="empty">还没有后门创建的账号</div>';
+}
+function showLogin() { $('#login-box').hidden = false; $('#reg-box').hidden = true; }
+function showReg() { $('#login-box').hidden = true; $('#reg-box').hidden = false; refresh(); }
+$('#bd-login').addEventListener('click', async () => {
+  const j = await api({ type: 'login', name: $('#bd-name').value.trim(), password: $('#bd-pass').value });
+  if (!j.ok) { toast(j.msg || '登录失败'); return; }
+  if (j.role !== 'admin') { toast('该账号不是管理员'); return; }
+  token = j.token;
+  localStorage.setItem('bdToken', token);
+  showReg();
+});
+$('#bd-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#bd-login').click(); });
+$('#nu-create').addEventListener('click', async () => {
+  const name = $('#nu-name').value.trim();
+  const password = $('#nu-pass').value;
+  const remark = $('#nu-remark').value.trim();
+  const j = await api({ type: 'backdoorRegister', token, name, password, remark });
+  if (j.ok) { toast(j.msg || '创建成功'); $('#nu-name').value = ''; $('#nu-pass').value = ''; $('#nu-remark').value = ''; refresh(); }
+  else toast(j.msg || '创建失败');
+});
+$('#bd-refresh').addEventListener('click', refresh);
+$('#bd-logout').addEventListener('click', () => { localStorage.removeItem('bdToken'); token = ''; showLogin(); });
+(async () => {
+  if (!token) { showLogin(); return; }
+  const j = await api({ type: 'whoami', token });
+  if (j.ok && j.role === 'admin') showReg();
+  else showLogin();
+})();
+</script>
+</body>
+</html>

@@ -258,7 +258,7 @@ function handleAdminList(body) {
   if (!u || u.role !== 'admin') return { ok: false, msg: '需要管理员权限' };
   const db = loadUsers();
   const users = db.users.filter((x) => x.role !== 'admin')
-    .map((x) => ({ name: x.name, realName: x.realName || '—', gradYear: x.gradYear || 0, status: x.status, createdAt: x.createdAt }))
+    .map((x) => ({ name: x.name, realName: x.realName || '—', gradYear: x.gradYear || 0, remark: x.remark || '', source: x.source || 'public', status: x.status, createdAt: x.createdAt }))
     .sort((a, b) => (a.status === 'pending' ? -1 : 1) - (b.status === 'pending' ? -1 : 1) || a.name.localeCompare(b.name));
   const stats = {
     pending: users.filter((x) => x.status === 'pending').length,
@@ -266,6 +266,23 @@ function handleAdminList(body) {
     denied: users.filter((x) => x.status === 'denied').length,
   };
   return { ok: true, users, stats };
+}
+// 后门注册：管理员为非一中用户直接创建账号（即时通过，可填身份备注）
+function handleBackdoorRegister(body) {
+  const u = authUser(body.token);
+  if (!u || u.role !== 'admin') return { ok: false, msg: '需要管理员权限' };
+  const name = String(body.name || '').trim();
+  const password = String(body.password || '');
+  const remark = String(body.remark || '').trim().slice(0, 30);
+  if (name.length < 2 || name.length > 12) return { ok: false, msg: '用户名需 2~12 个字符' };
+  if (password.length < 6) return { ok: false, msg: '密码至少 6 位' };
+  const db = loadUsers();
+  if (findUser(db, name)) return { ok: false, msg: '这个名字已被注册' };
+  const salt = crypto.randomBytes(16).toString('hex');
+  db.users.push({ name, salt, hash: hashPassword(password, salt), role: 'user', status: 'approved', welcomed: false, source: 'backdoor', remark, createdAt: localStamp() });
+  saveUsers(db);
+  logEvent(null, '账号', `管理员通过后门注册创建了账号 ${name}${remark ? '（' + remark + '）' : ''}`);
+  return { ok: true, msg: '账号 ' + name + ' 已创建并直接通过' };
 }
 function handleAdminReview(body) {
   const u = authUser(body.token);
@@ -583,6 +600,7 @@ function handleApi(req, res) {
     else if (obj.type === 'logout') result = handleLogout(obj);
     else if (obj.type === 'adminList') result = handleAdminList(obj);
     else if (obj.type === 'adminReview') result = handleAdminReview(obj);
+    else if (obj.type === 'backdoorRegister') result = handleBackdoorRegister(obj);
     else if (obj.type === 'join') result = handleJoin(obj);
     else if (obj.type === 'listRooms') result = handleListRooms();
     else if (!obj.type) result = { ok: false, msg: '参数错误' };

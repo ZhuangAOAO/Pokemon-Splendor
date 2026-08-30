@@ -75,10 +75,13 @@ async function api(body) {
   }
 }
 function rowHtml(u, actions) {
+  const info = u.source === 'backdoor'
+    ? `后门 · ${u.remark || '无备注'} · ${u.createdAt}`
+    : `${u.realName} · ${u.gradYear || '届数未填'}届 · ${u.createdAt}`;
   return `
     <div class="item">
       <span class="name">${u.name}</span>
-      <span class="time">${u.realName} · ${u.gradYear || '届数未填'}届 · ${u.createdAt}</span>
+      <span class="time">${info}</span>
       ${actions}
     </div>`;
 }
