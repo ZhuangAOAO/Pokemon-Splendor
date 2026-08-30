@@ -79,7 +79,10 @@
     </div>
     <div class="setup-panel join-panel">
       <h2>加入游戏</h2>
-      <div class="join-as" id="join-as"></div>
+      <div class="join-as">
+        <label for="nickname-input" class="nick-label">游戏内昵称（默认是你的姓名）</label>
+        <input id="nickname-input" class="row-name join-name" maxlength="12">
+      </div>
       <div class="target-row" id="room-visibility">
         <span class="label">房间类型</span>
         <label><input type="radio" name="visibility" value="private" checked> 私有（凭房间号加入）</label>

@@ -166,7 +166,8 @@ h3{ font-size:14px; }
 .reg-notice b{ color:#8a5a00; }
 #admin-entry{ color:var(--ink-faint); font-size:12px; }
 #admin-entry:hover{ color:var(--blue); }
-.join-as{ text-align:center; font-weight:800; color:var(--red); margin-bottom:12px; font-size:15px; }
+.join-as{ text-align:center; margin-bottom:12px; }
+.nick-label{ display:block; font-size:12px; color:var(--ink-soft); margin-bottom:4px; }
 
 /* ==================== 游戏界面 ==================== */
 #screen-game{ max-width:1380px; margin:0 auto; padding:12px 18px 22px; }

@@ -16,6 +16,7 @@ let myName = '';   // 联机：自己的账号名
 let myCid = null;  // 联机：连接编号
 let myToken = '';  // 联机：登录令牌
 let myRole = '';   // 联机：账号角色（admin 才显示管理入口）
+let myNickname = ''; // 联机：游戏内昵称（默认真实姓名）
 let room = null;   // 联机：房间信息（最新一次广播）
 let connOk = true; // 联机：连接状态
 let overShown = false; // 本局结算框是否已弹出
@@ -1010,6 +1011,15 @@ function openEvents(cid) {
 async function joinGame() {
   const roomId = $('#join-roomid').value.trim();
   const isPublic = (document.querySelector('input[name="visibility"]:checked') || {}).value === 'public';
+  // 昵称有改动时先保存，再以新昵称加入
+  const nickname = $('#nickname-input').value.trim();
+  if (!nickname) { toast('请填写游戏内昵称'); return; }
+  if (nickname !== myNickname) {
+    const r = await postApi({ type: 'setNickname', token: myToken, nickname });
+    if (!r.ok) return;
+    myNickname = r.nickname;
+    myName = r.nickname;
+  }
   const j = await postApi({ type: 'join', token: myToken, roomId: roomId || undefined, isPublic });
   if (j.ok) {
     myCid = j.cid;
@@ -1038,7 +1048,7 @@ async function showRoomList() {
 }
 
 function enterJoinScreen() {
-  $('#join-as').textContent = `以「${myName}」的身份加入`;
+  $('#nickname-input').value = myNickname || myName; // 默认昵称 = 真实姓名（或账号名）
   $('#admin-links').hidden = myRole !== 'admin'; // 管理入口只对管理员显示
   showScreen('join');
 }
@@ -1051,6 +1061,7 @@ async function doLogin() {
   myToken = j.token;
   myName = j.name;
   myRole = j.role || '';
+  myNickname = j.nickname || j.name;
   localStorage.setItem('spToken', j.token);
   if (j.welcome) toast('你的申请已通过，欢迎加入！');
   enterJoinScreen();
@@ -1081,7 +1092,7 @@ function initOnline() {
   const saved = localStorage.getItem('spToken');
   if (saved) {
     postApi({ type: 'whoami', token: saved }).then((j) => {
-      if (j.ok) { myToken = saved; myName = j.name; myRole = j.role || ''; enterJoinScreen(); }
+      if (j.ok) { myToken = saved; myName = j.name; myRole = j.role || ''; myNickname = j.nickname || j.name; enterJoinScreen(); }
       else showScreen('login');
     });
   } else {

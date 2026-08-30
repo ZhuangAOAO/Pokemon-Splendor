@@ -243,11 +243,28 @@ function handleLogin(body) {
   let welcome = false;
   if (!u.welcomed) { u.welcomed = true; saveUsers(db); welcome = true; }
   logEvent(null, '账号', `${name} 登录`);
-  return { ok: true, token, name: u.name, role: u.role, welcome };
+  return { ok: true, token, name: u.name, role: u.role, nickname: u.nickname || u.realName || u.name, welcome };
 }
 function handleWhoami(body) {
   const u = authUser(body.token);
-  return u ? { ok: true, name: u.name, role: u.role } : { ok: false, msg: '登录已过期' };
+  if (!u) return { ok: false, msg: '登录已过期' };
+  const db = loadUsers();
+  const rec = findUser(db, u.name);
+  return { ok: true, name: u.name, role: u.role, nickname: (rec && (rec.nickname || rec.realName)) || u.name };
+}
+// 设置游戏内昵称（默认是真实姓名）
+function handleSetNickname(body) {
+  const u = authUser(body.token);
+  if (!u) return { ok: false, msg: '登录已过期' };
+  const nickname = String(body.nickname || '').trim();
+  if (nickname.length < 2 || nickname.length > 12) return { ok: false, msg: '昵称需 2~12 个字符' };
+  const db = loadUsers();
+  const rec = findUser(db, u.name);
+  if (!rec) return { ok: false, msg: '账号不存在' };
+  rec.nickname = nickname;
+  saveUsers(db);
+  logEvent(null, '账号', `${u.name} 设置昵称为 ${nickname}`);
+  return { ok: true, nickname };
 }
 function handleLogout(body) {
   sessions.delete(body.token);
@@ -303,10 +320,12 @@ function handleAdminReview(body) {
 
 /* ==================== 请求处理 ==================== */
 function handleJoin(body) {
-  // 联机必须先登录：显示名 = 账号名
+  // 联机必须先登录：显示名 = 昵称（未设置时用真实姓名/账号名）
   const u = authUser(body.token);
   if (!u) return { ok: false, msg: '请先登录' };
-  const name = u.name;
+  const db = loadUsers();
+  const rec = findUser(db, u.name);
+  const name = (rec && (rec.nickname || rec.realName)) || u.name;
   if (!name) return { ok: false, msg: '名字不能为空' };
   let room = body.roomId ? rooms.get(String(body.roomId)) : null;
   // 没有房间号：创建新房间（isPublic 由客户端指定）
@@ -597,6 +616,7 @@ function handleApi(req, res) {
     if (obj.type === 'register') result = handleRegister(obj);
     else if (obj.type === 'login') result = handleLogin(obj);
     else if (obj.type === 'whoami') result = handleWhoami(obj);
+    else if (obj.type === 'setNickname') result = handleSetNickname(obj);
     else if (obj.type === 'logout') result = handleLogout(obj);
     else if (obj.type === 'adminList') result = handleAdminList(obj);
     else if (obj.type === 'adminReview') result = handleAdminReview(obj);
