@@ -5,7 +5,8 @@
    2. 测试账号开房（+1 个简单电脑，15 分）→ 机器人代打自己的回合
    3. 对局结束 → 服务器把回放写入 replays 表
    4. 拉取回放 → Node 无头重放全部行动 → 终局状态与存档完全一致
-   5. 清理测试账号 / 战绩 / 回放记录
+   5. 权限：玩家只看到自己的回放，按 id 拉别人的回放被拒；管理员可看全部
+   6. 清理测试账号 / 战绩 / 回放记录
    用法：在项目根目录运行 node 测试/test-replay.js（需先启动 node server.js）
    ================================================================ */
 const BASE = 'http://localhost:3000';
@@ -30,6 +31,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const db = require(path.join(__dirname, '..', 'data', 'db.json'));
   const pool = mysql.createPool(Object.assign({}, db, { waitForConnections: true }));
   const testName = '回放测试' + Math.floor(Math.random() * 900 + 100);
+  const otherName = '旁观测试' + Math.floor(Math.random() * 900 + 100); // 没参与对局的旁观者
   const testPass = crypto.randomBytes(8).toString('hex');
 
   // 1. 管理员登录
@@ -42,6 +44,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(bk.ok, '后门注册测试账号');
   const login = await post({ type: 'login', name: testName, password: testPass });
   ok(login.ok, '测试账号登录');
+  const bk2 = await post({ type: 'backdoorRegister', token: admin.token, name: otherName, password: testPass, remark: '回放权限测试' });
+  const login2 = await post({ type: 'login', name: otherName, password: testPass });
+  ok(bk2.ok && login2.ok, '旁观账号登录（不参与本局）');
 
   // 3. 开房：测试账号 + 1 个简单电脑，15 分
   const join = await post({ type: 'join', token: login.token, roomId: '', isPublic: false });
@@ -180,11 +185,27 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }
   }
 
-  // 7. 清理测试数据
+  // 7. 权限：玩家只看得到自己的回放，管理员看得到全部
+  if (replayId) {
+    const listMine = await post({ type: 'replayList', token: login.token });
+    ok((listMine.list || []).some((r) => r.id === replayId), '玩家：自己的回放出现在列表里');
+    ok(listMine.admin === false, '玩家：列表标记为非管理员视角');
+    const listOther = await post({ type: 'replayList', token: login2.token });
+    ok(!(listOther.list || []).some((r) => r.id === replayId), '旁观者：别人的回放不在自己列表里');
+    const steal = await post({ type: 'replay', token: login2.token, id: replayId });
+    ok(!steal.ok, '旁观者：按 id 直接拉别人的回放被拒（' + (steal.msg || '') + '）');
+    const listAdmin = await post({ type: 'replayList', token: admin.token });
+    ok((listAdmin.list || []).some((r) => r.id === replayId), '管理员：能看到所有人的回放');
+    ok(listAdmin.admin === true, '管理员：列表标记为管理员视角');
+    const adminGet = await post({ type: 'replay', token: admin.token, id: replayId });
+    ok(adminGet.ok, '管理员：能按 id 打开任意一局回放');
+  }
+
+  // 8. 清理测试数据
   const [rows] = await pool.query('SELECT id FROM replays WHERE room_id = ?', [join.roomId]);
   for (const r of rows) await pool.query('DELETE FROM replays WHERE id = ?', [r.id]);
-  await pool.query('DELETE FROM stats WHERE account = ?', [testName]);
-  await pool.query('DELETE FROM users WHERE name = ?', [testName]);
+  await pool.query('DELETE FROM stats WHERE account IN (?, ?)', [testName, otherName]);
+  await pool.query('DELETE FROM users WHERE name IN (?, ?)', [testName, otherName]);
   console.log('已清理测试数据（账号 / 战绩 / 回放 ' + rows.length + ' 条）');
   await pool.end();
   console.log(fails.length ? '结果：' + fails.length + ' 项失败' : '结果：全部通过');

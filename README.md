@@ -95,7 +95,7 @@ node 测试/e2e-test.js        # 联机端到端回归测试（另开一个命�
 | `client.js` | 客户端（渲染 + 交互 + 本地/联机两种模式） |
 | `tutorial.js` | 新手教程引导局（逐步提示 + 高亮 + 点击拦截，联机教程局也走这里） |
 | `server.js` | 联机服务器（静态文件 + 多房间编排 + SSE 推送 + 账号系统 + 回放存档，`node server.js`） |
-| `replay.html` + `replay.js` | 对局回放观看页（`/replay`，登录后逐步重放任意一局） |
+| `replay.html` + `replay.js` | 对局回放观看页（`/replay`，玩家只看得到自己参与的对局，管理员可看全部） |
 | `admin.html` | 管理员后台看板（`/admin`：审核、名单、排行榜、日志） |
 | `backdoor.html` | 后门注册页（管理员为场外用户直接开账号） |
 | `启动服务器.bat` / `停止服务器.bat` | Windows 一键开关服务器（双击即用） |

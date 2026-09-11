@@ -111,6 +111,10 @@
     const j = await api({ type: 'replayList', token: rpToken });
     if (!j.ok) { $('#rp-list').innerHTML = `<div id="rp-list-empty">${j.msg || '加载失败'}</div>`; $('#rp-list').hidden = false; return; }
     const list = j.list || [];
+    // 管理员能看所有人的对局，普通玩家只能看自己参与的，标题同步说明
+    $('#rp-sub').textContent = j.admin
+      ? '管理员视角：以下是所有人的对局记录，点「观看」逐步重放'
+      : '以下是你的对局记录，点「观看」逐步重放每一步行动';
     $('#rp-list').hidden = false;
     $('#rp-list').innerHTML = list.length
       ? `<table id="rp-list-table">
@@ -124,7 +128,7 @@
             <td><a href="/replay?id=${r.id}">观看</a></td>
           </tr>`).join('')}</tbody>
         </table>`
-      : '<div id="rp-list-empty">还没有对局记录，先开局打一局吧</div>';
+      : `<div id="rp-list-empty">${j.admin ? '还没有任何对局记录' : '你还没有对局记录，先开局打一局吧'}</div>`;
   }
 
   /* ---- 5. 回放驱动 ---- */

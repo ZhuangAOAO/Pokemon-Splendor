@@ -392,14 +392,26 @@ async function handleLeaderboard(body) {
 function safeJson(text, fallback) {
   try { return JSON.parse(text || ''); } catch (e) { return fallback; }
 }
-// 回放列表：最近的对局（登录后可见）
+// 回放列表：玩家只看自己参与的对局，管理员看全部（登录后可见）
 async function handleReplayList(body) {
   const u = await authUser(body.token);
   if (!u) return { ok: false, msg: '请先登录' };
-  const [rows] = await pool.query(
-    'SELECT id, room_id, target, players, actions, created_at FROM replays ORDER BY id DESC LIMIT 50');
+  const isAdmin = u.role === 'admin';
+  let rows = [];
+  if (isAdmin) {
+    [rows] = await pool.query(
+      'SELECT id, room_id, target, players, actions, created_at FROM replays ORDER BY id DESC LIMIT 50');
+  } else if (u.name) {
+    // players 是 JSON 数组（每人带 account），用 JSON_CONTAINS 挑出这局里有当前账号的。
+    // 注意：电脑座位的 account 是空串，所以绝不能用空账号去查，否则会把电脑局全捞出来。
+    [rows] = await pool.query(
+      'SELECT id, room_id, target, players, actions, created_at FROM replays ' +
+      'WHERE JSON_CONTAINS(CAST(players AS JSON), ?) ORDER BY id DESC LIMIT 50',
+      [JSON.stringify({ account: u.name })]);
+  }
   return {
     ok: true,
+    admin: isAdmin,
     list: rows.map((r) => ({
       id: r.id,
       roomId: r.room_id,
@@ -419,11 +431,15 @@ async function handleReplay(body) {
   const [rows] = await pool.query('SELECT * FROM replays WHERE id = ?', [id]);
   if (!rows.length) return { ok: false, msg: '回放不存在' };
   const r = rows[0];
+  // 权限：管理员可看全部，普通玩家只能看自己参与的对局（别局按 id 猜也打不开）
+  const players = safeJson(r.players, []);
+  const mine = players.some((p) => p && p.account && p.account === u.name);
+  if (!mine && u.role !== 'admin') return { ok: false, msg: '只能查看自己参与的对局' };
   return {
     ok: true,
     replay: {
       id: r.id, roomId: r.room_id, target: r.target, createdAt: r.created_at,
-      players: safeJson(r.players, []),
+      players,
       initial: safeJson(r.initial, null),
       actions: safeJson(r.actions, []),
       final: safeJson(r.final, null),
