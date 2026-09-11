@@ -1,7 +1,7 @@
 /* ================================================================
    AI 模拟测试：无需浏览器，用 node 无头运行多局电脑对战
-   用法：node sim.js [局数] [人数] [目标分]
-   例：node sim.js 30 3 18
+   用法：node 工具/sim.js [局数] [人数] [目标分]（在项目根目录运行）
+   例：node 工具/sim.js 30 3 18
    ================================================================ */
 'use strict';
 const fs = require('fs');
@@ -12,8 +12,8 @@ global.window = global;
 // 打桩 setTimeout：模拟是同步循环驱动 AI 的，不需要真实定时器。
 // 否则每局会积压上千个 AI 定时器，脚本跑完后事件循环里会形成无限的 AI 自战链条。
 global.setTimeout = () => 0;
-const cfgSrc = fs.readFileSync(path.join(__dirname, 'config.js'), 'utf8');
-const src = fs.readFileSync(path.join(__dirname, 'game-core.js'), 'utf8');
+const cfgSrc = fs.readFileSync(path.join(__dirname, '..', 'config.js'), 'utf8');
+const src = fs.readFileSync(path.join(__dirname, '..', 'game-core.js'), 'utf8');
 
 const nGames = +process.argv[2] || 20;
 const nPlayers = +process.argv[3] || 3;

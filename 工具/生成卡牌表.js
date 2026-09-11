@@ -1,7 +1,7 @@
 /* ════════════════════════════════════════════════════════════════
    卡牌表生成工具
    ────────────────────────────────────────────────────────────────
-   用法：node 生成卡牌表.js
+   用法：node 工具/生成卡牌表.js（在项目根目录运行）
    它会根据下面的【费用模板】【名字池】【加成规则】随机生成
    80 张卡，并整体重写 config.js（⚠️ 会覆盖你在 config.js
    里手工改过的卡牌数值）。
@@ -229,7 +229,7 @@ body += '/* Node 环境（服务器）用 require 加载本文件时，把数据
 body += "if (typeof module !== 'undefined' && module.exports) { module.exports = window; }\n";
 
 const out = CONFIG_HEADER + CARD_HEADER + body;
-const target = path.join(__dirname, 'config.js');
+const target = path.join(__dirname, '..', 'config.js');
 fs.writeFileSync(target, out, 'utf8');
 console.log('✅ 已生成 config.js：');
 [1, 2, 3].forEach((t) => {

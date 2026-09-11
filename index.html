@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>璀璨宝石·宝可梦 — 桌游复刻</title>
+<title>璀璨宝石·宝可梦</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
     <div class="logo">
       <span class="ball xl logo-ball" style="--bc:#e3350d;--band:#24303d"></span>
       <h1>璀璨宝石 <span class="accent">·</span> 宝可梦</h1>
-      <p class="subtitle">Splendor Pokémon 桌游复刻 · 网页版</p>
+      <p class="subtitle">Splendor Pokémon · 网页版</p>
     </div>
     <div class="setup-panel">
       <h2>游戏设置（本地单机）</h2>
@@ -39,7 +39,6 @@
     <div class="logo">
       <span class="ball xl logo-ball" style="--bc:#e3350d;--band:#24303d"></span>
       <h1>璀璨宝石 <span class="accent">·</span> 宝可梦</h1>
-      <p class="subtitle">联机版 · 登录后开始游戏</p>
     </div>
     <div class="setup-panel login-panel">
       <div class="login-tabs">
@@ -75,7 +74,6 @@
     <div class="logo">
       <span class="ball xl logo-ball" style="--bc:#e3350d;--band:#24303d"></span>
       <h1>璀璨宝石 <span class="accent">·</span> 宝可梦</h1>
-      <p class="subtitle">局域网联机版</p>
     </div>
     <div class="setup-panel join-panel">
       <h2>加入游戏</h2>
@@ -91,12 +89,14 @@
       <input id="join-roomid" class="row-name join-name" maxlength="4" placeholder="房间号（留空 = 创建新房间）">
       <div class="setup-actions">
         <button id="btn-join" class="btn primary lg">进入游戏</button>
+      </div>
+      <div class="setup-actions">
         <button id="btn-room-list" class="btn ghost lg">公开房间列表</button>
         <button class="btn ghost lg js-rules">规则说明</button>
       </div>
       <div id="room-list-box" hidden></div>
       <p class="footnote">创建房间 = 留空房间号；加入朋友房间 = 输入他告诉你的 4 位房间号</p>
-      <p class="footnote" id="user-links"><a href="#" id="link-password">修改密码</a> · <a href="#" id="link-leaderboard">排行榜</a></p>
+      <p class="footnote" id="user-links"><a href="#" id="link-password">修改密码</a> · <a href="#" id="link-leaderboard">排行榜</a> · <a href="/replay">对局回放</a></p>
       <div id="password-box" hidden>
         <input id="pw-old" type="password" class="row-name join-name" placeholder="原密码">
         <input id="pw-new" type="password" class="row-name join-name" placeholder="新密码（至少 6 位）">
@@ -106,7 +106,7 @@
           <button id="btn-password-cancel" class="btn ghost">取消</button>
         </div>
       </div>
-      <p class="footnote" id="admin-links" hidden><a href="/admin.html">管理台</a> · <a href="/backdoor.html">后门注册</a></p>
+      <p class="footnote" id="admin-links" hidden><a href="/admin">管理台</a> · <a href="/backdoor.html">后门注册</a></p>
     </div>
   </div>
 </div>
@@ -181,7 +181,7 @@
 <!-- ==================== 弹窗 ==================== -->
 <div id="modal-overlay" hidden>
   <div class="modal" id="modal-rules" hidden>
-    <h2>规则说明（第一版）</h2>
+    <h2>规则说明</h2>
     <div class="rules-body">
       <h3>目标</h3>
       <ul>
@@ -225,10 +225,6 @@
         <li>电脑（简单）随机性更强；电脑（困难）会精打细算</li>
         <li>联机模式：断线的玩家轮到自己时 30 秒后自动跳过；任何玩家都可以发起「结束对局」投票，全体在线玩家同意即结束（离线者自动视为同意）；全员离线时对局自动结束</li>
       </ul>
-      <h3>未来版本计划</h3>
-      <ul>
-        <li>宝可梦<b>进化</b>、<b>传说宝可梦</b>计分、部署到公网服务器</li>
-      </ul>
     </div>
     <button class="btn primary" data-close>知道了</button>
   </div>
@@ -260,6 +256,9 @@
 
 <div id="toast" hidden></div>
 
+<!-- 最终回合大横幅：屏幕中央登场约 1 秒，再缩小平移进顶栏小徽章 -->
+<div id="end-banner-big" hidden><div class="ebg-inner">最终回合！</div></div>
+
 <!-- 卡面大图放大查看 -->
 <div id="zoom" hidden><img id="zoom-img" alt="卡面大图"></div>
 
@@ -267,5 +266,6 @@
 <script src="config.js"></script>
 <script src="game-core.js"></script>
 <script src="client.js"></script>
+<script src="tutorial.js"></script>
 </body>
 </html>

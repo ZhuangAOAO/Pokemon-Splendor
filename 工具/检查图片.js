@@ -1,6 +1,6 @@
 /* ================================================================
    图片命名检查工具
-   用法：node 检查图片.js
+   用法：node 工具/检查图片.js（在项目根目录运行）
    功能：
    1. 根据 config.js 的卡牌表，生成「图片命名对照表.txt」（80 个名字清单）
    2. 扫描 pictures/ 文件夹，报告：
@@ -15,10 +15,10 @@
 const fs = require('fs');
 const path = require('path');
 
-require('./config.js'); // 挂到 global（config 里自动用 global 充当 window）
+require('../config.js'); // 挂到 global（config 里自动用 global 充当 window）
 const TABLE = global.CARD_TABLE;
 
-const PIC_DIR = path.join(__dirname, 'pictures');
+const PIC_DIR = path.join(__dirname, '..', 'pictures');
 const EXT = /\.(jpg|jpeg|png|webp|gif)$/i;
 const tierName = { 1: '一阶', 2: '二阶', 3: '三阶' };
 

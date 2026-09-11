@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>对局回放 · 璀璨宝石·宝可梦</title>
+<link rel="stylesheet" href="style.css">
+<style>
+/* ---- 回放页专属：登录门 + 底部控制条 ---- */
+#rp-gate{ position:fixed; inset:0; z-index:200; background:var(--bg, #1b2733); display:flex; align-items:center; justify-content:center; }
+#rp-gate-box{ width:min(560px, 92vw); background:#fff; border-radius:18px; padding:28px 30px; box-shadow:var(--shadow-lg, 0 20px 60px rgba(0,0,0,.45)); }
+#rp-gate-box h2{ margin:0 0 6px; color:var(--ink, #1b2733); font-size:26px; text-align:center; }
+#rp-gate-box .sub{ text-align:center; color:#8c9bab; font-size:13px; margin-bottom:18px; }
+#rp-gate-box input{ display:block; width:100%; margin:10px 0; padding:11px 14px; border:2px solid #dfe6ee; border-radius:10px; font-size:15px; box-sizing:border-box; }
+#rp-gate-box .rp-actions{ display:flex; gap:10px; justify-content:center; margin-top:14px; }
+#rp-list-table{ width:100%; border-collapse:collapse; font-size:14px; margin-top:6px; }
+#rp-list-table th{ color:#8c9bab; font-weight:600; text-align:left; padding:8px 6px; border-bottom:2px solid #e8eef5; }
+#rp-list-table td{ padding:9px 6px; border-bottom:1px solid #eef3f8; color:var(--ink, #1b2733); }
+#rp-list-table a{ color:var(--red, #e3350d); font-weight:700; text-decoration:none; }
+#rp-list-empty{ color:#8c9bab; text-align:center; padding:24px 0; }
+#rp-bar{ position:fixed; left:0; right:0; bottom:0; z-index:95; display:flex; align-items:center; gap:10px;
+  padding:10px 16px; background:rgba(23,34,46,.92); color:#dfe6ee; font-size:14px;
+  border-top:2px solid var(--gold, #d4a017); box-shadow:0 -8px 24px rgba(0,0,0,.35); flex-wrap:wrap; }
+#rp-bar .btn{ padding:7px 14px; }
+#rp-bar-title{ font-weight:700; color:var(--gold, #d4a017); }
+#rp-slider{ flex:1; min-width:140px; accent-color:var(--red, #e3350d); }
+#rp-pos{ font-variant-numeric:tabular-nums; color:#fff; font-weight:700; }
+#rp-event{ flex:1 1 100%; color:#ffd9a8; font-size:13px; min-height:18px; }
+#rp-link-list{ color:#8c9bab; text-decoration:none; }
+#rp-link-list:hover{ color:#fff; }
+/* 回放观看时结算弹窗不显示操作按钮（观看者不能再来一局） */
+#modal-gameover .modal-actions{ display:none; }
+</style>
+</head>
+<body>
+
+<!-- 回放门：登录 / 回放列表（开始观看前显示，其余屏幕全部隐藏） -->
+<div id="rp-gate">
+  <div id="rp-gate-box">
+    <h2>对局回放</h2>
+    <p class="sub">登录后查看历史对局，逐步重放每一步行动</p>
+    <div id="rp-login-form">
+      <input id="rp-name" maxlength="12" placeholder="用户名">
+      <input id="rp-pass" type="password" placeholder="密码">
+      <div class="rp-actions">
+        <button id="rp-login" class="btn primary">登录</button>
+        <button id="rp-logout" class="btn ghost" hidden>退出登录</button>
+      </div>
+    </div>
+    <div id="rp-list" hidden></div>
+  </div>
+</div>
+
+<!-- 回放控制条：观看时固定在屏幕底部 -->
+<div id="rp-bar" hidden>
+  <span id="rp-bar-title"></span>
+  <button id="rp-reset" class="btn ghost">开头</button>
+  <button id="rp-back" class="btn secondary">上一步</button>
+  <button id="rp-play" class="btn primary">自动播放</button>
+  <button id="rp-next" class="btn secondary">下一步</button>
+  <button id="rp-end" class="btn ghost">结尾</button>
+  <input type="range" id="rp-slider" min="0" max="0" value="0" step="1">
+  <span id="rp-pos">0 / 0</span>
+  <a id="rp-link-list" href="/replay">← 回放列表</a>
+  <span id="rp-event"></span>
+</div>
+
+<!-- ==================== 与 index.html 相同的界面骨架（client.js 渲染需要） ==================== -->
+<div id="screen-setup" hidden>
+  <div class="setup-box">
+    <div class="logo">
+      <span class="ball xl logo-ball" style="--bc:#e3350d;--band:#24303d"></span>
+      <h1>璀璨宝石 <span class="accent">·</span> 宝可梦</h1>
+      <p class="subtitle">Splendor Pokémon · 网页版</p>
+    </div>
+    <div class="setup-panel">
+      <h2>游戏设置（本地单机）</h2>
+      <div id="player-rows"></div>
+      <button id="btn-add-player" class="btn secondary sm">添加玩家（最多 4 人）</button>
+      <div class="target-row">
+        <span class="label">目标分数</span>
+      </div>
+      <div class="setup-actions">
+        <button id="btn-start" class="btn primary lg">开始游戏</button>
+        <button class="btn ghost lg js-rules">规则说明</button>
+      </div>
+      <p class="footnote">想局域网联机？用命令行运行 node server.js，然后大家访问服务器地址</p>
+    </div>
+  </div>
+</div>
+
+<div id="screen-login" hidden>
+  <div class="setup-box">
+    <div class="logo">
+      <span class="ball xl logo-ball" style="--bc:#e3350d;--band:#24303d"></span>
+      <h1>璀璨宝石 <span class="accent">·</span> 宝可梦</h1>
+    </div>
+    <div class="setup-panel login-panel">
+      <div class="login-tabs">
+        <button id="tab-login" class="btn primary sm">登录</button>
+        <button id="tab-register" class="btn ghost sm">注册申请</button>
+      </div>
+      <div id="login-form">
+        <input id="login-name" class="row-name join-name" maxlength="12" placeholder="用户名">
+        <input id="login-pass" class="row-name join-name" type="password" placeholder="密码">
+        <div class="setup-actions">
+          <button id="btn-login" class="btn primary lg">登录</button>
+        </div>
+      </div>
+      <div id="register-form" hidden>
+        <div class="reg-notice">目前游戏服务于<b>汕头一中大学生校友青年联合会</b>，注册请填写真实信息，管理员审核通过后方可游戏</div>
+        <input id="reg-name" class="row-name join-name" maxlength="12" placeholder="用户名（2~12 字，登录用）">
+        <input id="reg-pass" class="row-name join-name" type="password" placeholder="密码（至少 6 位）">
+        <input id="reg-pass2" class="row-name join-name" type="password" placeholder="确认密码">
+        <input id="reg-real" class="row-name join-name" maxlength="12" placeholder="姓名（真实姓名）">
+        <input id="reg-grad" class="row-name join-name" maxlength="4" placeholder="届数（高中毕业年份，如 2023）">
+        <div class="setup-actions">
+          <button id="btn-register" class="btn primary lg">提交申请</button>
+        </div>
+      </div>
+      <p class="footnote">注册后需管理员审核通过，才能进入游戏</p>
+    </div>
+  </div>
+</div>
+
+<div id="screen-join" hidden>
+  <div class="setup-box">
+    <div class="logo">
+      <span class="ball xl logo-ball" style="--bc:#e3350d;--band:#24303d"></span>
+      <h1>璀璨宝石 <span class="accent">·</span> 宝可梦</h1>
+    </div>
+    <div class="setup-panel join-panel">
+      <h2>加入游戏</h2>
+      <div class="join-as">
+        <label for="nickname-input" class="nick-label">游戏内昵称（默认是你的姓名）</label>
+        <input id="nickname-input" class="row-name join-name" maxlength="12">
+      </div>
+      <div class="target-row" id="room-visibility">
+        <span class="label">房间类型</span>
+        <label><input type="radio" name="visibility" value="private" checked> 私有（凭房间号加入）</label>
+        <label><input type="radio" name="visibility" value="public"> 公开（可被搜索）</label>
+      </div>
+      <input id="join-roomid" class="row-name join-name" maxlength="4" placeholder="房间号（留空 = 创建新房间）">
+      <div class="setup-actions">
+        <button id="btn-join" class="btn primary lg">进入游戏</button>
+      </div>
+      <div class="setup-actions">
+        <button id="btn-room-list" class="btn ghost lg">公开房间列表</button>
+        <button class="btn ghost lg js-rules">规则说明</button>
+      </div>
+      <div id="room-list-box" hidden></div>
+      <p class="footnote">创建房间 = 留空房间号；加入朋友房间 = 输入他告诉你的 4 位房间号</p>
+      <p class="footnote" id="user-links"><a href="#" id="link-password">修改密码</a> · <a href="#" id="link-leaderboard">排行榜</a></p>
+      <div id="password-box" hidden>
+        <input id="pw-old" type="password" class="row-name join-name" placeholder="原密码">
+        <input id="pw-new" type="password" class="row-name join-name" placeholder="新密码（至少 6 位）">
+        <input id="pw-new2" type="password" class="row-name join-name" placeholder="确认新密码">
+        <div class="setup-actions">
+          <button id="btn-password" class="btn primary">确认修改</button>
+          <button id="btn-password-cancel" class="btn ghost">取消</button>
+        </div>
+      </div>
+      <p class="footnote" id="admin-links" hidden><a href="/admin">管理台</a> · <a href="/backdoor.html">后门注册</a></p>
+    </div>
+  </div>
+</div>
+
+<div id="screen-lobby" hidden>
+  <div class="setup-box">
+    <div class="setup-panel lobby-panel">
+      <h2>游戏大厅</h2>
+      <div id="lobby-room-info"></div>
+      <div id="lobby-roster"></div>
+      <div id="lobby-host" hidden>
+        <div class="lobby-divider">房主控制区</div>
+        <div id="lobby-ais"></div>
+        <button id="btn-add-ai" class="btn secondary sm">添加电脑玩家</button>
+        <div class="target-row" id="lobby-target">
+          <span class="label">目标分数</span>
+        </div>
+      </div>
+      <div class="setup-actions">
+        <button id="btn-lobby-start" class="btn primary lg">开始游戏</button>
+        <button id="btn-lobby-leave" class="btn ghost lg">退出大厅</button>
+      </div>
+      <p class="footnote" id="lobby-hint"></p>
+    </div>
+  </div>
+</div>
+
+<div id="screen-game" hidden>
+  <header id="game-header">
+    <div class="header-left">
+      <span class="ball header-ball" style="--bc:#e3350d;--band:#24303d"></span>
+      <span class="header-title">璀璨宝石·宝可梦</span>
+      <span id="round-info"></span>
+      <span id="end-banner" class="end-banner" hidden>最终回合！</span>
+    </div>
+    <div class="header-center" id="turn-info"></div>
+    <div class="header-right">
+      <span id="conn-status" hidden></span>
+      <span id="target-info"></span>
+      <button id="btn-sound" class="btn ghost sm">音效：开</button>
+      <button id="btn-stop-game" class="btn ghost sm" hidden>结束对局</button>
+      <button id="btn-logs" class="btn ghost sm">记录</button>
+      <button id="btn-rules" class="btn ghost sm js-rules">规则</button>
+      <button id="btn-exit" class="btn ghost sm">退出</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="mid-zone">
+      <section id="players"></section>
+      <section id="market"></section>
+      <section id="middle-row">
+        <div id="rl-wrap"></div>
+        <div id="pool-wrap">
+          <h3>精灵球供应区</h3>
+          <div id="pool"></div>
+        </div>
+        <div id="action-wrap">
+          <div id="actions"></div>
+        </div>
+      </section>
+    </section>
+
+    <section id="my-panel"></section>
+  </main>
+</div>
+
+<div id="modal-overlay" hidden>
+  <div class="modal" id="modal-rules" hidden>
+    <h2>规则说明</h2>
+    <div class="rules-body">
+      <h3>目标</h3>
+      <ul>
+        <li>率先达到目标分数（默认 18 分）触发终局；完成当前一轮后，<b>分数最高者获胜</b></li>
+        <li>平局时：先比<b>进化次数</b>（多者胜），再比宝可梦数量（多者胜）</li>
+      </ul>
+      <h3>宝可梦进化（回合结束免费）</h3>
+      <ul>
+        <li>你的行动结束后（每回合最多 1 次）：如果你有进化卡的前一形态（例如「小火龙」），且场上或你的预约区有它的进化型（「火恐龙」），就可以免费进化</li>
+        <li>进化条件印在<b>未进化的卡</b>上（例如小火龙的卡面写着进化成火恐龙需要的图标数）：用你已收服宝可梦的<b>永久加成</b>凑够即可（精灵球不能用）</li>
+        <li>进化卡<b>替换</b>原来的卡：原卡进图鉴（失去加成和分数），新卡提供新的加成和分数；也可以跳过</li>
+      </ul>
+      <h3>每回合行动（五选一）</h3>
+      <ul>
+        <li><b>1. 拿取精灵球</b>：拿 3 个不同颜色的球；或拿 2 个相同颜色的球（供应区该色至少 4 个）</li>
+        <li><b>2. 收服宝可梦</b>：选择场上或自己预约的 1 只宝可梦，支付卡牌下方所示精灵球费用；你已拥有的宝可梦会提供对应颜色的<b>永久加成</b>，收服时自动抵扣（卡牌边框颜色即其加成颜色）；收服后获得卡牌左上角的分数</li>
+        <li><b>3. 预约宝可梦</b>：把场上 1 张卡收进自己的预约区（最多 3 张），并立刻获得 1 个<b>大师球</b>；也可以从一/二/三阶牌堆<b>盲抽</b>一张（只有你自己知道是什么）；预约的卡之后任意回合都可以收服</li>
+        <li><b>4. 退还精灵球</b>：把 1 个自己持有的球退回供应区（供应区被拿空时的周转行动，防止游戏卡住，平时一般不用）</li>
+      </ul>
+      <div id="rules-master-sec">
+        <h3>大师球</h3>
+        <ul>
+          <li>大师球是<b>万能球</b>，支付费用时可以替代任意颜色的球</li>
+          <li>只能通过「预约」行动获得（明牌或盲抽，全桌共 5 个，领完为止），不能用拿取行动直接拿</li>
+        </ul>
+      </div>
+      <h3>稀有与传说宝可梦</h3>
+      <ul>
+        <li>稀有（5 张，粉色框）与传说（5 张，紫色框）各只展示 1 张，被收服后补下一张</li>
+        <li>费用包含<b>大师球</b>（稀有 1 个、传说 2 个），大师球必须实际支付</li>
+        <li><b>不能预约</b>，只能直接从场上收服</li>
+        <li>提供<b>双倍加成</b>：按 2 个同色加成计算（进化条件也认）</li>
+        <li>传说宝可梦分数最高</li>
+      </ul>
+      <h3>其他规则</h3>
+      <ul>
+        <li><b>手牌上限</b>：精灵球（含大师球）最多持有 10 个，超出需退还供应区</li>
+        <li>宝可梦分五类：一阶（0~1分）、二阶（1~3分）、三阶（3~5分）、稀有（0分·双倍加成）、传说（2分·双倍加成）</li>
+        <li>场上的卡牌被收服或预约后，自动从牌堆补充</li>
+        <li>开局随机决定<b>先手</b>玩家（面板上有「先手」标记）；有人达到目标分后完成当前一轮，每名玩家行动次数相同</li>
+        <li>电脑（简单）随机性更强；电脑（困难）会精打细算</li>
+        <li>联机模式：断线的玩家轮到自己时 30 秒后自动跳过；任何玩家都可以发起「结束对局」投票，全体在线玩家同意即结束（离线者自动视为同意）；全员离线时对局自动结束</li>
+      </ul>
+    </div>
+    <button class="btn primary" data-close>知道了</button>
+  </div>
+
+  <div class="modal" id="modal-gameover" hidden>
+    <h2 id="go-title"></h2>
+    <div id="go-result"></div>
+    <div class="modal-actions">
+      <button id="btn-again" class="btn primary lg">再来一局</button>
+      <button id="btn-back-setup" class="btn secondary lg">返回设置</button>
+    </div>
+  </div>
+
+  <div class="modal" id="modal-logs" hidden>
+    <h2>对局记录</h2>
+    <div id="logs-body"></div>
+    <button class="btn primary" data-close>关闭</button>
+  </div>
+
+  <div class="modal" id="modal-leaderboard" hidden>
+    <h2>排行榜</h2>
+    <div id="lb-body"></div>
+    <button class="btn primary" data-close>关闭</button>
+  </div>
+</div>
+
+<div id="vote-banner" hidden></div>
+
+<div id="toast" hidden></div>
+
+<div id="end-banner-big" hidden><div class="ebg-inner">最终回合！</div></div>
+
+<div id="zoom" hidden><img id="zoom-img" alt="卡面大图"></div>
+
+<script src="config.js"></script>
+<script src="game-core.js"></script>
+<script src="client.js"></script>
+<script src="replay.js"></script>
+</body>
+</html>

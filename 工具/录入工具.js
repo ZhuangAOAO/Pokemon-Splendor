@@ -2,7 +2,7 @@
 
 /* ================================================================
    卡牌数值录入工具服务器
-   用法：node 录入工具.js
+   用法：node 工具/录入工具.js（在项目根目录运行）
    然后浏览器打开 http://localhost:3100
    · 显示每张卡的大图 + 输入框（分 / 红蓝黑粉黄费用 / 加成色）
    · 「保存」把数值写回 config.js 的卡牌表（只改卡牌表，其余不动）
@@ -28,8 +28,8 @@ const MIME = {
 const BASE_OF = (n) => String(n).replace(/\d+$/, '');
 const COLOR_CN = { red: '普通球', blue: '超级球', black: '高级球', pink: '治愈球', yellow: '快速球' };
 function readTable() {
-  delete require.cache[require.resolve('./config.js')];
-  require('./config.js');
+  delete require.cache[require.resolve('../config.js')];
+  require('../config.js');
   const needs = global.EVOLUTION_NEEDS || {};
   return global.CARD_TABLE.map((r) => {
     // 进化条件印在"未进化的卡"（一阶/二阶）上：优先按完整卡名查，其次按基础名查
@@ -45,7 +45,7 @@ function readTable() {
   });
 }
 function writeTable(rows) {
-  const src = fs.readFileSync(path.join(ROOT, 'config.js'), 'utf8');
+  const src = fs.readFileSync(path.join(ROOT, '..', 'config.js'), 'utf8');
   // 1) 卡牌表
   const start = src.indexOf('window.CARD_TABLE = [');
   const end = src.indexOf('];', start) + 2;
@@ -77,7 +77,7 @@ function writeTable(rows) {
     .map(([base, v]) => `  '${base}': { ${v.color}: ${v.count} }, // ${base} 进化需 ${COLOR_CN[v.color] || v.color}×${v.count}`);
   const evoBody = `window.EVOLUTION_NEEDS = {\n${entries.join('\n')}${entries.length ? '\n' : ''}};`;
   out = out.slice(0, eStart) + evoBody + out.slice(eEnd);
-  fs.writeFileSync(path.join(ROOT, 'config.js'), out, 'utf8');
+  fs.writeFileSync(path.join(ROOT, '..', 'config.js'), out, 'utf8');
   return { ok: true };
 }
 function validRows(rows, oldRows) {
@@ -136,8 +136,10 @@ const server = http.createServer((req, res) => {
   let file;
   try { file = u.pathname === '/' ? '/录入工具.html' : decodeURIComponent(u.pathname); }
   catch (e) { res.writeHead(400); return res.end(); }
-  const full = path.join(ROOT, path.normalize('/' + file));
-  if (full !== ROOT && !full.startsWith(ROOT + path.sep)) { res.writeHead(403); return res.end(); }
+  // 卡面图片在上一级的 pictures/：单独映射过去，其余文件一律限制在工具目录内
+  const base = file.startsWith('/pictures/') ? path.join(ROOT, '..') : ROOT;
+  const full = path.join(base, path.normalize('/' + file));
+  if (full !== base && !full.startsWith(base + path.sep)) { res.writeHead(403); return res.end(); }
   fs.readFile(full, (err, data) => {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('404'); }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(full).toLowerCase()] || 'application/octet-stream' });

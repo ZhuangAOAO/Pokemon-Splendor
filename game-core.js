@@ -37,6 +37,7 @@ const HOOKS = {
   onStateChanged: () => {},  // 状态变了（浏览器=重绘界面；服务器=广播给所有玩家）
   onToast: () => {},         // 需要提示一条消息
   onGameOver: () => {},      // 对局结束（浏览器=弹结算框；服务器=广播）
+  onAction: () => {},        // 执行了一个真实行动（服务器=记回放；含人类与电脑的行动，不含自动退球/自动进化）
 };
 
 /* ==================== 工具函数 ==================== */
@@ -177,6 +178,7 @@ function allMarketCards() {
 /* ==================== 玩家行动 ==================== */
 function actTakeThree(keys) {
   const p = curPlayer();
+  HOOKS.onAction('take3', { colors: keys.slice() });
   keys.forEach((c) => { S.pool[c]--; p.balls[c]++; });
   HOOKS.onToast(`${p.name} 拿取了 ${keys.map((c) => BALLS[c].name).join('、')}${keys.length < 3 ? '（供应不足3色）' : ''}`);
   S.mode = null; S.selColors = [];
@@ -184,6 +186,7 @@ function actTakeThree(keys) {
 }
 function actTakeTwo(c) {
   const p = curPlayer();
+  HOOKS.onAction('take2', { color: c });
   S.pool[c] -= 2; p.balls[c] += 2;
   HOOKS.onToast(`${p.name} 拿取了 2 个${BALLS[c].name}`);
   S.mode = null; S.selColors = [];
@@ -207,6 +210,7 @@ function afterGain() {
 }
 function actDiscardOne(c) {
   const p = curPlayer();
+  HOOKS.onAction('discard', { color: c });
   p.balls[c]--; S.pool[c]++;
   if (totalBalls(p) <= RULES.handLimit) {
     S.phase = 'normal'; S.discardNeed = 0;
@@ -217,6 +221,7 @@ function actDiscardOne(c) {
 }
 function actBuy(tier, idx) {
   const p = curPlayer();
+  HOOKS.onAction('buy', { tier, idx });
   const card = S.market[tier][idx];
   payForCard(p, card);
   p.cards.push(card);
@@ -228,6 +233,7 @@ function actBuy(tier, idx) {
 }
 function actBuyReserved(ridx) {
   const p = curPlayer();
+  HOOKS.onAction('buyReserved', { ridx });
   const card = p.reserved[ridx];
   payForCard(p, card);
   card.blind = false; // 收服后公开
@@ -256,6 +262,7 @@ function actReserveBlind(tier) {
   if (p.reserved.length >= RULES.reserveLimit) return;
   const card = S.decks[tier].pop();
   if (!card) return;
+  HOOKS.onAction('reserveBlind', { tier });
   card.blind = true; // 标记为盲抽：对其他玩家保密
   p.reserved.push(card);
   let gotMaster = false;
@@ -266,6 +273,7 @@ function actReserveBlind(tier) {
 // 只拿大师球、不预约：config 里 takeMasterAlone=true 时开放的行动
 function actTakeMaster() {
   const p = curPlayer();
+  HOOKS.onAction('takeMaster', {});
   S.pool.master--; p.balls.master++;
   HOOKS.onToast(`${p.name} 拿取了 1 个大师球`);
   afterGain();
@@ -273,6 +281,7 @@ function actTakeMaster() {
 // 退还精灵球：把 1 个球退回供应区（供应区被拿空时的周转行动，防止游戏卡死）
 function actReturnBall(c) {
   const p = curPlayer();
+  HOOKS.onAction('return', { color: c });
   p.balls[c]--; S.pool[c]++;
   HOOKS.onToast(`${p.name} 退还了 1 个${BALLS[c].name}`);
   S.mode = null; S.selColors = [];
@@ -283,6 +292,7 @@ function actReserve(tier, idx) {
   if (p.reserved.length >= RULES.reserveLimit) return;
   const card = S.market[tier][idx];
   if (card.tier >= 4) return; // 稀有/传说宝可梦不能预约，只能直接收服
+  HOOKS.onAction('reserve', { tier, idx });
   S.market[tier][idx] = S.decks[tier].pop() || null;
   p.reserved.push(card);
   let gotMaster = false;
@@ -366,11 +376,13 @@ function actEvolve(loc) {
   if (S.phase !== 'evolve') return;
   const op = (S.evoOptions || []).find((o) => sameLoc(o.loc, loc));
   if (!op || !op.ok) return; // 无此选项或进化条件不满足
+  HOOKS.onAction('evolve', { loc: JSON.parse(JSON.stringify(loc)) });
   doEvolve(p, op.loc, op.card, op.base);
   finishEvolvePhase();
 }
 function actSkipEvolve() {
   if (S.phase !== 'evolve') return;
+  HOOKS.onAction('skipEvolve', {});
   finishEvolvePhase();
 }
 function finishEvolvePhase() {
@@ -388,7 +400,8 @@ function sameLoc(a, b) {
 function scheduleAI() {
   const g = S;
   const p = curPlayer();
-  if (S.phase === 'normal' && p.isAI && !S.over) {
+  // 回放模式（S.replay）：电脑行动由回放记录驱动，不自动决策
+  if (S.phase === 'normal' && p.isAI && !S.over && !S.replay) {
     setTimeout(() => {
       if (S === g && !S.over && S.phase === 'normal' && curPlayer() === p) aiTurn(p);
     }, AI_CONFIG.thinkMin + Math.random() * (AI_CONFIG.thinkMax - AI_CONFIG.thinkMin));
@@ -396,7 +409,7 @@ function scheduleAI() {
 }
 function aiTurn(p) {
   const move = chooseAIMove(p);
-  if (move === null) { HOOKS.onToast(`${p.name} 没有可执行的行动，跳过`); afterActionDone(); return; }
+  if (move === null) { HOOKS.onAction('skip', {}); HOOKS.onToast(`${p.name} 没有可执行的行动，跳过`); afterActionDone(); return; }
   if (move.type === 'buy') actBuy(move.tier, move.idx);
   else if (move.type === 'buyReserved') actBuyReserved(move.ridx);
   else if (move.type === 'reserve') actReserve(move.tier, move.idx);

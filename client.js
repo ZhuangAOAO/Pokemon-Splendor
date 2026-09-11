@@ -7,7 +7,8 @@
    ================================================================ */
 
 const $ = (sel) => document.querySelector(sel);
-const ONLINE = location.protocol !== 'file:';
+// 回放页（/replay）虽经 http 打开，但走本地渲染模式：无联机流程，对局由 replay.js 驱动
+const ONLINE = location.protocol !== 'file:' && location.pathname.indexOf('replay') < 0;
 const TIER_NAMES = { 1: '一阶', 2: '二阶', 3: '三阶', 4: '稀有', 5: '传说' };
 
 /* ==================== 音效（WebAudio 合成，零资源文件） ==================== */
@@ -62,6 +63,10 @@ let myRole = '';   // 联机：账号角色（admin 才显示管理入口）
 let myNickname = ''; // 联机：游戏内昵称（默认真实姓名）
 let room = null;   // 联机：房间信息（最新一次广播）
 let connOk = true; // 联机：连接状态
+let esConn = null;  // 联机：SSE 连接实例（看门狗监控用）
+let lastEventTs = Date.now(); // 联机：最近一次收到服务器消息的时间
+let actingLock = false; // 联机：行动已发送、等待服务器回推期间的防连点锁
+let actingSeq = 0;     // 行动发送序号：迟到的旧回包/超时不得干扰最新一次发送
 let overShown = false; // 本局结算框是否已弹出
 let prevSnap = null;      // 上一次状态快照（漂移动画差分用）
 const lastMarketIds = {}; // 每个市场槽位上次的卡 id（只给新补的卡播入场动画）
@@ -105,9 +110,58 @@ function showScreen(id) {
   });
 }
 
+/* ==================== 最终回合大横幅（屏幕中央登场约 1 秒 → 缩进顶栏小徽章） ==================== */
+let endBannerActive = false;
+let endTriggeredPrev = false;
+let endBannerTimer = null;
+function showFinalBanner() {
+  const big = $('#end-banner-big');
+  const pill = $('#end-banner');
+  // 顶栏小徽章此刻还是隐藏的：先临时亮出量好它的位置（同一帧内恢复，不会闪烁）
+  pill.hidden = false;
+  void pill.offsetWidth;
+  const pr = pill.getBoundingClientRect();
+  pill.hidden = true;
+  endBannerActive = true;
+  big.hidden = false;
+  void big.offsetWidth; // 强制布局，拿到屏幕中央的准确位置
+  const br = big.getBoundingClientRect();
+  const s = Math.min(pr.width / br.width, pr.height / br.height);
+  const dx = (pr.left + pr.width / 2) - (br.left + br.width / 2);
+  const dy = (pr.top + pr.height / 2) - (br.top + br.height / 2);
+  clearTimeout(endBannerTimer);
+  endBannerTimer = setTimeout(() => {
+    const inner = big.querySelector('.ebg-inner');
+    inner.style.animation = 'none'; // 停止呼吸，干净利落地缩进顶栏
+    big.style.transition = 'transform .65s cubic-bezier(.3,.9,.35,1.12)';
+    big.style.transform = `translate(${dx}px,${dy}px) scale(${s})`;
+    const onEnd = () => {
+      big.removeEventListener('transitionend', onEnd);
+      big.hidden = true;
+      big.style.transition = '';
+      big.style.transform = ''; // 复位，下次从屏幕中央重新登场
+      inner.style.animation = '';
+      endBannerActive = false;
+      pill.hidden = false;
+    };
+    big.addEventListener('transitionend', onEnd);
+  }, 1100);
+}
+function cancelFinalBanner() {
+  clearTimeout(endBannerTimer);
+  endBannerActive = false;
+  $('#end-banner-big').hidden = true;
+}
+
 /* ==================== 渲染（读取全局 S） ==================== */
 function render() {
   if (!S) return;
+  // 最终回合（公平轮）：全场切换紧张氛围（红调暗角），对局结束/新一局自动还原
+  const fr = S.endTriggered && !S.over;
+  $('#screen-game').classList.toggle('final-round', fr);
+  if (fr && !endTriggeredPrev) showFinalBanner(); // 刚进入最终回合：大横幅登场
+  endTriggeredPrev = fr;
+  if (S.over) cancelFinalBanner(); // 对局突然结束（投票等）：撤掉还在登场的大横幅
   floatDiff(); // 先差分状态、计算漂移动画（要用旧 DOM 的位置，必须最先执行）
   renderHeader(); renderMarket(); renderRareLegend(); renderPool(); renderPlayers(); renderActions();
 }
@@ -228,9 +282,12 @@ function renderHeader() {
   $('#round-info').textContent = `第 ${round} 轮`;
   const p = curPlayer();
   const myTurn = ONLINE ? (mySeat === S.current) : !p.isAI;
-  $('#turn-info').innerHTML = `轮到 <b>${p.name}</b>${myTurn ? (p.isAI ? '（电脑思考中…）' : '（请行动）') : ''}`;
+  // 联机轮到自己：直接说「到你操作」，不显示自己的名字
+  $('#turn-info').innerHTML = (ONLINE && myTurn && !p.isAI)
+    ? `<b>到你操作</b>`
+    : `轮到 <b>${p.name}</b>${myTurn ? (p.isAI ? '（电脑思考中…）' : '（请行动）') : ''}`;
   $('#target-info').textContent = `目标 ${S.target} 分`;
-  $('#end-banner').hidden = !S.endTriggered;
+  $('#end-banner').hidden = !S.endTriggered || endBannerActive; // 大横幅归位前，顶栏小徽章先不亮
   // 轮到自己时的提示音（上升沿触发）
   if (myTurn && !prevMyTurn && !S.over) playSound('turn');
   prevMyTurn = myTurn;
@@ -491,6 +548,12 @@ function renderActions() {
   const p = curPlayer();
   if (S.phase === 'gameover') return;
 
+  // 联机：行动已发送、等待服务器回推——期间不显示可点按钮（防连点）
+  if (ONLINE && actingLock) {
+    box.innerHTML = `<div class="action-hint">行动已发送，请稍候…</div>`;
+    return;
+  }
+
   if (S.phase === 'discard') {
     box.innerHTML = `<div class="action-hint warn">你的精灵球超过 ${RULES.handLimit} 个！点击下方自己的精灵球退还（还需 ${S.discardNeed} 个）</div>`;
     return;
@@ -692,7 +755,37 @@ function bindConfirmCancel(type) {
 /* ==================== 行动分发：本地直接执行 / 联机发给服务器 ==================== */
 function dispatch(a) {
   if (ONLINE) {
-    postApi({ type: 'action', cid: myCid, action: a });
+    if (actingLock) return; // 上一次行动还在路上：忽略连点，防止重复发送
+    if (!connOk) { toast('连接中断，正在重连，请稍候…'); return; }
+    actingLock = true;
+    const seq = ++actingSeq;
+    // 暂存本次选择（含回合上下文），被拒绝时原样恢复，让玩家可以直接重新点确认
+    const savedSel = { turn: S.turnIdx, me: S.current, phase: S.phase, mode: S.mode, colors: S.selColors.slice(), card: S.selCard, blind: S.selBlind };
+    // 立即清空本机选择态并显示等待：服务器回推到达前不再接受第二次行动
+    S.mode = null; S.selColors = []; S.selCard = null; S.selBlind = null;
+    render();
+    postApi({ type: 'action', cid: myCid, action: a }, 8000).then((j) => {
+      if (seq !== actingSeq) return; // 迟到的旧回包：已有新行动在途，忽略
+      if (!j.ok) {
+        // 行动被拒绝/发送失败：解锁并恢复按钮，别卡在"请稍候"（服务器拒绝时不会广播）
+        actingLock = false;
+        // 回合没变才恢复选择；若推送已让回合前进（或人已离开对局）直接渲染当前状态
+        if (S && S.turnIdx === savedSel.turn && S.current === savedSel.me && S.phase === savedSel.phase) {
+          S.mode = savedSel.mode; S.selColors = savedSel.colors; S.selCard = savedSel.card; S.selBlind = savedSel.blind;
+        }
+        render();
+        return;
+      }
+      // 服务器已受理：正常回推立刻就到；若 SSE 半死（假活）回推永远不来，5 秒后兜底解锁，
+      // 防止界面永远停在"行动已发送，请稍候"（真正的恢复靠下面的 SSE 看门狗重建连接）
+      setTimeout(() => {
+        if (seq === actingSeq && actingLock) {
+          actingLock = false;
+          render();
+          toast('状态同步超时，请稍后重试');
+        }
+      }, 5000);
+    });
     return;
   }
   if (a.kind === 'take3') actTakeThree(a.colors);
@@ -722,6 +815,7 @@ function showGameOver() {
   if (!S || overShown) return;
   overShown = true;
   playSound('win');
+  $('#zoom').hidden = true; // 结算时若卡面大图还开着，先关掉，别挡住结算弹窗
   // 平局判定（官方规则）：先比分数 → 再比进化次数 → 再比宝可梦数量
   const rank = S.players.slice().sort((a, b) =>
     (b.points - a.points) || (b.evolutions - a.evolutions) || (a.cards.length - b.cards.length));
@@ -932,12 +1026,16 @@ function buildDeco() {
 /* ==================== 联机模式 ==================== */
 const AI_NAMES = ['小智', '小霞', '小刚', '武藏'];
 
-async function postApi(obj) {
+async function postApi(obj, timeoutMs) {
+  // timeoutMs：请求超过此时长仍未响应就中断（fetch 本身没有超时，弱网下可能永远挂起）
+  const ctrl = timeoutMs ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
   try {
     const r = await fetch('/api', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(obj),
+      signal: ctrl ? ctrl.signal : undefined,
     });
     const j = await r.json().catch(() => ({}));
     if (!j.ok) { toast(j.msg || '请求失败'); playSound('error'); }
@@ -946,6 +1044,8 @@ async function postApi(obj) {
     toast('与服务器通信失败');
     playSound('error');
     return { ok: false };
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 function updateConnDot() {
@@ -955,18 +1055,29 @@ function updateConnDot() {
   dot.textContent = connOk ? '已连接' : '连接中断，重连中…';
 }
 function handleServerMsg(m) {
+  if (m.type === 'hb') return; // 心跳：只用来刷新"最近活跃"时间，无业务内容
   if (m.type === 'state') {
     room = m.room;
     room.you = m.you || null; // 服务器把 you 放在 room 旁边，客户端统一挂在 room.you 上
     if (m.you) { mySeat = m.you.seat; myName = m.you.name; }
     if (m.game) {
+      const prev = S;
       S = m.game;
+      actingLock = false; // 服务器回推到达：行动流程结束
+      // 同回合内的推送（别人重连、投票、断线等）不能清掉正在进行的本地选择：
+      // 行动真正完成时回合号会前进，那时才重置 UI 模式（服务器状态的 mode 为 null）
+      if (prev && !prev.over && prev.turnIdx === S.turnIdx && prev.current === S.current && prev.phase === S.phase) {
+        S.mode = prev.mode; S.selColors = prev.selColors; S.selCard = prev.selCard; S.selBlind = prev.selBlind;
+      }
+      if (prev && prev.over && !S.over) { hideModals(); $('#zoom').hidden = true; } // 再来一局：关掉上一局的结算弹窗
       if (!S.over) overShown = false;
       showScreen('game');
       render();
       if (S.over && !overShown) showGameOver();
     } else {
+      const wasInGame = !!S;
       S = null;
+      if (wasInGame) { hideModals(); $('#zoom').hidden = true; } // 对局结束回大厅：关掉结算弹窗/卡面大图，别让它们悬在大厅上
       showScreen('lobby');
       renderLobby();
       fadeVoteBanner(); // 投票结束后横幅短暂停留再淡出
@@ -1011,7 +1122,7 @@ function renderLobby() {
     $('#btn-lobby-start').disabled = !(total >= 2 && total <= 4);
   }
   $('#lobby-hint').textContent = isHost
-    ? `当前 ${total} 名玩家（2~4 人可开始），把本页地址发给局域网内朋友一起加入`
+    ? `当前 ${total} 名玩家（2~4 人可开始），把本页地址发给朋友，大家一起加入`
     : '等待房主开始游戏…';
 }
 function renderAiRows() {
@@ -1053,14 +1164,17 @@ function renderLobbyTarget() {
     inp.addEventListener('change', () => postApi({ type: 'setTarget', cid: myCid, target: +inp.value })));
 }
 function openEvents(cid) {
+  if (esConn) { try { esConn.close(); } catch (e) { /* 旧连接 */ } }
   connOk = true;
+  lastEventTs = Date.now();
   updateConnDot();
-  const es = new EventSource('/events?cid=' + encodeURIComponent(cid));
-  es.onopen = () => { connOk = true; updateConnDot(); };
-  es.onmessage = (e) => {
+  esConn = new EventSource('/events?cid=' + encodeURIComponent(cid));
+  esConn.onopen = () => { connOk = true; lastEventTs = Date.now(); updateConnDot(); };
+  esConn.onmessage = (e) => {
+    lastEventTs = Date.now();
     try { handleServerMsg(JSON.parse(e.data)); } catch (err) { /* 忽略坏消息 */ }
   };
-  es.onerror = () => { connOk = false; updateConnDot(); }; // EventSource 会自动重连
+  esConn.onerror = () => { connOk = false; updateConnDot(); }; // EventSource 会自动重连
 }
 async function joinGame() {
   const roomId = $('#join-roomid').value.trim();
@@ -1172,6 +1286,13 @@ function initOnline() {
   $('#btn-lobby-leave').addEventListener('click', () => {
     if (confirm('确定退出大厅吗？')) location.reload();
   });
+  // SSE 看门狗：服务器每 20 秒发一次心跳，若 45 秒毫无动静说明连接半死（TCP 假活），
+  // 强制重建连接（新连接会顶掉服务器上的旧连接，随后补发全量状态）
+  setInterval(() => {
+    if (esConn && connOk && myCid && Date.now() - lastEventTs > 45000) {
+      openEvents(myCid);
+    }
+  }, 10000);
 }
 
 /* ==================== 初始化 ==================== */
@@ -1249,11 +1370,11 @@ function init() {
     const list = j.list || [];
     $('#lb-body').innerHTML = list.length
       ? `<table class="lb-table">
-          <thead><tr><th>名次</th><th>昵称</th><th>胜场</th><th>场次</th><th>胜率</th><th>平均分</th><th>进化</th></tr></thead>
+          <thead><tr><th>名次</th><th>姓名</th><th>胜场</th><th>场次</th><th>胜率</th><th>平均分</th><th>进化</th></tr></thead>
           <tbody>${list.map((r, i) => `
             <tr>
               <td>${i + 1}</td>
-              <td class="lb-name">${r.nickname}</td>
+              <td class="lb-name">${r.realName || r.nickname}</td>
               <td>${r.wins}</td>
               <td>${r.games}</td>
               <td>${r.winRate}%</td>

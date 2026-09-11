@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>账号审核 - 璀璨宝石宝可梦</title>
+<title>后台看板 - 璀璨宝石宝可梦</title>
 <style>
   *{ box-sizing:border-box; margin:0; padding:0; }
   [hidden]{ display:none !important; }
@@ -35,10 +35,10 @@
   .content{ max-width:960px; width:100%; margin:0 auto; padding:18px 24px 40px; }
 
   /* 滑动标签 */
-  .tabs{ position:relative; display:flex; background:#dfe5ee; border-radius:12px; padding:4px; margin-bottom:14px; max-width:520px; }
+  .tabs{ position:relative; display:flex; background:#dfe5ee; border-radius:12px; padding:4px; margin-bottom:14px; max-width:560px; }
   .tab-indicator{
     position:absolute; top:4px; bottom:4px; left:4px;
-    width:calc((100% - 8px) / 3);
+    width:calc((100% - 8px) / 5);
     background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(34,48,61,.14);
     transition:transform .35s cubic-bezier(.3,.8,.3,1);
   }
@@ -65,23 +65,46 @@
   td.ops{ text-align:right; }
   td.ops .btn{ padding:5px 12px; font-size:12px; margin-left:6px; }
   .empty{ color:#93a2b3; text-align:center; padding:36px 12px; font-size:14px; }
+
+  /* ---- 日志面板 ---- */
+  .log-bar{ display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid #eef2f7; flex-wrap:wrap; }
+  .log-file{ border:none; background:#f1f5fa; border-radius:8px; padding:6px 14px; font-size:13px; font-weight:800; cursor:pointer; color:#5b6b7b; font-family:inherit; }
+  .log-file.active{ background:#22303d; color:#fff; }
+  .log-bar .btn{ padding:5px 12px; font-size:12px; }
+  .log-meta{ flex:1; text-align:right; color:#93a2b3; font-size:12px; white-space:nowrap; }
+  .log-view{ margin:0; padding:14px 16px; background:#1c2530; color:#cfe3f5;
+    font-family:Consolas,"Courier New",monospace; font-size:12.5px; line-height:1.75;
+    white-space:pre-wrap; word-break:break-all; overflow-y:auto;
+    max-height:52vh; min-height:220px; border-radius:0 0 12px 12px; }
+  .log-view .empty{ color:#5f7285; text-align:center; padding:40px 0; font-family:inherit; }
+
+  /* ---- 添加管理员弹窗 ---- */
+  #ad-create-box{
+    position:fixed; inset:0; background:rgba(34,48,61,.5);
+    display:flex; align-items:center; justify-content:center; z-index:50;
+  }
+  #ad-create-box .login-card{ width:360px; }
+  #ad-create-box h3{ margin-bottom:12px; font-size:16px; }
+  #ad-create-box .login-card .btn{ width:auto; padding:9px 18px; }
+  #ad-create-actions{ display:flex; gap:10px; justify-content:center; margin-top:4px; }
 </style>
 </head>
 <body>
 <div id="login-box">
   <div class="login-card">
-    <h1>账号审核 · <span>璀璨宝石宝可梦</span></h1>
+    <h1>后台看板 · <span>璀璨宝石宝可梦</span></h1>
     <input id="ad-name" maxlength="12" placeholder="管理员用户名">
     <input id="ad-pass" type="password" placeholder="密码">
     <button id="ad-login" class="btn primary">登录</button>
-    <div class="hint">管理员账号用「初始化管理员.js」创建；普通玩家在游戏页面注册</div>
   </div>
 </div>
 
 <div id="review-box" hidden>
   <div class="topbar">
-    <h1>账号审核 · <span>璀璨宝石宝可梦</span></h1>
+    <h1>后台看板 · <span>璀璨宝石宝可梦</span></h1>
     <div class="spacer"></div>
+    <button id="ad-add-admin" class="btn green">添加管理员</button>
+    <button id="ad-replay" class="btn ghost">对局回放</button>
     <button id="ad-refresh" class="btn">刷新</button>
     <button id="ad-logout" class="btn">退出登录</button>
   </div>
@@ -91,16 +114,33 @@
       <button class="tab active" data-i="0">待审核<span class="cnt" id="cnt-0"></span></button>
       <button class="tab" data-i="1">已通过<span class="cnt" id="cnt-1"></span></button>
       <button class="tab" data-i="2">已拒绝<span class="cnt" id="cnt-2"></span></button>
+      <button class="tab" data-i="3">排行榜<span class="cnt" id="cnt-3"></span></button>
+      <button class="tab" data-i="4">日志<span class="cnt" id="cnt-4"></span></button>
     </div>
     <div class="panels-viewport">
       <div class="panels-track" id="panels-track">
         <div class="panel" id="panel-0"></div>
         <div class="panel" id="panel-1"></div>
         <div class="panel" id="panel-2"></div>
+        <div class="panel" id="panel-3"></div>
+        <div class="panel" id="panel-4"></div>
       </div>
     </div>
   </div>
 </div>
+
+<div id="ad-create-box" hidden>
+  <div class="login-card">
+    <h3>添加管理员</h3>
+    <input id="new-admin-name" maxlength="12" placeholder="新管理员用户名（2~12 字符）">
+    <input id="new-admin-pass" type="password" placeholder="密码（至少 6 位）">
+    <div id="ad-create-actions">
+      <button id="new-admin-ok" class="btn primary">创建</button>
+      <button id="new-admin-cancel" class="btn">取消</button>
+    </div>
+  </div>
+</div>
+
 <script>
 'use strict';
 const $ = (s) => document.querySelector(s);
@@ -117,7 +157,7 @@ async function api(body) {
     const r = await fetch('/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     return r.json();
   } catch (e) {
-    toast('无法连接服务器：请通过 http://服务器地址/admin.html 打开本页（不能直接双击文件）');
+    toast('无法连接服务器：请通过 http://服务器地址/admin 打开本页（不能直接双击文件）');
     return { ok: false };
   }
 }
@@ -126,10 +166,44 @@ function setTab(i) {
   $('#tab-indicator').style.transform = `translateX(${i * 100}%)`;
   $('#panels-track').style.transform = `translateX(${-i * 100}%)`;
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', +t.dataset.i === i));
+  // 日志标签激活期间每 10 秒自动刷新，离开即停
+  clearInterval(logTimer);
+  if (i === 4) { refreshLogs(); logTimer = setInterval(refreshLogs, 10000); }
 }
 document.querySelectorAll('.tab').forEach((t) => {
   t.addEventListener('click', () => setTab(+t.dataset.i));
 });
+// ---- 日志面板：三个日志文件子标签切换 + 最近 500 行（控制台风格） ----
+let logsData = [];
+let logFileIdx = 0;
+let logTimer = null;
+async function refreshLogs() {
+  const j = await api({ type: 'adminLogs', token });
+  if (!j.ok) return;
+  logsData = j.logs || [];
+  renderLogPanel();
+}
+function renderLogPanel() {
+  const box = $('#panel-4');
+  if (!box) return;
+  if (!logsData.length) { box.innerHTML = '<div class="empty">暂无日志（服务器还没有产生日志）</div>'; return; }
+  const cur = logsData[logFileIdx] || logsData[0];
+  box.innerHTML = `
+    <div class="log-bar">
+      ${logsData.map((f, i) => `<button class="log-file ${i === logFileIdx ? 'active' : ''}" data-fi="${i}">${f.name}</button>`).join('')}
+      <button class="btn" id="log-refresh">刷新</button>
+      <span class="log-meta">最近 500 行 · ${cur.bytes} 字节 · 更新于 ${cur.updatedAt}</span>
+    </div>
+    <div class="log-view"></div>`;
+  const view = box.querySelector('.log-view');
+  if (cur.text) { view.textContent = cur.text; view.scrollTop = view.scrollHeight; }
+  else view.innerHTML = '<div class="empty">这个文件还没有日志</div>';
+  box.querySelectorAll('.log-file').forEach((b) => {
+    b.addEventListener('click', () => { logFileIdx = +b.dataset.fi; renderLogPanel(); });
+  });
+  const rb = box.querySelector('#log-refresh');
+  if (rb) rb.addEventListener('click', refreshLogs);
+}
 function tableHtml(users, actionsFor) {
   if (!users.length) return '<div class="empty">暂无记录</div>';
   return `<table>
@@ -138,9 +212,13 @@ function tableHtml(users, actionsFor) {
       const info = u.source === 'backdoor'
         ? `后门 · ${u.remark || '无备注'}`
         : `${u.realName} · ${u.gradYear || '届数未填'}届`;
+      // 姓名重复提醒：审核时看到红标就知道这个姓名已有其他账号
+      const dupBadge = u.dupWith
+        ? `<span style="background:#fde9e4;color:#c0392b;border:1px solid #f2c2c9;border-radius:4px;padding:1px 6px;margin-left:6px;font-size:12px;">姓名重复（已有账号：${u.dupWith}）</span>`
+        : '';
       return `<tr>
         <td class="name">${u.name}</td>
-        <td class="info">${info}</td>
+        <td class="info">${info}${dupBadge}</td>
         <td class="time">${u.createdAt}</td>
         <td class="ops">${actionsFor(u)}</td>
       </tr>`;
@@ -164,8 +242,31 @@ async function refresh() {
     <button class="btn red" data-name="${u.name}" data-act="deny">撤销</button>`);
   $('#panel-2').innerHTML = tableHtml(groups[2], (u) => `
     <button class="btn green" data-name="${u.name}" data-act="approve">重新通过</button>`);
+  refreshLeaderboard();
+  refreshLogs();
 }
-function showLogin() { $('#login-box').hidden = false; $('#review-box').hidden = true; }
+// 排行榜：胜场 → 胜率 → 场次排序（服务器端已排好），前三名金银铜色
+async function refreshLeaderboard() {
+  const j = await api({ type: 'leaderboard', token });
+  const list = (j && j.ok && j.list) || [];
+  $('#cnt-3').textContent = list.length ? list.length : '';
+  if (!list.length) { $('#panel-3').innerHTML = '<div class="empty">暂无对局记录</div>'; return; }
+  const rankStyle = (i) => ['color:#d4a017;', 'color:#8c9bab;', 'color:#b06a3b;'][i] || 'color:#5b6b7b;';
+  $('#panel-3').innerHTML = `<table>
+    <thead><tr><th>排名</th><th>姓名</th><th>账号</th><th>胜场</th><th>场次</th><th>胜率</th><th>平均分</th><th>进化次数</th></tr></thead>
+    <tbody>${list.map((s, i) => `<tr>
+      <td style="${rankStyle(i)}font-weight:900;">${i + 1}</td>
+      <td class="name">${s.realName || s.nickname}</td>
+      <td class="info">${s.account}</td>
+      <td>${s.wins}</td>
+      <td>${s.games}</td>
+      <td>${s.winRate}%</td>
+      <td>${s.avgPoints}</td>
+      <td>${s.evolutions}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+function showLogin() { clearInterval(logTimer); $('#login-box').hidden = false; $('#review-box').hidden = true; $('#ad-create-box').hidden = true; }
 function showReview() { $('#login-box').hidden = true; $('#review-box').hidden = false; refresh(); }
 $('#ad-login').addEventListener('click', async () => {
   const j = await api({ type: 'login', name: $('#ad-name').value.trim(), password: $('#ad-pass').value });
@@ -188,8 +289,34 @@ $('#ad-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#ad
     refresh();
   });
 });
+// ---- 对局回放：新标签页打开回放列表 ----
+$('#ad-replay').addEventListener('click', () => { window.open('/replay', '_blank'); });
+// ---- 添加管理员：弹窗表单 → createAdmin 接口 ----
+$('#ad-add-admin').addEventListener('click', () => {
+  $('#new-admin-name').value = '';
+  $('#new-admin-pass').value = '';
+  $('#ad-create-box').hidden = false;
+  $('#new-admin-name').focus();
+});
+$('#new-admin-cancel').addEventListener('click', () => { $('#ad-create-box').hidden = true; });
+$('#new-admin-ok').addEventListener('click', async () => {
+  const name = $('#new-admin-name').value.trim();
+  const password = $('#new-admin-pass').value;
+  if (name.length < 2 || name.length > 12) { toast('用户名需 2~12 个字符'); return; }
+  if (password.length < 6) { toast('密码至少 6 位'); return; }
+  if (!confirm('确定创建管理员「' + name + '」吗？')) return;
+  const j = await api({ type: 'createAdmin', token, name, password });
+  toast(j.msg || '创建失败');
+  if (j.ok) { $('#ad-create-box').hidden = true; refresh(); }
+});
+$('#new-admin-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#new-admin-ok').click(); });
 $('#ad-refresh').addEventListener('click', refresh);
-$('#ad-logout').addEventListener('click', () => { localStorage.removeItem('adToken'); token = ''; showLogin(); });
+$('#ad-logout').addEventListener('click', async () => {
+  await api({ type: 'logout', token });
+  localStorage.removeItem('adToken');
+  token = '';
+  showLogin();
+});
 (async () => {
   if (!token) { showLogin(); return; }
   const j = await api({ type: 'whoami', token });

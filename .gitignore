@@ -7,3 +7,8 @@ node_modules/
 pictures/
 
 logs/
+
+data/
+
+# 测试用管理员密码（本机专用，绝不进版本库）
+测试/凭证.json

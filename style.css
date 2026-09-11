@@ -121,7 +121,9 @@ h3{ font-size:14px; }
 .target-row label{ cursor:pointer; font-size:14px; padding:6px 14px; border-radius:10px; background:var(--field); border:2px solid var(--line); }
 .target-row label:has(input:checked){ background:#fff1ec; border-color:var(--red); font-weight:800; }
 .target-row input{ accent-color:var(--red); margin-right:4px; }
-.setup-actions{ display:flex; gap:12px; justify-content:center; margin-top:22px; }
+.setup-actions{ display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin-top:22px; }
+.setup-actions .btn{ white-space:nowrap; } /* 按钮文字永不竖排，放不下就整按钮换行 */
+.setup-actions + .setup-actions{ margin-top:12px; } /* 多行按钮组：第二行间距收紧 */
 .footnote{ text-align:center; color:var(--ink-faint); font-size:12px; margin-top:16px; }
 .deco{ position:absolute; opacity:.14; pointer-events:none; animation:floaty 6s ease-in-out infinite; }
 @keyframes floaty{
@@ -130,7 +132,7 @@ h3{ font-size:14px; }
 }
 
 /* ---- 联机：加入 / 大厅 ---- */
-.join-panel{ width:480px; }
+.join-panel{ width:560px; } /* 与本地设置面板同宽，按钮排得下 */
 .join-name{ width:100%; margin-bottom:8px; font-size:16px; text-align:center; padding:12px; border-radius:12px; border:2px solid var(--line); background:var(--field); }
 .join-name:focus{ outline:none; border-color:var(--blue); background:#fff; }
 .lobby-panel{ width:560px; }
@@ -178,6 +180,33 @@ h3{ font-size:14px; }
 
 /* ==================== 游戏界面 ==================== */
 #screen-game{ max-width:1380px; margin:0 auto; padding:12px 18px 22px; }
+
+/* ---- 最终回合紧张氛围：全场红调 + 呼吸式暗角 ---- */
+#screen-game{ position:relative; }
+#screen-game.final-round::after{
+  content:''; position:fixed; inset:0; z-index:70; pointer-events:none;
+  background:
+    radial-gradient(ellipse at center, transparent 42%, rgba(190,20,40,.30) 100%),
+    linear-gradient(rgba(150,15,38,.07), rgba(150,15,38,.07));
+  animation:finalIn .7s ease both, finalPulse 2.4s ease-in-out .7s infinite;
+}
+@keyframes finalIn{ from{ opacity:0; } to{ opacity:1; } }
+@keyframes finalPulse{ 0%,100%{ opacity:.85; } 50%{ opacity:1; } }
+
+/* ---- 最终回合大横幅：屏幕中央登场 → 缩进顶栏 ---- */
+#end-banner-big{
+  position:fixed; left:50%; top:50%; z-index:130; pointer-events:none;
+  transform:translate(-50%,-50%);
+}
+#end-banner-big .ebg-inner{
+  padding:18px 46px; border-radius:24px; font-size:46px; font-weight:900; letter-spacing:4px;
+  color:#fff; background:linear-gradient(180deg,#ff6240,var(--red) 55%,var(--red-deep));
+  border:3px solid var(--gold);
+  box-shadow:0 16px 50px rgba(227,53,13,.5);
+  animation:finalBreath 1s ease-in-out infinite, popIn .25s ease;
+  white-space:nowrap;
+}
+@keyframes finalBreath{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.08); } }
 
 /* ---- 顶栏 ---- */
 #game-header{

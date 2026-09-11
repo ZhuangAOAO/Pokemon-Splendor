@@ -2,8 +2,8 @@
 
 /* ================================================================
    初始化管理员账号（写入 MySQL）
-   用法：node 初始化管理员.js 用户名 密码
-   例：  node 初始化管理员.js admin mypass123
+   用法：node 工具/初始化管理员.js 用户名 密码（在项目根目录运行）
+   例：  node 工具/初始化管理员.js admin mypass123
    数据库连接信息读取 data/db.json（与 server.js 相同），
    格式：{ "host": "127.0.0.1", "port": 3306, "user": "root", "password": "密码", "database": "splendor" }
    ================================================================ */
@@ -27,10 +27,10 @@ if (!password || password.length < 6) {
 
 // 读取全局配置 + 本地 db.json
 global.window = global;
-require('./config.js');
+require('../config.js');
 let dbConfig = Object.assign({}, global.MYSQL || {});
 try {
-  const local = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'db.json'), 'utf8'));
+  const local = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'db.json'), 'utf8'));
   dbConfig = Object.assign(dbConfig, local);
 } catch (e) { /* 没有本地配置就用默认 */ }
 
