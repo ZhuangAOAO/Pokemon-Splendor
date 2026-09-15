@@ -1,6 +1,6 @@
 {
   "name": "splendor-pokemon",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "dependencies": {
     "mysql2": "^3.24.2"
   }
