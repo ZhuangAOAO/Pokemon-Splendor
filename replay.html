@@ -30,6 +30,7 @@
 #rp-head h1{ margin:0; font-size:30px; letter-spacing:2px; font-weight:900;
   background:linear-gradient(92deg,#e3350d 10%,#ff8a00 55%,#ffcb05 95%);
   -webkit-background-clip:text; background-clip:text; color:transparent; }
+.rp-head-actions{ display:flex; gap:10px; flex-wrap:wrap; }
 #rp-page-sub{ margin:4px 0 0; color:var(--ink-soft, #5b6b7b); font-size:13px; }
 #rp-list{ position:relative; z-index:1; max-width:1080px; margin:0 auto; display:grid; gap:12px; }
 .rp-card{ display:flex; align-items:center; gap:16px; padding:14px 18px; border-radius:18px; background:var(--panel-bg, #fff);
@@ -63,8 +64,8 @@
 #rp-slider{ flex:1; min-width:140px; accent-color:var(--red, #e3350d); }
 #rp-pos{ font-variant-numeric:tabular-nums; color:#fff; font-weight:700; }
 #rp-event{ flex:1 1 100%; color:#ffd9a8; font-size:13px; min-height:18px; }
-#rp-link-list{ color:#8c9bab; text-decoration:none; }
-#rp-link-list:hover{ color:#fff; }
+#rp-link-list, #rp-link-home{ color:#8c9bab; text-decoration:none; }
+#rp-link-list:hover, #rp-link-home:hover{ color:#fff; }
 /* 回放观看时结算弹窗不显示操作按钮（观看者不能再来一局） */
 #modal-gameover .modal-actions{ display:none; }
 </style>
@@ -97,7 +98,10 @@
         <p id="rp-page-sub">以下是你的对局记录</p>
       </div>
     </div>
-    <button id="rp-logout" class="btn ghost">退出登录</button>
+    <div class="rp-head-actions">
+      <a class="btn ghost" href="/">← 返回大厅</a>
+      <button id="rp-logout" class="btn ghost">退出登录</button>
+    </div>
   </header>
   <main id="rp-list"></main>
 </div>
@@ -113,6 +117,7 @@
   <input type="range" id="rp-slider" min="0" max="0" value="0" step="1">
   <span id="rp-pos">0 / 0</span>
   <a id="rp-link-list" href="/replay">← 回放列表</a>
+  <a id="rp-link-home" href="/">返回大厅</a>
   <span id="rp-event"></span>
 </div>
 
