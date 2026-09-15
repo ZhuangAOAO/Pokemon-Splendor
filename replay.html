@@ -6,34 +6,55 @@
 <title>对局回放 · 璀璨宝石·宝可梦</title>
 <link rel="stylesheet" href="style.css">
 <style>
-/* ---- 回放页专属：登录门 + 底部控制条 ---- */
-#rp-gate{ position:fixed; inset:0; z-index:200; background:var(--bg, #1b2733); display:flex; align-items:center; justify-content:center; }
-#rp-gate-box{ width:min(560px, 92vw); background:#fff; border-radius:18px; padding:28px 30px; box-shadow:var(--shadow-lg, 0 20px 60px rgba(0,0,0,.45)); }
-#rp-gate-box h2{ margin:0 0 6px; color:var(--ink, #1b2733); font-size:26px; text-align:center; }
-#rp-gate-box .sub{ text-align:center; color:#8c9bab; font-size:13px; margin-bottom:18px; }
-#rp-gate-box input{ display:block; width:100%; margin:10px 0; padding:11px 14px; border:2px solid #dfe6ee; border-radius:10px; font-size:15px; box-sizing:border-box; }
-#rp-gate-box .rp-actions{ display:flex; gap:10px; justify-content:center; margin-top:14px; }
-/* ---- 回放列表页（登录后）：整页布局、整页滚动（不再是弹窗里塞表格） ---- */
-#rp-page{ min-height:100vh; padding:28px clamp(16px, 6vw, 72px) 48px; background:var(--bg, #1b2733); box-sizing:border-box; }
-#rp-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; max-width:1100px; margin:0 auto 18px; }
-#rp-head h1{ margin:0; color:#fff; font-size:26px; letter-spacing:1px; }
-#rp-page-sub{ margin:6px 0 0; color:#9fb0c2; font-size:13px; }
-#rp-list{ max-width:1100px; margin:0 auto; display:grid; gap:10px; }
-.rp-card{ display:flex; align-items:center; gap:14px; padding:14px 18px; border-radius:14px; background:#fff;
-  text-decoration:none; box-shadow:0 6px 18px rgba(0,0,0,.18); border-left:5px solid var(--red, #e3350d);
+/* ---- 登录门：沿用游戏本体语言（暖白纸面 + 精灵球 + 红金渐变） ---- */
+#rp-gate{ position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+#rp-gate-box{ position:relative; z-index:1; width:min(520px, 92vw); background:var(--panel-bg, #fff); border-radius:22px;
+  padding:30px 32px; box-shadow:var(--shadow-lg, 0 16px 44px rgba(34,48,61,.16)); border:1px solid rgba(34,48,61,.06); text-align:center; }
+#rp-gate-box h2{ margin:14px 0 6px; font-size:30px; font-weight:900; letter-spacing:2px;
+  background:linear-gradient(92deg,#e3350d 10%,#ff8a00 55%,#ffcb05 95%);
+  -webkit-background-clip:text; background-clip:text; color:transparent; }
+#rp-gate-box .sub{ text-align:center; color:var(--ink-soft, #5b6b7b); font-size:13px; margin-bottom:18px; }
+#rp-gate-box input{ display:block; width:100%; margin:10px 0; padding:12px 14px; border:2px solid var(--line, #e3e9f2);
+  border-radius:12px; font-size:15px; box-sizing:border-box; background:var(--field, #f5f8fc); font-family:inherit; }
+#rp-gate-box input:focus{ outline:none; border-color:var(--red, #e3350d); background:#fff; }
+#rp-gate-box .rp-actions{ display:flex; gap:10px; justify-content:center; margin-top:16px; }
+.rp-logo-ball{ width:64px; height:64px; }
+.rp-logo-ball::after{ width:26px; height:26px; border-width:5px; }
+/* ---- 回放列表页（登录后）：整页布局、整页滚动，语言对齐游戏本体 ---- */
+#rp-page{ position:relative; min-height:100vh; padding:32px clamp(16px, 6vw, 72px) 56px; overflow:hidden; box-sizing:border-box; }
+#rp-head{ position:relative; z-index:1; display:flex; align-items:center; justify-content:space-between; gap:16px;
+  flex-wrap:wrap; max-width:1080px; margin:0 auto 22px; }
+.rp-head-left{ display:flex; align-items:center; gap:14px; }
+.rp-head-ball{ width:44px; height:44px; }
+.rp-head-ball::after{ width:17px; height:17px; border-width:3px; }
+#rp-head h1{ margin:0; font-size:30px; letter-spacing:2px; font-weight:900;
+  background:linear-gradient(92deg,#e3350d 10%,#ff8a00 55%,#ffcb05 95%);
+  -webkit-background-clip:text; background-clip:text; color:transparent; }
+#rp-page-sub{ margin:4px 0 0; color:var(--ink-soft, #5b6b7b); font-size:13px; }
+#rp-list{ position:relative; z-index:1; max-width:1080px; margin:0 auto; display:grid; gap:12px; }
+.rp-card{ display:flex; align-items:center; gap:16px; padding:14px 18px; border-radius:18px; background:var(--panel-bg, #fff);
+  text-decoration:none; box-shadow:var(--shadow, 0 8px 22px rgba(34,48,61,.10)); border:1px solid rgba(34,48,61,.06);
   transition:transform .15s ease, box-shadow .15s ease; }
-.rp-card:hover{ transform:translateY(-1px); box-shadow:0 10px 26px rgba(0,0,0,.28); }
+.rp-card:hover{ transform:translateY(-2px); box-shadow:var(--shadow-lg, 0 16px 44px rgba(34,48,61,.16)); }
+.rp-card.win{ border-left:6px solid var(--green, #16a34a); }
+.rp-card.lose{ border-left:6px solid var(--line-strong, #cdd8e6); }
 .rp-card-main{ flex:1; min-width:0; }
-.rp-card-when{ font-weight:800; color:var(--ink, #1b2733); font-size:15px; }
-.rp-card-who{ margin-top:4px; color:#5b6b7b; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.rp-chips{ margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; }
-.rp-chip{ background:#f1f5f9; color:#5b6b7b; border-radius:999px; padding:3px 10px; font-size:12px; }
-.rp-go{ color:var(--red, #e3350d); font-weight:800; white-space:nowrap; font-size:14px; }
-.rp-badge{ min-width:42px; text-align:center; border-radius:10px; padding:8px 10px; font-weight:900; font-size:15px; color:#fff; flex:none; }
-.rp-badge.win{ background:linear-gradient(180deg,#4ade80,#15803d); box-shadow:0 4px 12px rgba(21,128,61,.35); }
-.rp-badge.tie{ background:linear-gradient(180deg,#fbbf24,#b45309); }
-.rp-badge.lose{ background:#c4d0de; color:#33414f; }
-.rp-empty{ color:#9fb0c2; text-align:center; padding:48px 0; font-size:14px; }
+.rp-card-when{ font-weight:900; color:var(--ink, #22303d); font-size:15px; }
+.rp-card-who{ margin-top:4px; color:var(--ink-soft, #5b6b7b); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rp-chips{ margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.rp-chip{ background:var(--field, #f5f8fc); color:var(--ink-soft, #5b6b7b); border-radius:999px; padding:3px 10px; font-size:12px; }
+.rp-chip.rp-score{ background:#fff7e0; color:#8a6100; font-weight:800; }
+.rp-chip.rp-winner{ background:#e8f8ee; color:#15803d; font-weight:800; }
+.rp-go{ color:var(--red, #e3350d); font-weight:900; white-space:nowrap; font-size:14px; }
+/* 胜负奖牌：用游戏自己的精灵球（红=胜 / 灰=负 / 大师球=平） */
+.rp-badge{ width:58px; flex:none; display:flex; flex-direction:column; align-items:center; gap:6px; }
+.rp-badge .ball{ width:40px; height:40px; }
+.rp-badge .ball::after{ width:16px; height:16px; border-width:3px; }
+.rp-badge-txt{ font-size:12px; font-weight:900; padding:2px 10px; border-radius:999px; }
+.rp-badge.win .rp-badge-txt{ background:#e8f8ee; color:#15803d; }
+.rp-badge.lose .rp-badge-txt{ background:#eef2f7; color:#5b6b7b; }
+.rp-badge.tie .rp-badge-txt{ background:#fff7e0; color:#b45309; }
+.rp-empty{ color:var(--ink-faint, #93a2b3); text-align:center; padding:56px 0; font-size:14px; }
 #rp-bar{ position:fixed; left:0; right:0; bottom:0; z-index:95; display:flex; align-items:center; gap:10px;
   padding:10px 16px; background:rgba(23,34,46,.92); color:#dfe6ee; font-size:14px;
   border-top:2px solid var(--gold, #d4a017); box-shadow:0 -8px 24px rgba(0,0,0,.35); flex-wrap:wrap; }
@@ -53,6 +74,7 @@
 <!-- 回放门：仅未登录时铺满全屏（登录后收起，换成下面的整页列表） -->
 <div id="rp-gate">
   <div id="rp-gate-box">
+    <span class="ball rp-logo-ball" style="--bc:#e3350d;--band:#24303d"></span>
     <h2>对局回放</h2>
     <p class="sub" id="rp-sub">登录后查看自己的历史对局，逐步重放每一步行动</p>
     <div id="rp-login-form">
@@ -68,9 +90,12 @@
 <!-- 回放列表页：登录后整页展示，整页滚动 -->
 <div id="rp-page" hidden>
   <header id="rp-head">
-    <div>
-      <h1>对局回放</h1>
-      <p id="rp-page-sub">以下是你的对局记录</p>
+    <div class="rp-head-left">
+      <span class="ball rp-head-ball" style="--bc:#e3350d;--band:#24303d"></span>
+      <div>
+        <h1>对局回放</h1>
+        <p id="rp-page-sub">以下是你的对局记录</p>
+      </div>
     </div>
     <button id="rp-logout" class="btn ghost">退出登录</button>
   </header>

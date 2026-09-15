@@ -102,15 +102,23 @@
     if (id) loadReplay(id);
     else showList();
   }
-  // 胜负徽章：自己参与的对局判“胜/负/平”，管理员看别人的局则标出胜者
+  // 胜负奖牌：用游戏自己的精灵球（红=胜 / 灰=负 / 大师球=平），管理员看别人的局则标出胜者
+  const BALL_HTML = {
+    win: '<span class="ball" style="--bc:#e3350d;--band:#24303d"></span>',
+    lose: '<span class="ball" style="--bc:#c4d0de;--band:#8fa2b5"></span>',
+    tie: '<span class="ball" style="--bc:#8e44c7;--band:#ffcb05"></span>',
+  };
   function resultOf(r) {
     const winners = r.winners || [];
-    if (!winners.length) return { badge: '', chip: '' };
+    if (!winners.length) return { cls: '', badge: '', chip: '' };
     const me = (r.players || []).find((p) => p.account && rpMe && p.account === rpMe);
-    if (!me) return { badge: '', chip: `<span class="rp-chip">胜者 ${winners.join('、')}</span>` };
-    if (!winners.includes(me.name)) return { badge: '<span class="rp-badge lose">负</span>', chip: '' };
+    if (!me) return { cls: '', badge: '', chip: `<span class="rp-chip rp-winner">胜者 ${winners.join('、')}</span>` };
+    const win = winners.includes(me.name);
+    const kind = !win ? 'lose' : (winners.length > 1 ? 'tie' : 'win');
+    const label = !win ? '负' : (winners.length > 1 ? '平' : '胜');
     return {
-      badge: winners.length > 1 ? '<span class="rp-badge tie">平</span>' : '<span class="rp-badge win">胜</span>',
+      cls: win ? 'win' : 'lose',
+      badge: `<div class="rp-badge ${kind}">${BALL_HTML[kind]}<span class="rp-badge-txt">${label}</span></div>`,
       chip: '',
     };
   }
@@ -137,9 +145,9 @@
       ? list.map((r) => {
           const res = resultOf(r);
           const score = (r.scores || []).length
-            ? `<span class="rp-chip">比分 ${r.scores.map((s) => s.points).join(' : ')}</span>` : '';
+            ? `<span class="rp-chip rp-score">比分 ${r.scores.map((s) => s.points).join(' : ')}</span>` : '';
           return `
-        <a class="rp-card" href="/replay?id=${r.id}">
+        <a class="rp-card ${res.cls}" href="/replay?id=${r.id}">
           ${res.badge}
           <div class="rp-card-main">
             <div class="rp-card-when">${r.createdAt || '时间未知'}</div>
@@ -256,7 +264,35 @@
     else if (e.key === 'ArrowLeft') stepTo(cur - 1);
   });
 
+  /* ---- 6.5 背景漂浮精灵球（与游戏本体同款：复用 style.css 的 .ball/.deco/floaty） ---- */
+  function buildReplayDeco() {
+    const hosts = [document.getElementById('rp-gate'), document.getElementById('rp-page')].filter(Boolean);
+    const cols = ['red', 'blue', 'black', 'pink', 'yellow'];
+    const COLS = 5, ROWS = 4;
+    const cellW = window.innerWidth / COLS, cellH = window.innerHeight / ROWS;
+    const maxSize = Math.max(24, Math.min(96, Math.min(cellW, cellH) * 0.5));
+    // 与主页面同款的均衡模板：每行每列都有球，不会挤在一堆
+    const TEMPLATE = [[0, 0], [3, 0], [1, 1], [4, 1], [0, 2], [3, 2], [2, 2], [1, 3], [4, 3]];
+    for (const host of hosts) {
+      const flipX = Math.random() < 0.5, flipY = Math.random() < 0.5;
+      for (let i = 0; i < TEMPLATE.length; i++) {
+        const c = flipX ? COLS - 1 - TEMPLATE[i][0] : TEMPLATE[i][0];
+        const r = flipY ? ROWS - 1 - TEMPLATE[i][1] : TEMPLATE[i][1];
+        const b = window.BALLS[pick(cols)];
+        const size = maxSize * (0.65 + Math.random() * 0.35);
+        const jx = (cellW - size) * 0.5 * 0.5, jy = (cellH - size) * 0.5 * 0.5;
+        const left = c * cellW + (cellW - size) / 2 + (Math.random() * 2 - 1) * jx;
+        const top = r * cellH + (cellH - size) / 2 + (Math.random() * 2 - 1) * jy;
+        const d = document.createElement('span');
+        d.className = 'ball deco';
+        d.style.cssText = `--bc:${b.top};--band:${b.band};width:${size}px;height:${size}px;left:${left}px;top:${top}px;animation-delay:${-Math.random() * 6}s;`;
+        host.appendChild(d);
+      }
+    }
+  }
+
   /* ---- 7. 启动：有会话直接进，否则停在登录门 ---- */
+  buildReplayDeco();
   showGate();
   (async () => {
     if (!rpToken) return;
