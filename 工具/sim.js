@@ -12,8 +12,13 @@ global.window = global;
 // 打桩 setTimeout：模拟是同步循环驱动 AI 的，不需要真实定时器。
 // 否则每局会积压上千个 AI 定时器，脚本跑完后事件循环里会形成无限的 AI 自战链条。
 global.setTimeout = () => 0;
+// 默认用项目根目录的 game-core.js；SIM_GAMECORE=<路径> 可指定别的版本做「改前/改后」对照（不用替换正在用的文件）
+const gcPath = process.env.SIM_GAMECORE
+  ? path.resolve(process.env.SIM_GAMECORE)
+  : path.join(__dirname, '..', 'game-core.js');
 const cfgSrc = fs.readFileSync(path.join(__dirname, '..', 'config.js'), 'utf8');
-const src = fs.readFileSync(path.join(__dirname, '..', 'game-core.js'), 'utf8');
+const src = fs.readFileSync(gcPath, 'utf8');
+if (process.env.SIM_GAMECORE) console.log('⚠️ 本次用替代 game-core：' + gcPath);
 
 const nGames = +process.argv[2] || 20;
 const nPlayers = +process.argv[3] || 3;
@@ -129,7 +134,12 @@ const test = `
 
   // ---- 把本次指标交给外层落档（原来跑完即弃，没法当基线）----
   global.__SIM_RESULT__ = {
-    at: new Date().toISOString(),
+    // 本地时间（教训：toISOString() 是 UTC，比本地慢 8 小时 —— 见项目踩坑库 B2）
+    at: (function () {
+      const d = new Date(), p = (n) => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' '
+        + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    })(),
     games: nGames, players: nPlayers, target, note,
     finished, guardHits, leaks,
     avgTurns: finished ? Math.round(turns / finished) : null,
@@ -156,13 +166,13 @@ if (R && !noLedger) {
   const crypto = require('crypto');
   const APP = path.join(__dirname, '..');
   const gcHash = crypto.createHash('sha256')
-    .update(fs.readFileSync(path.join(APP, 'game-core.js'))).digest('hex').slice(0, 8);
+    .update(fs.readFileSync(gcPath)).digest('hex').slice(0, 8);
   let ver = '?';
   try { ver = JSON.parse(fs.readFileSync(path.join(APP, 'package.json'), 'utf8')).version || '?'; } catch (e) { /* 读不到就算了 */ }
 
   const outDir = path.join(__dirname, 'sim-runs');
   fs.mkdirSync(outDir, { recursive: true });
-  const jsonPath = path.join(outDir, 'sim-' + R.at.replace(/[:.]/g, '-').slice(0, 19) + '.json');
+  const jsonPath = path.join(outDir, 'sim-' + R.at.replace(/[: ]/g, '-') + '.json');
   fs.writeFileSync(jsonPath, JSON.stringify(Object.assign({ version: ver, gameCore: gcHash }, R), null, 2));
 
   const ledger = path.join(APP, '实验台账.md');
@@ -170,12 +180,12 @@ if (R && !noLedger) {
     fs.writeFileSync(ledger,
       '# 实验台账\n\n' +
       '> `工具/sim.js` 每次跑完自动追加一行（`--note "说明"` 可加备注）。\n' +
-      '> **`game-core` 那一列是「这次跑的是哪版 AI」的真正标识**：版本号可能忘了提，哈希一定变。\n' +
+      '> **`game-core` 那一列是「这次跑的是哪版 AI」的真正标识**（sha256 前 8 位）：版本号可能忘了提，哈希一定变。\n' +
       '> ⚠️ sim.js **不固定种子**，小样本有噪声（对比请先看样本量）；要严格同种子对照用 `工具/rl/bandit-battle.js`，把结论补进本表。\n\n' +
       '| 时间 | 版本 | game-core | 参数 | 完成 | 守恒违规 | 胜者均分 | 平均轮数 | 备注 |\n' +
       '|---|---|---|---|---|---|---|---|---|\n');
   }
-  fs.appendFileSync(ledger, '| ' + R.at.slice(0, 16).replace('T', ' ') + ' | v' + ver + ' | `' + gcHash + '` | '
+  fs.appendFileSync(ledger, '| ' + R.at.slice(0, 16) + ' | v' + ver + ' | `' + gcHash + '` | '
     + R.games + '局 ' + R.players + '人 目标' + R.target + ' | '
     + R.finished + '/' + R.games + ' | ' + R.leaks + ' | ' + R.avgWinnerPoints + ' | ' + R.avgRounds + ' | '
     + (R.note || '-') + ' |\n');
