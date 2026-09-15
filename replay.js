@@ -71,8 +71,8 @@
     document.querySelectorAll('[id^="screen-"]').forEach((s) => { s.hidden = true; });
     hideModals();
     gate.hidden = false;
-    $('#rp-login-form').hidden = !!rpToken;
-    $('#rp-logout').hidden = !rpToken;
+    $('#rp-page').hidden = true;
+    $('#rp-login-form').hidden = false;
   }
   function descAction(a) {
     if (!rp) return '';
@@ -96,8 +96,6 @@
     afterLogin();
   }
   function afterLogin() {
-    $('#rp-login-form').hidden = true;
-    $('#rp-logout').hidden = false;
     const id = Number(new URLSearchParams(location.search).get('id'));
     if (id) loadReplay(id);
     else showList();
@@ -107,28 +105,35 @@
     bar.hidden = true;
     document.querySelectorAll('[id^="screen-"]').forEach((s) => { s.hidden = true; });
     hideModals();
-    gate.hidden = false;
+    gate.hidden = true;                       // 登录后收起「门」，换成整页列表
+    $('#rp-page').hidden = false;
     const j = await api({ type: 'replayList', token: rpToken });
-    if (!j.ok) { $('#rp-list').innerHTML = `<div id="rp-list-empty">${j.msg || '加载失败'}</div>`; $('#rp-list').hidden = false; return; }
+    const sub = $('#rp-page-sub');
+    if (!j.ok) {
+      sub.textContent = '';
+      $('#rp-list').innerHTML = `<div class="rp-empty">${j.msg || '加载失败'}</div>`;
+      return;
+    }
     const list = j.list || [];
-    // 管理员能看所有人的对局，普通玩家只能看自己参与的，标题同步说明
-    $('#rp-sub').textContent = j.admin
-      ? '管理员视角：以下是所有人的对局记录，点「观看」逐步重放'
-      : '以下是你的对局记录，点「观看」逐步重放每一步行动';
-    $('#rp-list').hidden = false;
+    // 管理员能看所有人的对局，普通玩家只能看自己参与的，说明文字同步
+    sub.textContent = j.admin
+      ? `管理员视角：最近 ${list.length} 局（最多 50 条），点「观看」逐步重放`
+      : `共 ${list.length} 局，点「观看」逐步重放每一步行动`;
     $('#rp-list').innerHTML = list.length
-      ? `<table id="rp-list-table">
-          <thead><tr><th>时间</th><th>房间</th><th>玩家</th><th>目标</th><th>步数</th><th></th></tr></thead>
-          <tbody>${list.map((r) => `<tr>
-            <td>${r.createdAt}</td>
-            <td>${r.roomId}</td>
-            <td>${(r.players || []).map((p) => p.name).join('、')}</td>
-            <td>${r.target} 分</td>
-            <td>${r.steps}</td>
-            <td><a href="/replay?id=${r.id}">观看</a></td>
-          </tr>`).join('')}</tbody>
-        </table>`
-      : `<div id="rp-list-empty">${j.admin ? '还没有任何对局记录' : '你还没有对局记录，先开局打一局吧'}</div>`;
+      ? list.map((r) => `
+        <a class="rp-card" href="/replay?id=${r.id}">
+          <div class="rp-card-main">
+            <div class="rp-card-when">${r.createdAt || '时间未知'}</div>
+            <div class="rp-card-who">${(r.players || []).map((p) => p.name).join(' vs ') || '—'}</div>
+            <div class="rp-chips">
+              <span class="rp-chip">房间 ${r.roomId}</span>
+              <span class="rp-chip">目标 ${r.target} 分</span>
+              <span class="rp-chip">${r.steps} 步</span>
+            </div>
+          </div>
+          <span class="rp-go">观看 ›</span>
+        </a>`).join('')
+      : `<div class="rp-empty">${j.admin ? '还没有任何对局记录' : '你还没有对局记录，先开局打一局吧'}</div>`;
   }
 
   /* ---- 5. 回放驱动 ---- */
@@ -197,6 +202,7 @@
     $('#rp-bar-title').textContent = `房间 ${rp.roomId} · 目标 ${rp.target} 分 · ${(rp.players || []).map((p) => p.name).join(' vs ')}`;
     slider.max = rp.actions.length;
     gate.hidden = true;
+    $('#rp-page').hidden = true;              // 进入观看：列表页收起
     bar.hidden = false;
     showScreen('game');
     hideModals();

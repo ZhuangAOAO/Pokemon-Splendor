@@ -13,11 +13,23 @@
 #rp-gate-box .sub{ text-align:center; color:#8c9bab; font-size:13px; margin-bottom:18px; }
 #rp-gate-box input{ display:block; width:100%; margin:10px 0; padding:11px 14px; border:2px solid #dfe6ee; border-radius:10px; font-size:15px; box-sizing:border-box; }
 #rp-gate-box .rp-actions{ display:flex; gap:10px; justify-content:center; margin-top:14px; }
-#rp-list-table{ width:100%; border-collapse:collapse; font-size:14px; margin-top:6px; }
-#rp-list-table th{ color:#8c9bab; font-weight:600; text-align:left; padding:8px 6px; border-bottom:2px solid #e8eef5; }
-#rp-list-table td{ padding:9px 6px; border-bottom:1px solid #eef3f8; color:var(--ink, #1b2733); }
-#rp-list-table a{ color:var(--red, #e3350d); font-weight:700; text-decoration:none; }
-#rp-list-empty{ color:#8c9bab; text-align:center; padding:24px 0; }
+/* ---- 回放列表页（登录后）：整页布局、整页滚动（不再是弹窗里塞表格） ---- */
+#rp-page{ min-height:100vh; padding:28px clamp(16px, 6vw, 72px) 48px; background:var(--bg, #1b2733); box-sizing:border-box; }
+#rp-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; max-width:1100px; margin:0 auto 18px; }
+#rp-head h1{ margin:0; color:#fff; font-size:26px; letter-spacing:1px; }
+#rp-page-sub{ margin:6px 0 0; color:#9fb0c2; font-size:13px; }
+#rp-list{ max-width:1100px; margin:0 auto; display:grid; gap:10px; }
+.rp-card{ display:flex; align-items:center; gap:14px; padding:14px 18px; border-radius:14px; background:#fff;
+  text-decoration:none; box-shadow:0 6px 18px rgba(0,0,0,.18); border-left:5px solid var(--red, #e3350d);
+  transition:transform .15s ease, box-shadow .15s ease; }
+.rp-card:hover{ transform:translateY(-1px); box-shadow:0 10px 26px rgba(0,0,0,.28); }
+.rp-card-main{ flex:1; min-width:0; }
+.rp-card-when{ font-weight:800; color:var(--ink, #1b2733); font-size:15px; }
+.rp-card-who{ margin-top:4px; color:#5b6b7b; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rp-chips{ margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; }
+.rp-chip{ background:#f1f5f9; color:#5b6b7b; border-radius:999px; padding:3px 10px; font-size:12px; }
+.rp-go{ color:var(--red, #e3350d); font-weight:800; white-space:nowrap; font-size:14px; }
+.rp-empty{ color:#9fb0c2; text-align:center; padding:48px 0; font-size:14px; }
 #rp-bar{ position:fixed; left:0; right:0; bottom:0; z-index:95; display:flex; align-items:center; gap:10px;
   padding:10px 16px; background:rgba(23,34,46,.92); color:#dfe6ee; font-size:14px;
   border-top:2px solid var(--gold, #d4a017); box-shadow:0 -8px 24px rgba(0,0,0,.35); flex-wrap:wrap; }
@@ -34,7 +46,7 @@
 </head>
 <body>
 
-<!-- 回放门：登录 / 回放列表（开始观看前显示，其余屏幕全部隐藏） -->
+<!-- 回放门：仅未登录时铺满全屏（登录后收起，换成下面的整页列表） -->
 <div id="rp-gate">
   <div id="rp-gate-box">
     <h2>对局回放</h2>
@@ -44,11 +56,21 @@
       <input id="rp-pass" type="password" placeholder="密码">
       <div class="rp-actions">
         <button id="rp-login" class="btn primary">登录</button>
-        <button id="rp-logout" class="btn ghost" hidden>退出登录</button>
       </div>
     </div>
-    <div id="rp-list" hidden></div>
   </div>
+</div>
+
+<!-- 回放列表页：登录后整页展示，整页滚动 -->
+<div id="rp-page" hidden>
+  <header id="rp-head">
+    <div>
+      <h1>对局回放</h1>
+      <p id="rp-page-sub">以下是你的对局记录</p>
+    </div>
+    <button id="rp-logout" class="btn ghost">退出登录</button>
+  </header>
+  <main id="rp-list"></main>
 </div>
 
 <!-- 回放控制条：观看时固定在屏幕底部 -->
