@@ -342,16 +342,24 @@ async function findUserDb(name) {
   const [rows] = await pool.query('SELECT * FROM users WHERE name = ? LIMIT 1', [name]);
   return rows[0] || null;
 }
+// 终局排名（与结算判定一致）：分数 → 进化次数 → 宝可梦数量（少者靠前）
+// 抽成函数：战绩记录与回放列表共用同一套判定，避免两处走歧
+function rankEndgame(players) {
+  const list = (players || []).slice().sort((a, b) =>
+    (b.points - a.points) || (b.evolutions - a.evolutions) || ((a.cards || []).length - (b.cards || []).length));
+  if (!list.length) return { rank: [], winners: [] };
+  const top = list[0];
+  const winners = list.filter((p) =>
+    p.points === top.points && p.evolutions === top.evolutions &&
+    (p.cards || []).length === (top.cards || []).length).map((p) => p.name);
+  return { rank: list, winners };
+}
 // 终局记录战绩：胜场（平局共享）、场次、总分、进化次数
 async function recordGameStats(room) {
   const S = room.session.S;
   if (!S || !S.over) return;
   if (room.tutorial) { logEvent(room, '战绩', '教程局不计入战绩'); return; }
-  const rank = S.players.slice().sort((a, b) =>
-    (b.points - a.points) || (b.evolutions - a.evolutions) || (a.cards.length - b.cards.length));
-  const top = rank[0];
-  const winners = rank.filter((p) => p.points === top.points && p.evolutions === top.evolutions && p.cards.length === top.cards.length)
-    .map((p) => p.name);
+  const { winners } = rankEndgame(S.players);
   for (let i = 0; i < S.players.length; i++) {
     const p = S.players[i];
     if (p.isAI) continue;
@@ -400,26 +408,33 @@ async function handleReplayList(body) {
   let rows = [];
   if (isAdmin) {
     [rows] = await pool.query(
-      'SELECT id, room_id, target, players, actions, created_at FROM replays ORDER BY id DESC LIMIT 50');
+      'SELECT id, room_id, target, players, actions, final, created_at FROM replays ORDER BY id DESC LIMIT 50');
   } else if (u.name) {
     // players 是 JSON 数组（每人带 account），用 JSON_CONTAINS 挑出这局里有当前账号的。
     // 注意：电脑座位的 account 是空串，所以绝不能用空账号去查，否则会把电脑局全捞出来。
     [rows] = await pool.query(
-      'SELECT id, room_id, target, players, actions, created_at FROM replays ' +
+      'SELECT id, room_id, target, players, actions, final, created_at FROM replays ' +
       'WHERE JSON_CONTAINS(CAST(players AS JSON), ?) ORDER BY id DESC LIMIT 50',
       [JSON.stringify({ account: u.name })]);
   }
   return {
     ok: true,
     admin: isAdmin,
-    list: rows.map((r) => ({
-      id: r.id,
-      roomId: r.room_id,
-      target: r.target,
-      steps: safeJson(r.actions, []).length,
-      createdAt: r.created_at,
-      players: safeJson(r.players, []),
-    })),
+    list: rows.map((r) => {
+      // 胜负从终局快照推：final 里就是各人的分数/进化/手牌
+      const fin = safeJson(r.final, null);
+      const ranked = fin && Array.isArray(fin.players) ? rankEndgame(fin.players) : null;
+      return {
+        id: r.id,
+        roomId: r.room_id,
+        target: r.target,
+        steps: safeJson(r.actions, []).length,
+        createdAt: r.created_at,
+        players: safeJson(r.players, []),
+        winners: ranked ? ranked.winners : [],
+        scores: ranked ? ranked.rank.map((p) => ({ name: p.name, points: p.points, evolutions: p.evolutions })) : [],
+      };
+    }),
   };
 }
 // 单局回放数据：开局快照 + 行动序列 + 终局快照

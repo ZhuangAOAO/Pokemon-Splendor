@@ -57,6 +57,7 @@
   // 与主页面共用同一个令牌（client.js 登录时写 localStorage 'spToken'）：
   // 主页面登录后进回放页免二次登录，反向亦然
   let rpToken = localStorage.getItem('spToken') || '';
+  let rpMe = '';       // 当前登录账号名（用来在列表里认出“我”那一局）
   let rp = null;       // 当前回放数据
   let cur = 0;         // 已应用行动数
   let playing = false;
@@ -92,6 +93,7 @@
     const j = await api({ type: 'login', name: $('#rp-name').value.trim(), password: $('#rp-pass').value });
     if (!j.ok) { toast(j.msg || '登录失败'); return; }
     rpToken = j.token;
+    rpMe = ($('#rp-name').value || '').trim();
     localStorage.setItem('spToken', rpToken);
     afterLogin();
   }
@@ -99,6 +101,18 @@
     const id = Number(new URLSearchParams(location.search).get('id'));
     if (id) loadReplay(id);
     else showList();
+  }
+  // 胜负徽章：自己参与的对局判“胜/负/平”，管理员看别人的局则标出胜者
+  function resultOf(r) {
+    const winners = r.winners || [];
+    if (!winners.length) return { badge: '', chip: '' };
+    const me = (r.players || []).find((p) => p.account && rpMe && p.account === rpMe);
+    if (!me) return { badge: '', chip: `<span class="rp-chip">胜者 ${winners.join('、')}</span>` };
+    if (!winners.includes(me.name)) return { badge: '<span class="rp-badge lose">负</span>', chip: '' };
+    return {
+      badge: winners.length > 1 ? '<span class="rp-badge tie">平</span>' : '<span class="rp-badge win">胜</span>',
+      chip: '',
+    };
   }
   async function showList() {
     stopPlay();
@@ -120,8 +134,13 @@
       ? `管理员视角：最近 ${list.length} 局（最多 50 条），点「观看」逐步重放`
       : `共 ${list.length} 局，点「观看」逐步重放每一步行动`;
     $('#rp-list').innerHTML = list.length
-      ? list.map((r) => `
+      ? list.map((r) => {
+          const res = resultOf(r);
+          const score = (r.scores || []).length
+            ? `<span class="rp-chip">比分 ${r.scores.map((s) => s.points).join(' : ')}</span>` : '';
+          return `
         <a class="rp-card" href="/replay?id=${r.id}">
+          ${res.badge}
           <div class="rp-card-main">
             <div class="rp-card-when">${r.createdAt || '时间未知'}</div>
             <div class="rp-card-who">${(r.players || []).map((p) => p.name).join(' vs ') || '—'}</div>
@@ -129,10 +148,12 @@
               <span class="rp-chip">房间 ${r.roomId}</span>
               <span class="rp-chip">目标 ${r.target} 分</span>
               <span class="rp-chip">${r.steps} 步</span>
+              ${score}${res.chip}
             </div>
           </div>
           <span class="rp-go">观看 ›</span>
-        </a>`).join('')
+        </a>`;
+        }).join('')
       : `<div class="rp-empty">${j.admin ? '还没有任何对局记录' : '你还没有对局记录，先开局打一局吧'}</div>`;
   }
 
@@ -240,7 +261,7 @@
   (async () => {
     if (!rpToken) return;
     const j = await api({ type: 'whoami', token: rpToken });
-    if (j && j.ok) afterLogin();
+    if (j && j.ok) { rpMe = j.name || rpMe; afterLogin(); }
     else { rpToken = ''; localStorage.removeItem('spToken'); showGate(); }
   })();
 })();
