@@ -18,6 +18,10 @@ const src = fs.readFileSync(path.join(__dirname, '..', 'game-core.js'), 'utf8');
 const nGames = +process.argv[2] || 20;
 const nPlayers = +process.argv[3] || 3;
 const target = +process.argv[4] || 18;
+// --note "说明" 给这次跑法打标记；--no-ledger 只跑不落档（冒烟用，免得刷台账）
+const noteIdx = process.argv.indexOf('--note');
+const note = noteIdx > 0 ? (process.argv[noteIdx + 1] || '') : '';
+const noLedger = process.argv.includes('--no-ledger');
 
 // game.js 以 'use strict' 开头，直接 eval 时声明不会泄漏到调用作用域，
 // 因此把测试代码拼接在源码后面，放进同一个 eval 作用域里执行。
@@ -27,6 +31,7 @@ const test = `
   const nPlayers = ${JSON.stringify(nPlayers)};
   const target = ${JSON.stringify(target)};
   const names = ['A', 'B', 'C', 'D'];
+  const note = ${JSON.stringify(note)};
   const wins = {};
   let turns = 0, finished = 0, guardHits = 0, leaks = 0, evos = 0;
   const avgPoints = [], maxPoints = [];
@@ -121,7 +126,61 @@ const test = `
     console.log('平均最终分数：' + (avgPoints.reduce((a, b) => a + b, 0) / avgPoints.length).toFixed(1));
     console.log('胜者平均分数：' + (maxPoints.reduce((a, b) => a + b, 0) / maxPoints.length).toFixed(1));
   }
+
+  // ---- 把本次指标交给外层落档（原来跑完即弃，没法当基线）----
+  global.__SIM_RESULT__ = {
+    at: new Date().toISOString(),
+    games: nGames, players: nPlayers, target, note,
+    finished, guardHits, leaks,
+    avgTurns: finished ? Math.round(turns / finished) : null,
+    avgRounds: finished ? +(turns / finished / nPlayers).toFixed(2) : null,
+    avgEvolutions: finished ? +(evos / finished).toFixed(2) : null,
+    avgFinalPoints: avgPoints.length ? +(avgPoints.reduce((a, b) => a + b, 0) / avgPoints.length).toFixed(2) : null,
+    avgWinnerPoints: maxPoints.length ? +(maxPoints.reduce((a, b) => a + b, 0) / maxPoints.length).toFixed(2) : null,
+    winnerDist: wins,
+  };
 })();
 `;
 
 eval(cfgSrc + '\n' + src + '\n' + test);
+
+/* ================================================================
+   实验台账：把这次跑的指标落档（原来只打控制台、跑完即弃）
+   - 原始指标 → 工具/sim-runs/<时间>.json（已 gitignore）
+   - 一行摘要 → 根目录 实验台账.md（进版本库，这才是复利的资产）
+   关键：记下 game-core 的 sha256 前 8 位 —— **版本号可能忘了提，哈希一定变**，
+   它是「这次跑的是哪版 AI」的唯一可靠标识。
+   ================================================================ */
+const R = global.__SIM_RESULT__;
+if (R && !noLedger) {
+  const crypto = require('crypto');
+  const APP = path.join(__dirname, '..');
+  const gcHash = crypto.createHash('sha256')
+    .update(fs.readFileSync(path.join(APP, 'game-core.js'))).digest('hex').slice(0, 8);
+  let ver = '?';
+  try { ver = JSON.parse(fs.readFileSync(path.join(APP, 'package.json'), 'utf8')).version || '?'; } catch (e) { /* 读不到就算了 */ }
+
+  const outDir = path.join(__dirname, 'sim-runs');
+  fs.mkdirSync(outDir, { recursive: true });
+  const jsonPath = path.join(outDir, 'sim-' + R.at.replace(/[:.]/g, '-').slice(0, 19) + '.json');
+  fs.writeFileSync(jsonPath, JSON.stringify(Object.assign({ version: ver, gameCore: gcHash }, R), null, 2));
+
+  const ledger = path.join(APP, '实验台账.md');
+  if (!fs.existsSync(ledger)) {
+    fs.writeFileSync(ledger,
+      '# 实验台账\n\n' +
+      '> `工具/sim.js` 每次跑完自动追加一行（`--note "说明"` 可加备注）。\n' +
+      '> **`game-core` 那一列是「这次跑的是哪版 AI」的真正标识**：版本号可能忘了提，哈希一定变。\n' +
+      '> ⚠️ sim.js **不固定种子**，小样本有噪声（对比请先看样本量）；要严格同种子对照用 `工具/rl/bandit-battle.js`，把结论补进本表。\n\n' +
+      '| 时间 | 版本 | game-core | 参数 | 完成 | 守恒违规 | 胜者均分 | 平均轮数 | 备注 |\n' +
+      '|---|---|---|---|---|---|---|---|---|\n');
+  }
+  fs.appendFileSync(ledger, '| ' + R.at.slice(0, 16).replace('T', ' ') + ' | v' + ver + ' | `' + gcHash + '` | '
+    + R.games + '局 ' + R.players + '人 目标' + R.target + ' | '
+    + R.finished + '/' + R.games + ' | ' + R.leaks + ' | ' + R.avgWinnerPoints + ' | ' + R.avgRounds + ' | '
+    + (R.note || '-') + ' |\n');
+
+  console.log('');
+  console.log('📒 原始指标：' + path.relative(APP, jsonPath));
+  console.log('📒 台账已追加一行：实验台账.md　（v' + ver + ' · game-core ' + gcHash + '）');
+}
