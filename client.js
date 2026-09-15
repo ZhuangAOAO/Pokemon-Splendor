@@ -1014,14 +1014,30 @@ function buildDeco() {
   const hosts = ['screen-setup', 'screen-login', 'screen-join', 'screen-lobby']
     .map((id) => document.getElementById(id)).filter(Boolean);
   const cols = ['red', 'blue', 'black', 'pink', 'yellow'];
+  // 网格分区：先把屏幕切成 5×4 格，每屏随机取 9 个不同格子，每颗球只在自己格子里浮动。
+  // 这样既不会两颗叠在一起，也不会半边挤满、半边空着（原来是各自独立随机坐标）。
+  const COLS = 5, ROWS = 4;
+  const cellW = window.innerWidth / COLS;
+  const cellH = window.innerHeight / ROWS;
+  const maxSize = Math.max(24, Math.min(96, Math.min(cellW, cellH) * 0.5));
+  // 均衡模板：9 个格子预先排好，保证每行每列都有球（不会出现半边空着）；
+  // 每屏再随机做水平/垂直镜像 + 格内抖动，观感才不呆板。
+  const TEMPLATE = [[0, 0], [3, 0], [1, 1], [4, 1], [0, 2], [3, 2], [2, 2], [1, 3], [4, 3]];
   for (const host of hosts) {
-    for (let i = 0; i < 9; i++) {
+    const flipX = Math.random() < 0.5, flipY = Math.random() < 0.5;
+    for (let i = 0; i < TEMPLATE.length; i++) {
+      const c = flipX ? COLS - 1 - TEMPLATE[i][0] : TEMPLATE[i][0];
+      const r = flipY ? ROWS - 1 - TEMPLATE[i][1] : TEMPLATE[i][1];
+      const b = BALLS[pick(cols)];
+      const size = maxSize * (0.65 + Math.random() * 0.35);
+      // 只在格内一半的余量里抖动，给漂浮动画留出不碰邻格的余量
+      const jx = (cellW - size) * 0.5 * 0.5;
+      const jy = (cellH - size) * 0.5 * 0.5;
+      const left = c * cellW + (cellW - size) / 2 + (Math.random() * 2 - 1) * jx;
+      const top = r * cellH + (cellH - size) / 2 + (Math.random() * 2 - 1) * jy;
       const d = document.createElement('span');
-      const c = pick(cols);
-      const b = BALLS[c];
-      const size = 40 + Math.random() * 60;
       d.className = 'ball deco';
-      d.style.cssText = `--bc:${b.top};--band:${b.band};width:${size}px;height:${size}px;left:${Math.random() * 92}%;top:${Math.random() * 92}%;animation-delay:${-Math.random() * 6}s;`;
+      d.style.cssText = `--bc:${b.top};--band:${b.band};width:${size}px;height:${size}px;left:${left}px;top:${top}px;animation-delay:${-Math.random() * 6}s;`;
       host.appendChild(d);
     }
   }

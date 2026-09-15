@@ -175,6 +175,9 @@ h3{ font-size:14px; }
 .lb-table td{ padding:8px 12px; border-bottom:1px solid #eef2f7; white-space:nowrap; }
 .lb-table .lb-name{ font-weight:900; }
 .lb-empty{ color:#93a2b3; text-align:center; padding:20px; font-size:14px; }
+/* 排行榜：人数多到一屏装不下时在弹窗内部滚动（人少时不会出现滚动条，外观维持原样）；表头吸顶 */
+#lb-body{ max-height:64vh; overflow-y:auto; }
+.lb-table thead th{ position:sticky; top:0; z-index:1; }
 .join-as{ text-align:center; margin-bottom:12px; }
 .nick-label{ display:block; font-size:12px; color:var(--ink-soft); margin-bottom:4px; }
 
