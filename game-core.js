@@ -462,12 +462,14 @@ function chooseAIMoveDefault(p) {
     if (tiers.length && Math.random() < 0.3) return { type: 'reserveBlind', tier: pick(tiers) };
   }
 
-  // 收集资源：参考全场可见卡（场上+已预约）对各颜色的需求
+  // 收集资源：按"全场需求 − 已持有"的缺口拿球；缺色够 3 种就优先拿满 3 色
   const need = globalNeed(p);
+  const rem = {};
+  COLORS.forEach((c) => { rem[c] = Math.max(0, need[c] - p.balls[c]); });
   const avail = COLORS.filter((c) => S.pool[c] > 0);
-  const wanted = avail.filter((c) => need[c] > 0);
+  const wanted = avail.filter((c) => rem[c] > 0).sort((a, b) => rem[b] - rem[a]);
   const surplus = COLORS.filter((c) => p.balls[c] > 0 && p.balls[c] > need[c]);
-  // 池子里没有自己需要的球 → 退还富余的球周转供应区（防止全桌卡死）
+  // 池子里没有自己还缺的球 → 退还富余的球周转供应区（防止全桌卡死）
   if (!wanted.length) {
     if (surplus.length) {
       return { type: 'return', color: surplus.sort((a, b) => (p.balls[b] - need[b]) - (p.balls[a] - need[a]))[0] };
@@ -476,10 +478,14 @@ function chooseAIMoveDefault(p) {
     return bailOut(p);
   }
 
-  const twoOpts = COLORS.filter((c) => S.pool[c] >= RULES.takeTwoMin && need[c] >= 2).sort((a, b) => need[b] - need[a]);
-  if (twoOpts.length) return { type: 'take2', color: twoOpts[0] };
+  // 还缺至少 3 种颜色 → 一次拿满 3 色（过度偏好 take2 会拖慢节奏）
+  if (wanted.length >= 3) return { type: 'take3', colors: wanted.slice(0, 3) };
 
-  const chosen = wanted.sort((a, b) => need[b] - need[a]).slice(0, 3);
+  // 只缺 1~2 种颜色：某色还缺至少 2 个且供应足 → 拿 2 个同色（取缺口最大者）；否则用别的颜色补满 3 色
+  const twoOpt = wanted.find((c) => S.pool[c] >= RULES.takeTwoMin && rem[c] >= 2);
+  if (twoOpt) return { type: 'take2', color: twoOpt };
+
+  const chosen = wanted.slice();
   while (chosen.length < Math.min(3, avail.length)) {
     chosen.push(pick(avail.filter((x) => !chosen.includes(x))));
   }
