@@ -179,6 +179,17 @@ node 工具/录入工具.js    # 启动后浏览器打开 http://localhost:3100
 - [ ] 音效、手机竖屏适配、多房间
 - [ ] 部署到公网服务器（架构已就绪，直接拷贝运行即可）
 
+### 📝 待办清单（濠哥 2026-09-15 提出，不着急）
+
+1. **[bug] 回放对局过多时列表被挤出画面，且页面无法滚动**
+   - 现象：回放页 `/replay` 登录后，历史对局一多，列表就被挤出屏幕外，页面又不允许滚动。
+   - 定位：`replay.html` 的 `#rp-gate` / `#rp-gate-box` / `#rp-list`（样式写在 replay.html 的内联 `<style>`，**不在 style.css**）；列表容器缺 `max-height` + `overflow-y:auto`。
+   - 修法方向：给 `#rp-list` 加最大高度 + 纵向滚动；或让 `#rp-gate` 整体可滚（注意别把已隐藏的其它屏幕一起放开）。
+
+2. **[UI] 联机模式的主页 / 大厅 / 房间背景太单调，复用单机主页的漂浮精灵球背景** —— ✅ **2026-09-15 已改**
+   - 做法：`client.js` 的 `buildDeco()` 从「只往 `#screen-setup` 塞」改成遍历 `screen-setup / screen-login / screen-join / screen-lobby` 各塞 9 个 `.deco` 漂浮球；游戏界面不动。
+   - 复用既有 CSS（这四屏共用 `#screen-setup,#screen-join,#screen-lobby,#screen-login{position:relative;overflow:hidden}`），未改 style.css。
+
 ## ⚠️ 版权说明
 
 本项目为**学习交流用途的同人复刻**，仅用于科创营教学与展示。

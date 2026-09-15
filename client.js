@@ -1010,16 +1010,20 @@ function backToSetup() {
   hideModals();
 }
 function buildDeco() {
-  const host = document.getElementById('screen-setup');
+  // 单机设置页 + 联机三屏（登录 / 加入 / 大厅）都铺一层漂浮精灵球，背景与单机保持一致
+  const hosts = ['screen-setup', 'screen-login', 'screen-join', 'screen-lobby']
+    .map((id) => document.getElementById(id)).filter(Boolean);
   const cols = ['red', 'blue', 'black', 'pink', 'yellow'];
-  for (let i = 0; i < 9; i++) {
-    const d = document.createElement('span');
-    const c = pick(cols);
-    const b = BALLS[c];
-    const size = 40 + Math.random() * 60;
-    d.className = 'ball deco';
-    d.style.cssText = `--bc:${b.top};--band:${b.band};width:${size}px;height:${size}px;left:${Math.random() * 92}%;top:${Math.random() * 92}%;animation-delay:${-Math.random() * 6}s;`;
-    host.appendChild(d);
+  for (const host of hosts) {
+    for (let i = 0; i < 9; i++) {
+      const d = document.createElement('span');
+      const c = pick(cols);
+      const b = BALLS[c];
+      const size = 40 + Math.random() * 60;
+      d.className = 'ball deco';
+      d.style.cssText = `--bc:${b.top};--band:${b.band};width:${size}px;height:${size}px;left:${Math.random() * 92}%;top:${Math.random() * 92}%;animation-delay:${-Math.random() * 6}s;`;
+      host.appendChild(d);
+    }
   }
 }
 
