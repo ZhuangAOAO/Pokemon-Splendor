@@ -38,6 +38,7 @@ const HOOKS = {
   onToast: () => {},         // 需要提示一条消息
   onGameOver: () => {},      // 对局结束（浏览器=弹结算框；服务器=广播）
   onAction: () => {},        // 执行了一个真实行动（服务器=记回放；含人类与电脑的行动，不含自动退球/自动进化）
+  chooseAIMove: null,        // AI 决策钩子：(p, defaultMove) => move，未设置时走内置逻辑（RL 实验用）
 };
 
 /* ==================== 工具函数 ==================== */
@@ -420,6 +421,11 @@ function aiTurn(p) {
   else actTakeThree(move.colors);
 }
 function chooseAIMove(p) {
+  // AI 决策钩子：RL 实验/自定义 AI 在此注入（默认 null = 走原逻辑，浏览器与服务器行为不变）
+  if (HOOKS.chooseAIMove) return HOOKS.chooseAIMove(p, chooseAIMoveDefault);
+  return chooseAIMoveDefault(p);
+}
+function chooseAIMoveDefault(p) {
   const simple = p.aiLevel === 'easy';
   if (simple && Math.random() < AI_CONFIG.easyRandomRate) return randomMove(p);
 
