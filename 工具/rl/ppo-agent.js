@@ -36,7 +36,7 @@
  *                    [--sample-seed 777] [--rollback-stop 5] [--eval-only 权重文件]
  *                    [--eval-seats str,def,rand,...] [--str-weights 权重文件]
  *                    [--feat-opp2] [--feat-opp-rem] [--feat-opp-bonus-percolor]
- *                    [--eval-seed 21160917] [--tag 名字]
+ *                    [--eval-seed 21160917] [--tag 名字] [--allow-overwrite]
  *      续跑时"训练局数"= 在检查点基础上追加的局数。
  * 产出：weights/ppo-agent-p{N}[-tag]-{累计局数}.json（最终权重）＋ -ckpt/-best ＋ data/ 下摘要与日志
  *
@@ -44,6 +44,11 @@
  *   --tag <名>  拼进所有产出文件名（最终权重 / 检查点 / 最优 / 摘要 / 日志），
  *               --resume 不带路径时也读带 tag 的检查点；只允许字母/数字/下划线/短横线。
  *               缺省（不传）= 文件名与旧版完全一致。
+ *
+ * 产物防覆盖（降级守卫）：
+ *   写 -best / -ckpt / 最终权重前先读旧档：旧档局数更多或胜率更高 = 本次写入是降级
+ *   → 跳过写入并记日志（防"全新开练覆盖旧最优"事故）；确认要覆盖时加 --allow-overwrite。
+ *   不同 --tag 的产物文件名自带 tag 后缀，天然互不覆盖，无需比较 tag。
  *
  * 特征开关（多人局特征补强对照实验用，缺省全关 = 行为与旧版逐位一致）：
  *   --feat-opp2               +1 维：对手总球数的次大值 /10（只有 1 个对手时该维恒为 0）
@@ -742,6 +747,39 @@ function log(msg) {
   }
 }
 
+/* ---------- 产物防覆盖（降级守卫） ---------- */
+// 写 -best / -ckpt / 最终权重前先读旧档：旧档局数更多或胜率更高 = 本次是降级，跳过写入。
+// 防"全新开练覆盖旧最优"事故；确认要覆盖时加 --allow-overwrite。旧档坏文件读不出来就跳过守卫（不挡路）。
+// 不同 --tag 的产物文件名自带 tagSuffix，天然不互踩，无需比较 tag。
+function readExisting(p) {
+  try {
+    if (!fs.existsSync(p)) return null;
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch (e) {
+    log(`读取${path.basename(p)} 失败（${e.message}），跳过守卫`);
+    return null;
+  }
+}
+function denyIfDowngrade(p, newEpisodes, newWinRate) { // 返回 true = 挡住本次写入
+  if (hasFlag('--allow-overwrite')) {
+    log(`--allow-overwrite 跳过守卫：${path.basename(p)}`);
+    return false;
+  }
+  const old = readExisting(p);
+  if (!old) return false;
+  const oldEp = Number(old.episodes || (old.best && old.best.ep) || 0);
+  const oldRate = Number(old.winRate != null ? old.winRate : (old.best && old.best.rate) || 0);
+  if (oldEp > newEpisodes) {
+    log(`SKIP 降级守卫拦截：${path.basename(p)} episodes=${oldEp} > 新 ${newEpisodes}（需 --allow-overwrite）`);
+    return true;
+  }
+  if (oldRate > newWinRate + 1e-9) {
+    log(`SKIP 降级守卫拦截：${path.basename(p)} winRate=${oldRate} > 新 ${newWinRate}（需 --allow-overwrite）`);
+    return true;
+  }
+  return false;
+}
+
 // 权重 + Adam 动量缓冲一起打包（N.serialize 只存 W/b，续跑会丢优化器状态）
 function packNet(net) {
   return {
@@ -774,6 +812,11 @@ const EVAL_ONLY = flagVal('--eval-only', '');
 if (hasFlag('--eval-only') && (!EVAL_ONLY || EVAL_ONLY.startsWith('--'))) {
   console.error(`参数错误：--eval-only 后面要跟权重文件路径（收到 "${EVAL_ONLY || '(缺值)'}"）`);
   process.exit(1);
+}
+// 守卫：--eval-seats 只属于 --eval-only 评估（训练期评估曲线的座位口径会随它变，容易误改口径污染对照）
+if (hasFlag('--eval-seats') && !EVAL_ONLY) {
+  console.error('使用 --eval-seats 必须配合 --eval-only，否则会污染训练');
+  process.exit(2);
 }
 if (EVAL_ONLY) {
   const file = path.resolve(__dirname, EVAL_ONLY);
@@ -955,10 +998,12 @@ if (EVAL_ONLY) {
     };
   }
   function writeCkpt(episodesDone, reason) {
+    if (denyIfDowngrade(ckptFile, episodesDone, 1)) return; // 检查点无胜率概念：降级只看局数
     fs.writeFileSync(ckptFile, JSON.stringify(buildCheckpoint(episodesDone)));
     log(`检查点已写：${episodesDone} 局（${reason}）→ ${path.basename(ckptFile)}`);
   }
   function writeBest() {
+    if (denyIfDowngrade(bestFile, best.ep, best.rate)) return;
     fs.writeFileSync(bestFile, JSON.stringify({
       name: `ppo-agent-p${N_PLAYERS}-best`,
       players: N_PLAYERS, episodes: best.ep, target: TARGET, winRate: best.rate,
@@ -1089,7 +1134,10 @@ if (EVAL_ONLY) {
     actor: N.serialize(actor), critic: N.serialize(critic),
     createdAt: runStartedAt, updatedAt: new Date().toISOString(),
   };
-  fs.writeFileSync(path.join(weightsDir, `ppo-agent-p${N_PLAYERS}${tagSuffix}-${totalEpisodes}.json`), JSON.stringify(theta));
+  const thetaPath = path.join(weightsDir, `ppo-agent-p${N_PLAYERS}${tagSuffix}-${totalEpisodes}.json`);
+  if (!denyIfDowngrade(thetaPath, totalEpisodes, best ? best.rate : 0)) {
+    fs.writeFileSync(thetaPath, JSON.stringify(theta));
+  }
   writeCkpt(totalEpisodes, '训练完成'); // 完成后检查点保留：想继续加练时 --resume 还能接着跑
   writeSummary(totalEpisodes, false);
   const elapsed = Math.round((Date.now() - t0) / 100) / 10;
