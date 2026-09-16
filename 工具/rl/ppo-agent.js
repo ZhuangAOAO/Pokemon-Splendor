@@ -30,7 +30,7 @@
  * 用法：node 工具/rl/ppo-agent.js [训练局数] [评估间隔] [--players 2|3|4] [--eval-games 200]
  *                    [--ckpt-every 5000] [--resume[=检查点路径]] [--hidden 32]
  *                    [--alpha 1e-3] [--beta 1e-3] [--alpha-front 3e-3] [--beta-front 1e-2]
- *                    [--lr-schedule decay10|front-zero] [--no-lr-decay]
+ *                    [--lr-schedule decay10|front-zero] [--no-lr-decay] [--lr-decay-to 0.1]
  *                    [--ent-coef 0.01] [--shape-w 0.01]
  *                    [--target-kl 0.02] [--grad-clip 0.5] [--no-adv-norm]
  *                    [--sample-seed 777] [--rollback-stop 5] [--eval-only 权重文件]
@@ -59,10 +59,13 @@
  *   --alpha / --beta / --ent-coef / --shape-w   学习率 / 熵系数 / 塑形权重
  *   --target-kl     每 epoch 后 KL≈mean(logp旧−logp新) 超阈值 → 跳过剩余 epoch（防一步迈太大）
  *   --grad-clip     Adam 前全局 L2 梯度裁剪；0 = 关
- *   --no-lr-decay   关学习率线性衰减（默认开：从 --alpha-front 随本段训练进度线性衰减到其 10%）
+ *   --no-lr-decay   关学习率线性衰减（默认开：从 --alpha-front 随本段训练进度线性衰减到其
+ *                       --lr-decay-to 倍，缺省 0.1 = 10%）
+ *   --lr-decay-to <比例>   decay10 衰减底线：前端值的比例，0~1（缺省 0.1 = 衰减到 10%，
+ *                       0 = 一路衰减到 0；--no-lr-decay 时无效果）
  *   --alpha-front / --beta-front   前端（起始）学习率，缺省 3e-3 / 1e-2；只显式传 --alpha/--beta 时
  *                      以前者为前端值（旧命令行行为不变）；都没传时前端 = 3e-3 / 1e-2
- *   --lr-schedule decay10|front-zero   调度模式：decay10（缺省）= 前端值衰减到 10%；
+ *   --lr-schedule decay10|front-zero   调度模式：decay10（缺省）= 前端值衰减到 --lr-decay-to 倍；
  *                      front-zero = 前端值置 0（全程学习率 0 的无学习对照；与显式
  *                      --alpha-front/--beta-front 互斥，与 --alpha/--beta/--no-lr-decay 兼容）
  *   --no-adv-norm   关 advantage 批内归一化（默认开：(adv−mean)/(std+1e-8)）
@@ -131,11 +134,17 @@ const ENT_COEF = numFlag('--ent-coef', 0.01);  // 熵系数（保持旧值）
 const SHAPE_W = numFlag('--shape-w', 0.01);    // 塑形权重（旧值 0.1）
 const TARGET_KL = numFlag('--target-kl', 0.02);// PPO epoch 早停 KL 阈值
 const GRAD_CLIP = numFlag('--grad-clip', 0.5); // 全局 L2 梯度裁剪；0 = 关
-const LR_DECAY = !hasFlag('--no-lr-decay');    // 默认开：随训练进度线性衰减到前端值的 10%
+const LR_DECAY = !hasFlag('--no-lr-decay');    // 默认开：随训练进度线性衰减到前端值的 --lr-decay-to 倍（缺省 10%）
 const ADV_NORM = !hasFlag('--no-adv-norm');    // 默认开：(adv−mean)/(std+1e-8)
+// decay10 衰减底线 = 前端值的比例（A/B 对照参数）：0.1 = 衰减到 10%（旧行为），0 = 一路衰减到 0
+const LR_DECAY_TO = numFlag('--lr-decay-to', 0.1);
+if (!(LR_DECAY_TO >= 0 && LR_DECAY_TO <= 1)) {
+  console.error(`参数错误：--lr-decay-to 需为 0~1 的比例（收到 ${LR_DECAY_TO}）`);
+  process.exit(1);
+}
 // —— 学习率调度（A/B 对照参数，与"衰减到 10% 那套"对照）——
 // 前端值 = 显式 --alpha-front/--beta-front > 显式 --alpha/--beta > 缺省 3e-3 / 1e-2（09-16 前的旧值）
-//   decay10（缺省）：随本段训练进度从前端值线性衰减到前端值的 10%（后期小步走，不再来回震荡）
+//   decay10（缺省）：随本段训练进度从前端值线性衰减到前端值的 --lr-decay-to 倍（缺省 0.1 = 10%，后期小步走，不再来回震荡）
 //   --no-lr-decay  ：恒为前端值
 //   front-zero     ：前端值强制 0 → 全程学习率 0（无学习对照组，验证"学习/衰减"本身是否真的有用）
 const SCHED_MODE = flagVal('--lr-schedule', 'decay10');
@@ -157,11 +166,11 @@ if (SCHED_MODE === 'front-zero') {
   BETA_FRONT = hasFlag('--beta-front') ? numFlag('--beta-front', 1e-2)
     : (hasFlag('--beta') ? BETA : 1e-2);
 }
-// 衰减终点 = 前端值的 10%（不衰减时 = 前端值）；生效值写进 meta/summary 与启动日志
+// 衰减终点 = 前端值 × LR_DECAY_TO（不衰减时 = 前端值）；生效值写进 meta/summary 与启动日志
 // cleanNum 抹掉 0.1*0.003 之类的浮点尾数（0.00030000000000000003 → 0.0003），落档才好看
 const cleanNum = (x) => (Number.isInteger(x) ? x : +x.toPrecision(12));
-const ALPHA_END = LR_DECAY ? cleanNum(0.1 * ALPHA_FRONT) : ALPHA_FRONT;
-const BETA_END = LR_DECAY ? cleanNum(0.1 * BETA_FRONT) : BETA_FRONT;
+const ALPHA_END = LR_DECAY ? cleanNum(LR_DECAY_TO * ALPHA_FRONT) : ALPHA_FRONT;
+const BETA_END = LR_DECAY ? cleanNum(LR_DECAY_TO * BETA_FRONT) : BETA_FRONT;
 const SAMPLE_SEED = numFlag('--sample-seed', 777);   // 采样/对手池/初始化 RNG 种子
 const ROLLBACK_STOP = Math.floor(numFlag('--rollback-stop', 5)); // 回滚早停（语义见主循环）
 for (const [nm, v] of [['--alpha', ALPHA], ['--beta', BETA], ['--ent-coef', ENT_COEF],
@@ -258,7 +267,7 @@ const META = {
   sampleSeed: SAMPLE_SEED, rollbackStop: ROLLBACK_STOP,
   // 学习率调度生效参数（A/B 对照落档用）
   lrSchedule: SCHED_MODE, alphaFront: ALPHA_FRONT, betaFront: BETA_FRONT,
-  alphaEnd: ALPHA_END, betaEnd: BETA_END,
+  alphaEnd: ALPHA_END, betaEnd: BETA_END, lrDecayTo: LR_DECAY_TO,
 };
 const psiOf = (phi) => STATE_IDX.map((i) => phi[i]);
 
@@ -770,7 +779,7 @@ if (EVAL_ONLY) {
   console.log('基准线：线性 PPO 峰值 60.5%（3 人局）｜ 对称基线 33.3%（3 人局）');
   let schedDesc;
   if (SCHED_MODE === 'front-zero') schedDesc = 'front-zero（α/β 全程 0，无学习对照）';
-  else if (LR_DECAY) schedDesc = `decay10（α ${ALPHA_FRONT}→${ALPHA_END} ｜ β ${BETA_FRONT}→${BETA_END}，随本段进度线性）`;
+  else if (LR_DECAY) schedDesc = `decay10（α ${ALPHA_FRONT}→${ALPHA_END} ｜ β ${BETA_FRONT}→${BETA_END}，底线 ×${LR_DECAY_TO}，随本段进度线性）`;
   else schedDesc = `恒定（α ${ALPHA_FRONT} ｜ β ${BETA_FRONT}，--no-lr-decay）`;
   log(`种子：训练 [${TRAIN_LO}, ${TRAIN_HI}) ｜ 评估 [${EVAL_LO}, ${EVAL_HI})${EVAL_SEED === BASE_SEED + 900000 ? '（EVAL_SEED = BASE_SEED + 900000）' : '（--eval-seed 显式指定）'} ｜ 无重叠`);
   log(`调度：${schedDesc} ｜ 超参：α ${ALPHA} / β ${BETA} / ent ${ENT_COEF} / shapeW ${SHAPE_W} / targetKL ${TARGET_KL} / gradClip ${GRAD_CLIP} / advNorm ${ADV_NORM ? '开' : '关'} / sampleSeed ${SAMPLE_SEED} / rollbackStop ${ROLLBACK_STOP}`);
@@ -840,7 +849,7 @@ if (EVAL_ONLY) {
       targetKl: TARGET_KL, gradClip: GRAD_CLIP, lrDecay: LR_DECAY, advNorm: ADV_NORM,
       sampleSeed: SAMPLE_SEED, rollbackStop: ROLLBACK_STOP,
       lrSchedule: SCHED_MODE, alphaFront: ALPHA_FRONT, betaFront: BETA_FRONT,
-      alphaEnd: ALPHA_END, betaEnd: BETA_END,
+      alphaEnd: ALPHA_END, betaEnd: BETA_END, lrDecayTo: LR_DECAY_TO,
       hidden: HIDDEN, nFeat: N_FEAT, nState: N_STATE, featNames: FEAT_NAMES,
       snapshots,
       createdAt: runStartedAt,
@@ -878,10 +887,10 @@ if (EVAL_ONLY) {
     batch.push(...res.traj);
     batchEps++;
     if (batchEps >= BATCH_EPS) {
-      // 学习率调度生效值：decay10 = 前端值 → 10%（随本段训练进度线性）；--no-lr-decay 恒为前端值；
-      // front-zero 前端已置 0 → 恒 0（无学习对照）。每批更新前算一次
+      // 学习率调度生效值：decay10 = 前端值 → 前端值 × LR_DECAY_TO（随本段训练进度线性）；
+      // --no-lr-decay 恒为前端值；front-zero 前端已置 0 → 恒 0（无学习对照）。每批更新前算一次
       const frac = (ep + 1 - startEp) / nTrain;
-      const k = LR_DECAY ? 1 - 0.9 * frac : 1;
+      const k = LR_DECAY ? 1 - (1 - LR_DECAY_TO) * frac : 1;
       klStops += ppoUpdate(actor, critic, batch, ALPHA_FRONT * k, BETA_FRONT * k);
       batch = []; batchEps = 0;
     }
