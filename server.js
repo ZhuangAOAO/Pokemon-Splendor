@@ -290,6 +290,14 @@ try {
 const mysql = require('mysql2/promise');
 let pool = null;
 
+// 这一局是哪一版 AI 逻辑（game-core.js 的 sha256 前 8 位）——与 工具/rl 的实验台账同一个标识约定
+const AI_VER = (() => {
+  try {
+    return crypto.createHash('sha256')
+      .update(fs.readFileSync(path.join(__dirname, 'game-core.js'))).digest('hex').slice(0, 8);
+  } catch (e) { return ''; }
+})();
+
 async function initDb() {
   // 先连服务器（不指定库）确保数据库存在；只创建自己的库，不碰其他数据
   const bare = mysql.createPool(Object.assign({}, dbConfig, { database: undefined, waitForConnections: true, connectionLimit: 5 }));
@@ -336,6 +344,9 @@ async function initDb() {
     final MEDIUMTEXT NOT NULL,
     created_at VARCHAR(20) NOT NULL DEFAULT ''
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  // 迁移：给已有库补 ai_ver（这一局是哪版 AI）。1060 = 列已存在，忽略即可
+  try { await pool.query("ALTER TABLE replays ADD COLUMN ai_ver VARCHAR(16) NOT NULL DEFAULT ''"); }
+  catch (e) { if (e.errno !== 1060) throw e; }
   logEvent(null, '数据库', `MySQL 连接成功（数据库 ${dbConfig.database}）`);
 }
 async function findUserDb(name) {
@@ -353,6 +364,25 @@ function rankEndgame(players) {
     p.points === top.points && p.evolutions === top.evolutions &&
     (p.cards || []).length === (top.cards || []).length).map((p) => p.name);
   return { rank: list, winners };
+}
+// 把终局分数挂到「本座位」的玩家条目上（按 seat 配对）
+// 教训（2026-09-17 濠哥发现）：曾单独返回一个按名次排序的 scores 数组，与 players 的座位序不同，
+// 前端并排显示「小智 vs 小霞 vs 小刚」+「18 : 16 : 10」就会张冠李戴。
+// 改成「名字自带自己的分」——结构上不可能再错位。
+function withPoints(players, fin) {
+  const list = (fin && Array.isArray(fin.players)) ? fin.players : [];
+  // 终局快照里的“座位标识”字段不完全一致（有 id 的、也有只存 seat 的）——
+  // 按 id → seat → 下标 依次尝试，任一命中就用，避免因字段名不同而静默丢分。
+  const findSeat = (p, i) => {
+    if (p == null) return null;
+    if (p.id != null) { const hit = list.find((x) => x.id === p.id); if (hit) return hit; }
+    if (p.seat != null) { const hit = list.find((x) => x.seat === p.seat); if (hit) return hit; }
+    return list[i] || null;
+  };
+  return (players || []).map((p, i) => {
+    const f = findSeat(p, i);
+    return Object.assign({}, p, { points: f ? f.points : null, evolutions: f ? f.evolutions : null });
+  });
 }
 // 终局记录战绩：胜场（平局共享）、场次、总分、进化次数
 async function recordGameStats(room) {
@@ -430,9 +460,8 @@ async function handleReplayList(body) {
         target: r.target,
         steps: safeJson(r.actions, []).length,
         createdAt: r.created_at,
-        players: safeJson(r.players, []),
+        players: withPoints(safeJson(r.players, []), fin),
         winners: ranked ? ranked.winners : [],
-        scores: ranked ? ranked.rank.map((p) => ({ name: p.name, points: p.points, evolutions: p.evolutions })) : [],
       };
     }),
   };
@@ -751,6 +780,8 @@ function beginRecording(room) {
     startedAt: localStamp(),
     players: S.players.map((p, i) => ({
       name: p.name, seat: i, isAI: p.isAI,
+      // 座位角色/难度（2026-09-17 补）：以后要按「几个人类 / AI 哪一档」筛局，事后补不回来
+      type: p.type || (p.isAI ? 'easy' : 'human'),
       account: !p.isAI && seatOf[i] ? seatOf[i].accountName : '',
     })),
     initial: JSON.stringify(S),
@@ -766,9 +797,9 @@ async function saveReplay(room) {
   if (room.tutorial) return;
   try {
     await pool.query(
-      'INSERT INTO replays (room_id, target, players, initial, actions, final, created_at) VALUES (?,?,?,?,?,?,?)',
+      'INSERT INTO replays (room_id, target, players, initial, actions, final, created_at, ai_ver) VALUES (?,?,?,?,?,?,?,?)',
       [rec.roomId, rec.target, JSON.stringify(rec.players), rec.initial,
-        JSON.stringify(rec.actions), JSON.stringify(room.session.S), rec.startedAt]);
+        JSON.stringify(rec.actions), JSON.stringify(room.session.S), rec.startedAt, AI_VER]);
     logEvent(room, '回放', `对局回放已保存（${rec.actions.length} 步）`);
   } catch (e) { logEvent(room, '回放', '回放保存失败：' + e.message); }
 }

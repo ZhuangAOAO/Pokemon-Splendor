@@ -144,19 +144,17 @@
     $('#rp-list').innerHTML = list.length
       ? list.map((r) => {
           const res = resultOf(r);
-          const score = (r.scores || []).length
-            ? `<span class="rp-chip rp-score">比分 ${r.scores.map((s) => s.points).join(' : ')}</span>` : '';
           return `
         <a class="rp-card ${res.cls}" href="/replay?id=${r.id}">
           ${res.badge}
           <div class="rp-card-main">
             <div class="rp-card-when">${r.createdAt || '时间未知'}</div>
-            <div class="rp-card-who">${(r.players || []).map((p) => p.name).join(' vs ') || '—'}</div>
+            <div class="rp-card-who">${(r.players || []).map((p) => p.name + (p.points == null ? '' : ' ' + p.points)).join(' vs ') || '—'}</div>
             <div class="rp-chips">
               <span class="rp-chip">房间 ${r.roomId}</span>
               <span class="rp-chip">目标 ${r.target} 分</span>
               <span class="rp-chip">${r.steps} 步</span>
-              ${score}${res.chip}
+              ${res.chip}
             </div>
           </div>
           <span class="rp-go">观看 ›</span>
