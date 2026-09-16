@@ -34,6 +34,7 @@
  *                    [--ent-coef 0.01] [--shape-w 0.01]
  *                    [--target-kl 0.02] [--grad-clip 0.5] [--no-adv-norm]
  *                    [--sample-seed 777] [--rollback-stop 5] [--eval-only 权重文件]
+ *                    [--eval-seats str,def,rand,...] [--str-weights 权重文件]
  *                    [--feat-opp2] [--feat-opp-rem] [--feat-opp-bonus-percolor]
  *                    [--eval-seed 21160917] [--tag 名字]
  *      续跑时"训练局数"= 在检查点基础上追加的局数。
@@ -54,6 +55,19 @@
  *   新特征一律追加在 56 维基础特征末尾（不动已有索引）；口径元数据 meta（featFlags/
  *   nFeat/hidden/evalSeed/evalGames）写进所有权重文件与 summary；--resume 时逐项防呆，
  *   口径不一致直接报错退出，绝不静默继续。
+ *
+ * 评估座位（AI 对打评估，--eval-seats / --str-weights）：
+ *   --eval-seats <座位列表>   逗号分隔，每个座位指定一个 AI：str = 策略 AI、def = 困难
+ *                             启发式 AI、rand = 随机合法动作 AI（走游戏种子 RNG，可复现）；
+ *                             列表长度 ≤ --players，不足的座位自动补 def
+ *                             （"str" + --players 2 → [str,def]），超长报错。
+ *                             缺省 ['str','def',...] = 旧行为（贪心 vs 启发式）。
+ *   座位 0 的 str = 被测策略（--eval-only 的文件 / 训练中的当前模型）；座位 ≥1 的
+ *   str = --str-weights 指定的文件（缺省 = 被测策略同一张网，即自对弈）——这样
+ *   --eval-only A --eval-seats str,str,def --str-weights B 就是 A vs B vs 启发式对打。
+ *   训练模式主指标 = 座位 0 的胜率（座位 0 非 str 时评估不测学习者，最优判定跳过）；
+ *   --eval-only 模式另落档 weights/<权重名>.eval-<座位>[.vs-<对打权重>].json：
+ *   分座位胜率/平均分/平均进化、逐局记录、被测与对打权重的 sha256 指纹。
  *
  * 可调超参（CLI 覆盖，缺省 = 2026-09-16 教训值；含调度生效值，全量写进 meta 与 summary）：
  *   --alpha / --beta / --ent-coef / --shape-w   学习率 / 熵系数 / 塑形权重
@@ -76,6 +90,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto'); // 权重 sha256 指纹（评估结果落档用）
 const H = require('./harness');
 const N = require('./nn');
 
@@ -206,6 +221,30 @@ if (TAG && !/^[A-Za-z0-9_-]+$/.test(TAG)) {
 }
 const tagSuffix = TAG ? '-' + TAG : '';
 
+// —— 评估座位（AI 对打评估）：每个座位指定用哪个 AI ——
+// str = 策略 AI（座位 0 = 被测策略；座位 ≥1 = --str-weights，缺省与被测同网）
+// def = 困难启发式 AI；rand = 随机合法动作 AI（走游戏种子 RNG，逐位可复现）
+// 列表长度 ≤ --players，不足自动补 def；缺省 ['str','def',...] = 旧行为（贪心 vs 启发式）
+const EVAL_SEATS = (() => {
+  const raw = flagVal('--eval-seats', '');
+  if (!raw) return ['str', ...new Array(N_PLAYERS - 1).fill('def')];
+  const seats = raw.split(',').map((s) => s.trim());
+  if (seats.length > N_PLAYERS) {
+    console.error(`参数错误：--eval-seats 座位数（${seats.length}）超过 --players ${N_PLAYERS}（收到 "${raw}"）`);
+    process.exit(1);
+  }
+  for (const s of seats) {
+    if (!['str', 'def', 'rand'].includes(s)) {
+      console.error(`参数错误：--eval-seats 每个座位只能是 str/def/rand（收到 "${s}"）`);
+      process.exit(1);
+    }
+  }
+  while (seats.length < N_PLAYERS) seats.push('def'); // 座位不足按 def 补齐
+  return seats;
+})();
+// 对打方权重（座位 ≥1 的 str 用）：缺省 = 被测策略同一张网（自对弈）
+const STR_WEIGHTS = flagVal('--str-weights', '');
+
 const COLORS = H.COLORS;
 const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 const S = new Proxy({}, { get: (_t, k) => H.S[k] });
@@ -261,6 +300,8 @@ const META = {
   hidden: HIDDEN,
   evalSeed: EVAL_SEED,
   evalGames: EVAL_GAMES,
+  evalSeats: EVAL_SEATS.slice(),
+  strWeights: STR_WEIGHTS || null,
   // 可调超参全量记录（新字段；旧检查点没有这些 = 按当时硬编码值跑出来的）
   alpha: ALPHA, beta: BETA, entCoef: ENT_COEF, shapeW: SHAPE_W,
   targetKl: TARGET_KL, gradClip: GRAD_CLIP, lrDecay: LR_DECAY, advNorm: ADV_NORM,
@@ -593,26 +634,87 @@ function ppoUpdate(actor, critic, batch, lrA, lrC) {
   return klStops;
 }
 
-/* ==================== 评估（贪心 vs 启发式，按 --players 人数跑） ==================== */
-function evalVs(actor, seed0, nGames) {
-  let wins = 0, leaks = 0, finished = 0;
-  H.HOOKS.chooseAIMove = (p, def) => (p.id === 0 ? greedyMove(actor, p) : def(p));
+/* ==================== 评估（按 --eval-seats 座位配置跑 AI 对打） ==================== */
+// seatNets[i] = { kind: 'str'|'def'|'rand', net }（net 仅 str 座位需要）。
+// 返回：seatWins/seatRates 分座位统计；winRate = 座位 0 str 的胜率（座位 0 非 str 时取
+// 第一个 str 座位；一个 str 都没有 = null）；games = 逐局记录（--eval-only 落档用）。
+function evalVs(seats, seatNets, seed0, nGames) {
+  const n = N_PLAYERS;
+  const seatWins = new Array(n).fill(0);
+  const seatPts = new Array(n).fill(0);
+  const seatEvo = new Array(n).fill(0);
+  let finished = 0, leaks = 0, turnsSum = 0;
+  const games = [];
+  H.HOOKS.chooseAIMove = (p, def) => {
+    const r = seatNets[p.id];
+    if (r.kind === 'str') return greedyMove(r.net, p);
+    if (r.kind === 'rand') { // 随机合法动作：走游戏种子 RNG（Math.random），同 seed 逐位复现
+      const moves = enumerateMoves(p);
+      return moves.length ? moves[Math.floor(Math.random() * moves.length)] : null;
+    }
+    return def(p);
+  };
   for (let i = 0; i < nGames; i++) {
-    H.seedRNG(seed0 + i);
+    const seed = seed0 + i;
+    H.seedRNG(seed);
     H.newGame({ target: TARGET, players: makePlayers(N_PLAYERS) });
     let guard = 0;
     while (!S.over && guard < MAX_TURNS) { H.aiTurn(H.curPlayer()); guard++; }
-    if (S.over) {
+    const ok = !!S.over;
+    const leak = H.checkConservation();
+    const pts = [], evo = [];
+    S.players.forEach((p) => {
+      pts.push(p.points); evo.push(p.evolutions);
+      seatPts[p.id] += p.points; seatEvo[p.id] += p.evolutions;
+    });
+    let winnerSeat = -1;
+    if (ok) { // 卡死局没有冠军：只计完成局的胜场，口径与旧版一致
       finished++;
       const rank = S.players.slice().sort((a, b) =>
         (b.points - a.points) || (b.evolutions - a.evolutions) || (a.cards.length - b.cards.length));
-      if (rank[0].id === 0) wins++;
+      winnerSeat = rank[0].id;
+      seatWins[winnerSeat]++;
     }
-    if (H.checkConservation()) leaks++;
+    if (leak) leaks++;
+    turnsSum += S.turnIdx;
+    games.push({ i, seed, winnerSeat, pts, evo, turns: S.turnIdx, finished: ok, leak: leak || null });
   }
   H.HOOKS.chooseAIMove = null;
-  return { winRate: finished ? wins / finished : 0, wins, leaks, finished };
+  const strIdx = seats.indexOf('str');
+  const primaryIdx = seats[0] === 'str' ? 0 : strIdx; // 主指标座位：优先座位 0，其次第一个 str，-1 = 无 str
+  return {
+    seats: seats.slice(),
+    seatWins, finished, leaks, turnsSum, games,
+    seatRates: seatWins.map((w) => (finished ? w / finished : 0)),
+    avgPoints: seatPts.map((s) => s / nGames),
+    avgEvolutions: seatEvo.map((s) => s / nGames),
+    avgTurns: turnsSum / nGames,
+    primaryIdx,
+    winRate: primaryIdx >= 0 ? (finished ? seatWins[primaryIdx] / finished : 0) : null,
+    wins: primaryIdx >= 0 ? seatWins[primaryIdx] : 0,
+  };
 }
+
+// 读取权重文件里的 Actor 网（-best / -ckpt / 最终权重三种产物通用），口径不符直接退出
+function loadActorNet(file, what) {
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    console.error(`无法读取${what} ${file}：${e.message}`);
+    process.exit(1);
+  }
+  if (!data.actor || data.actor.sizes.join(',') !== [N_FEAT, HIDDEN, 1].join(',')) {
+    console.error(`${what}与当前脚本不一致（需 Actor MLP ${N_FEAT}→${HIDDEN}→1），不能评估。`);
+    process.exit(1);
+  }
+  return { net: N.deserialize(data.actor), data };
+}
+// 权重文件 sha256 指纹（评估结果落档：换权重重评时靠它核对"评的到底是不是这份"）
+const sha256Hex = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+// 组装座位配置：座位 0 的 str = 被测策略，座位 ≥1 的 str = strNet（缺省传被测同网 = 自对弈）
+const seatNetsOf = (primaryNet, strNet) =>
+  EVAL_SEATS.map((s, i) => ({ kind: s, net: s === 'str' ? (i === 0 ? primaryNet : strNet) : null }));
 
 /* ==================== 长跑基础设施：检查点 / 最优权重 / 日志 / 摘要 ==================== */
 const weightsDir = path.join(__dirname, 'weights');
@@ -663,27 +765,60 @@ function unpackNet(data) {
   return net;
 }
 
-/* ==================== 只评估模式（--eval-only <权重文件>）：不训练、不落盘 ==================== */
-// 供备份恢复后的快检 / 多份权重横向对比：直接读文件里的 actor 跑标准评估口径。
-// 兼容三种产物：-best.json（actor/critic）、-ckpt.json（packNet 格式，评估其当前 actor）、
-// -N.json（最终权重）。
+/* ==================== 只评估模式（--eval-only <权重文件>）：不训练，落档评估 JSON ==================== */
+// 供备份恢复后的快检 / 多份权重横向对比 / AI 对打：直接读文件里的 actor 按 --eval-seats
+// 跑评估。兼容三种产物：-best.json（actor/critic）、-ckpt.json（packNet 格式）、-N.json（最终权重）。
+// 座位规则：座位 0 的 str = 本文件（被测）；座位 ≥1 的 str = --str-weights（缺省同被测网）。
+// 产出 weights/<权重名>.eval-<座位>[.vs-<对打权重>].json：逐局记录 + 权重 sha256 指纹。
 const EVAL_ONLY = flagVal('--eval-only', '');
+if (hasFlag('--eval-only') && (!EVAL_ONLY || EVAL_ONLY.startsWith('--'))) {
+  console.error(`参数错误：--eval-only 后面要跟权重文件路径（收到 "${EVAL_ONLY || '(缺值)'}"）`);
+  process.exit(1);
+}
 if (EVAL_ONLY) {
   const file = path.resolve(__dirname, EVAL_ONLY);
-  let data;
-  try {
-    data = JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch (e) {
-    console.error(`无法读取权重文件 ${file}：${e.message}`);
-    process.exit(1);
+  const { net: primaryNet, data } = loadActorNet(file, '权重文件');
+  const strWeightsPath = STR_WEIGHTS ? path.resolve(__dirname, STR_WEIGHTS) : null;
+  let strNet = primaryNet;
+  if (strWeightsPath) {
+    strNet = loadActorNet(strWeightsPath, '--str-weights 权重文件').net;
+    if (!EVAL_SEATS.slice(1).includes('str')) {
+      console.log(`提示：--str-weights 已指定但座位 ≥1 没有 str，该文件不参与对局（座位 0 的 str 恒用 --eval-only 文件）。`);
+    }
   }
-  if (!data.actor || data.actor.sizes.join(',') !== [N_FEAT, HIDDEN, 1].join(',')) {
-    console.error(`权重结构与当前脚本不一致（需 Actor MLP ${N_FEAT}→${HIDDEN}→1），不能评估。`);
-    process.exit(1);
-  }
-  const net = N.deserialize(data.actor);
-  const r = evalVs(net, EVAL_SEED, EVAL_GAMES);
-  console.log(`评估 ${path.basename(file)}：${EVAL_GAMES} 局贪心 vs 启发式（p${N_PLAYERS} 人局，seed ${EVAL_SEED}）→ 胜率 ${(r.winRate * 100).toFixed(1)}%（${r.wins}/${r.finished}，守恒违规 ${r.leaks}）`);
+  const r = evalVs(EVAL_SEATS, seatNetsOf(primaryNet, strNet), EVAL_SEED, EVAL_GAMES);
+  // —— 人类可读表格 → stdout ——
+  const trained = data.players ? `（权重文件为 p${data.players} 人局训练）` : '';
+  console.log(`评估 ${path.basename(file)}${trained}：${EVAL_GAMES} 局（p${N_PLAYERS} 人局，seed ${EVAL_SEED}）座位 [${EVAL_SEATS.join(', ')}]`);
+  EVAL_SEATS.forEach((s, i) => {
+    const src = s === 'str' ? (i === 0 ? '被测' : (strWeightsPath ? path.basename(strWeightsPath) : '与被测同网')) : '';
+    console.log(`  座位 ${i} ${s}${src ? '（' + src + '）' : ''}：胜 ${String(r.seatWins[i]).padStart(3)} 局 ${(r.seatRates[i] * 100).toFixed(1)}% ｜ 平均分 ${r.avgPoints[i].toFixed(1)} ｜ 平均进化 ${r.avgEvolutions[i].toFixed(2)}`);
+  });
+  if (!EVAL_SEATS.includes('str')) console.log('  （无 str 座位：权重文件不参与对局，仅校验口径 + 指纹落档）');
+  console.log(`  完成 ${r.finished}/${EVAL_GAMES} ｜ 平均回合 ${r.avgTurns.toFixed(1)} ｜ 守恒违规 ${r.leaks}`);
+  // —— 评估结果 JSON → weights/ ——
+  const evalSha = sha256Hex(file);
+  // 对打权重与被测是同一份文件时不拼后缀（文件名不冗余；JSON 里仍记录两份指纹）
+  const vsSuffix = (strWeightsPath && strWeightsPath !== file) ? '-vs-' + path.basename(strWeightsPath, '.json') : '';
+  const evalOutFile = path.join(weightsDir, `${path.basename(file, '.json')}.eval-${EVAL_SEATS.join('-')}${vsSuffix}.json`);
+  fs.writeFileSync(evalOutFile, JSON.stringify({
+    name: path.basename(evalOutFile, '.json'),
+    evalFile: path.basename(file),
+    evalFileSha256: evalSha,
+    strWeightsFile: strWeightsPath ? path.basename(strWeightsPath) : null,
+    strWeightsSha256: strWeightsPath ? sha256Hex(strWeightsPath) : null,
+    players: N_PLAYERS, target: TARGET,
+    seats: r.seats, evalGames: EVAL_GAMES, evalSeed: EVAL_SEED,
+    winRate: r.winRate, wins: r.wins, primarySeat: r.primaryIdx,
+    finished: r.finished, leaks: r.leaks,
+    seatRates: r.seatRates, seatWins: r.seatWins,
+    avgPoints: r.avgPoints, avgEvolutions: r.avgEvolutions, avgTurns: r.avgTurns,
+    fileBest: data.best ? { rate: data.best.rate, ep: data.best.ep }
+      : (data.winRate != null ? { rate: data.winRate, ep: data.episodes } : null),
+    games: r.games,
+    createdAt: ts(),
+  }, null, 2));
+  console.log(`→ 已落档 ${path.basename(evalOutFile)}（被测权重 sha256 ${evalSha.slice(0, 12)}…）`);
   if (data.best) console.log(`文件内记录：best ${(data.best.rate * 100).toFixed(1)}%@${data.best.ep} 局`);
   else if (data.winRate != null) console.log(`文件内记录：winRate ${(data.winRate * 100).toFixed(1)}%@${data.episodes} 局`);
   process.exit(0);
@@ -739,6 +874,12 @@ if (EVAL_ONLY) {
     lastStall = (ckpt.counters && ckpt.counters.stalls) || 0;
     klStops = (ckpt.counters && ckpt.counters.klStops) || 0;
     if (Array.isArray(ckpt.evalCurve)) evalCurve = ckpt.evalCurve;
+    // 评估曲线座位口径提示：检查点曲线与本次 --eval-seats 不同时提醒（曲线前后对比口径不同）
+    const lastCurve = evalCurve[evalCurve.length - 1];
+    if (lastCurve && Array.isArray(lastCurve.seats)
+        && JSON.stringify(lastCurve.seats) !== JSON.stringify(EVAL_SEATS)) {
+      console.log(`注意：检查点评估曲线座位口径 [${lastCurve.seats.join(',')}]，本次 [${EVAL_SEATS.join(',')}] —— 曲线前后对比口径不同，报数时请注明。`);
+    }
     if (Array.isArray(ckpt.pool) && ckpt.pool.length) {
       pool.splice(0, pool.length, ...ckpt.pool.map((m) =>
         (m.kind === 'net'
@@ -753,6 +894,12 @@ if (EVAL_ONLY) {
     // 初始化也走种子 RNG（两个网络种子分开，防止首层参数完全相同）
     actor = N.makeMLP([N_FEAT, HIDDEN, 1], H.mulberry32(SAMPLE_SEED));
     critic = N.makeMLP([N_STATE, HIDDEN, 1], H.mulberry32(SAMPLE_SEED + 1));
+  }
+  // 对打方权重（座位 ≥1 的 str）：缺省 = 当前模型（自对弈，评估时即时用最新 actor）
+  let strNet = null, strWeightsPath = null;
+  if (STR_WEIGHTS) {
+    strWeightsPath = path.resolve(__dirname, STR_WEIGHTS);
+    strNet = loadActorNet(strWeightsPath, '--str-weights 权重文件').net;
   }
   const totalEpisodes = startEp + nTrain;
   // —— 训练/评估种子范围校验（防泄题）——
@@ -784,6 +931,7 @@ if (EVAL_ONLY) {
   log(`种子：训练 [${TRAIN_LO}, ${TRAIN_HI}) ｜ 评估 [${EVAL_LO}, ${EVAL_HI})${EVAL_SEED === BASE_SEED + 900000 ? '（EVAL_SEED = BASE_SEED + 900000）' : '（--eval-seed 显式指定）'} ｜ 无重叠`);
   log(`调度：${schedDesc} ｜ 超参：α ${ALPHA} / β ${BETA} / ent ${ENT_COEF} / shapeW ${SHAPE_W} / targetKL ${TARGET_KL} / gradClip ${GRAD_CLIP} / advNorm ${ADV_NORM ? '开' : '关'} / sampleSeed ${SAMPLE_SEED} / rollbackStop ${ROLLBACK_STOP}`);
   log(`启动：${RESUME ? `恢复自 ${path.basename(resumeFile)}（守恒违规 ${lastLeak} ｜ 卡死 ${lastStall} ｜ 池 ${pool.length}）` : '全新开始'}；检查点每 ${CKPT_EVERY} 局 → ${path.basename(ckptFile)}；最优 → ${path.basename(bestFile)}；日志 → ${path.basename(logFile)}${evalCurve.length ? `；历史评估 ${evalCurve.length} 次，最新 ${(evalCurve[evalCurve.length - 1].rate * 100).toFixed(1)}%@${evalCurve[evalCurve.length - 1].ep} 局` : ''}${best ? `；历史最优 ${(best.rate * 100).toFixed(1)}%@${best.ep} 局` : ''}${newFeats.length || HIDDEN !== 32 ? `；口径 hidden ${HIDDEN} / nFeat ${N_FEAT}` : ''}`);
+  log(`评估座位：[${EVAL_SEATS.join(',')}]（座位0=被测策略${STR_WEIGHTS ? `；座位≥1 str=${path.basename(strWeightsPath)}` : '；其余 str 与被测同网'}）${EVAL_SEATS[0] !== 'str' ? ' ⚠️ 座位0非str：评估不测学习者，最优判定跳过' : ''}`);
 
   /* ---------- 落盘工具（检查点 / 最优权重 / 摘要） ---------- */
   function buildCheckpoint(episodesDone) {
@@ -842,7 +990,7 @@ if (EVAL_ONLY) {
       elapsedSec: Math.round((Date.now() - t0) / 100) / 10,
       thetaFile,
       ckptFile: path.basename(ckptFile),
-      seed: BASE_SEED, evalSeed: EVAL_SEED,
+      seed: BASE_SEED, evalSeed: EVAL_SEED, evalSeats: EVAL_SEATS, strWeights: STR_WEIGHTS || null,
       meta: META,
       gamma: GAMMA, lambda: LAMBDA, clipEps: CLIP_EPS, alpha: ALPHA, beta: BETA,
       entCoef: ENT_COEF, shapeW: SHAPE_W, kEpochs: K_EPOCHS, batchEps: BATCH_EPS,
@@ -900,10 +1048,19 @@ if (EVAL_ONLY) {
     if ((ep + 1) % CKPT_EVERY === 0) writeCkpt(ep + 1, '定时');
     if ((ep + 1) % EVAL_EVERY === 0) {
       // TODO(待确认语义后实现)：--rollback-stop 回滚 + 提前停训
-      const r = evalVs(actor, EVAL_SEED, EVAL_GAMES);
-      evalCurve.push({ ep: ep + 1, rate: r.winRate, wins: r.wins, leaks: r.leaks });
-      log(`  [${String(ep + 1).padStart(6)}/${totalEpisodes}] p${N_PLAYERS}人局 贪心 vs 启发式 ${(r.winRate * 100).toFixed(1)}% ｜ 池 ${pool.length}${r.leaks ? ' ⚠️违规' + r.leaks : ''}`);
-      if (r.finished > 0 && r.winRate > (best ? best.rate : -Infinity)) {
+      const r = evalVs(EVAL_SEATS, seatNetsOf(actor, strNet || actor), EVAL_SEED, EVAL_GAMES);
+      evalCurve.push({ ep: ep + 1, rate: r.winRate, wins: r.wins, leaks: r.leaks, seats: r.seats, seatRates: r.seatRates, seatWins: r.seatWins });
+      const label = `[${String(ep + 1).padStart(6)}/${totalEpisodes}]`;
+      const tail = ` ｜ 池 ${pool.length}${r.leaks ? ' ⚠️违规' + r.leaks : ''}`;
+      // 缺省座位保持旧日志文案（训练日志对比不断档）；自定义座位显示逐座位胜率
+      const isDefaultSeats = EVAL_SEATS.every((s, i) => (i === 0 ? s === 'str' : s === 'def'));
+      if (isDefaultSeats) {
+        log(`  ${label} p${N_PLAYERS}人局 贪心 vs 启发式 ${(r.winRate * 100).toFixed(1)}%${tail}`);
+      } else {
+        log(`  ${label} p${N_PLAYERS}人局 [${EVAL_SEATS.join(',')}] 座位胜率 ${r.seatRates.map((x) => (x * 100).toFixed(1)).join('/')}${r.primaryIdx !== 0 ? '（座位0非str，不参与最优判定）' : ''}${tail}`);
+      }
+      // 最优判定只看座位 0 的被测策略（座位 0 非 str 时本轮与历史曲线不可比，跳过）
+      if (r.primaryIdx === 0 && r.finished > 0 && r.winRate > (best ? best.rate : -Infinity)) {
         best = { rate: r.winRate, ep: ep + 1, actor: N.serialize(actor), critic: N.serialize(critic) };
         writeBest();
       }
@@ -916,10 +1073,10 @@ if (EVAL_ONLY) {
   // 若训练局数不足以触发任何一次评估，补跑一次（保证摘要里有胜率字段）
   let last = evalCurve[evalCurve.length - 1];
   if (!last) {
-    const r = evalVs(actor, EVAL_SEED, EVAL_GAMES);
-    last = { ep: totalEpisodes, rate: r.winRate, wins: r.wins, leaks: r.leaks };
+    const r = evalVs(EVAL_SEATS, seatNetsOf(actor, strNet || actor), EVAL_SEED, EVAL_GAMES);
+    last = { ep: totalEpisodes, rate: r.winRate, wins: r.wins, leaks: r.leaks, seats: r.seats, seatRates: r.seatRates, seatWins: r.seatWins };
     evalCurve.push(last);
-    if (r.finished > 0 && r.winRate > (best ? best.rate : -Infinity)) {
+    if (r.primaryIdx === 0 && r.finished > 0 && r.winRate > (best ? best.rate : -Infinity)) {
       best = { rate: r.winRate, ep: totalEpisodes, actor: N.serialize(actor), critic: N.serialize(critic) };
       writeBest();
     }
@@ -938,7 +1095,7 @@ if (EVAL_ONLY) {
   const elapsed = Math.round((Date.now() - t0) / 100) / 10;
 
   log(`训练完成：p${N_PLAYERS}人局 守恒违规 ${lastLeak} ｜ 卡死 ${lastStall} ｜ KL 早停 ${klStops} ｜ 池 ${pool.length} ｜ 耗时 ${elapsed}s`);
-  log(`最终胜率：${(last.rate * 100).toFixed(1)}%（守恒违规 ${lastLeak}）｜ 权重 ${thetaFile}`);
+  log(`最终胜率：${last.rate != null ? (last.rate * 100).toFixed(1) + '%' : '（无 str 座位，未测策略）'}（守恒违规 ${lastLeak}）｜ 权重 ${thetaFile}`);
   if (best) log(`历史最优：${(best.rate * 100).toFixed(1)}%（第 ${best.ep} 局）→ ${path.basename(bestFile)}`);
 })().catch((e) => {
   console.error('训练异常退出：', e);
