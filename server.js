@@ -280,13 +280,10 @@ function handleDisconnect(room, conn) {
 }
 
 /* ==================== 数据库（MySQL） ==================== */
-// 连接信息默认在 data/db.json（已被 .gitignore 忽略），格式：
-// { "host": "127.0.0.1", "port": 3306, "user": "root", "password": "密码", "database": "splendor" }
-let dbConfig = Object.assign({}, global.MYSQL || {});
-try {
-  const localDb = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'db.json'), 'utf8'));
-  dbConfig = Object.assign(dbConfig, localDb);
-} catch (e) { /* 没有本地配置就用默认 */ }
+// 连接信息走统一入口：环境变量 > data/db.json > 默认（见 db-config.js）
+// 密钥不放项目目录里 —— 整个文件夹拷走也不泄露（2026-09-17 修）
+const loadDbConfig = require('./db-config.js');
+let dbConfig = Object.assign({}, global.MYSQL || {}, loadDbConfig());
 const mysql = require('mysql2/promise');
 let pool = null;
 

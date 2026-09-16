@@ -10,18 +10,27 @@ const fs = require('fs');
 const path = require('path');
 
 const FILE = path.join(__dirname, '凭证.json');
-if (!fs.existsSync(FILE)) {
-  console.error('缺少「测试/凭证.json」——请在 测试/ 目录下新建它，内容：');
-  console.error('  { "name": "管理员用户名", "password": "管理员密码" }');
-  process.exit(1);
+
+// 优先环境变量（推荐：凭证不进项目目录、不进备份）
+const envName = process.env.SPLENDOR_TEST_ADMIN;
+const envPass = process.env.SPLENDOR_TEST_ADMIN_PASSWORD;
+if (envName && envPass) {
+  module.exports = { name: String(envName), password: String(envPass) };
+} else {
+  if (!fs.existsSync(FILE)) {
+    console.error('缺少「测试/凭证.json」——二选一：');
+    console.error('  ① 新建 测试/凭证.json：{ "name": "管理员用户名", "password": "管理员密码" }（参考 测试/凭证.example.json）');
+    console.error('  ② 设环境变量 SPLENDOR_TEST_ADMIN / SPLENDOR_TEST_ADMIN_PASSWORD（推荐）');
+    process.exit(1);
+  }
+  let c = {};
+  try { c = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch (e) {
+    console.error('「测试/凭证.json」格式不对（应为 JSON）：' + e.message);
+    process.exit(1);
+  }
+  if (!c.name || !c.password) {
+    console.error('「测试/凭证.json」里必须同时有 name 和 password 两个字段');
+    process.exit(1);
+  }
+  module.exports = { name: String(c.name), password: String(c.password) };
 }
-let c = {};
-try { c = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch (e) {
-  console.error('「测试/凭证.json」格式不对（应为 JSON）：' + e.message);
-  process.exit(1);
-}
-if (!c.name || !c.password) {
-  console.error('「测试/凭证.json」里必须同时有 name 和 password 两个字段');
-  process.exit(1);
-}
-module.exports = { name: String(c.name), password: String(c.password) };

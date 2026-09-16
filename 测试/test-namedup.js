@@ -20,7 +20,8 @@ async function post(obj) {
 }
 
 (async () => {
-  const db = require(path.join(__dirname, '..', 'data', 'db.json'));
+  // 走统一入口：环境变量优先，其次 data/db.json（见 db-config.js）
+const db = require(path.join(__dirname, '..', 'db-config.js'))();
   const pool = mysql.createPool(Object.assign({}, db, { waitForConnections: true }));
   const dupName = '同名测试' + Math.floor(Math.random() * 9000 + 1000);
   const acc1 = '同名甲' + Math.floor(Math.random() * 900 + 100);

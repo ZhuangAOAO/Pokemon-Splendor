@@ -53,6 +53,27 @@ node server.js              # 先启动服务器
 node 测试/e2e-test.js        # 联机端到端回归测试（另开一个命令行窗口）
 ```
 
+## 🔑 密钥管理（2026-09-17）
+
+数据库密码与测试用管理员密码**都不应该放在项目目录里** —— 只要密钥跟着项目走，整个文件夹拷给别人 / 打进备份就会泄露。
+
+**推荐做法：环境变量**
+
+```bash
+export SPLENDOR_DB_HOST=127.0.0.1
+export SPLENDOR_DB_PORT=3306
+export SPLENDOR_DB_USER=root
+export SPLENDOR_DB_PASSWORD='你的数据库密码'
+export SPLENDOR_DB_NAME=splendor
+```
+
+测试用管理员凭据同理：`SPLENDOR_TEST_ADMIN` / `SPLENDOR_TEST_ADMIN_PASSWORD`。
+
+**优先级**：环境变量 > `data/db.json` > 默认值；统一入口是根目录的 `db-config.js`（server / 工具 / 测试都走它，不再各自读文件）。
+`data/db.json` 与 `测试/凭证.json` 仍然可用（两者已被 `.gitignore` 排除），但**只适合本机开发**。示例见 `db.example.json`、`测试/凭证.example.json`。
+
+**线上（systemd）**：密码放 `/etc/splendor.env`（权限 600），unit 里用 `EnvironmentFile=` 引入。
+
 ## 🎮 玩法速览
 
 - **目标**：率先达到目标分数触发终局，完成当前一轮后分数最高者获胜

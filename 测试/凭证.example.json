@@ -1,0 +1,5 @@
+{
+  "_说明": "示例文件，不含任何真实密钥。用法二选一：① 复制成 测试/凭证.json 并填入真实值；②（推荐）改用环境变量 SPLENDOR_TEST_ADMIN（用户名）/ SPLENDOR_TEST_ADMIN_PASSWORD（密码）。凭证.json 已被 .gitignore 排除，但改环境变量能让整个文件夹拷走也不泄露。",
+  "name": "管理员用户名",
+  "password": "管理员密码"
+}

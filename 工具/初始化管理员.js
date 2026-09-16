@@ -25,14 +25,10 @@ if (!password || password.length < 6) {
   process.exit(1);
 }
 
-// 读取全局配置 + 本地 db.json
+// 读取全局配置 + 连接信息（统一入口：环境变量 > data/db.json）
 global.window = global;
 require('../config.js');
-let dbConfig = Object.assign({}, global.MYSQL || {});
-try {
-  const local = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'db.json'), 'utf8'));
-  dbConfig = Object.assign(dbConfig, local);
-} catch (e) { /* 没有本地配置就用默认 */ }
+const dbConfig = Object.assign({}, global.MYSQL || {}, require('../db-config.js')());
 
 const mysql = require('mysql2/promise');
 

@@ -1,0 +1,8 @@
+{
+  "_说明": "示例文件，不含任何真实密钥。用法二选一：① 复制成 data/db.json 并填入真实值；②（推荐）改用环境变量 SPLENDOR_DB_HOST / SPLENDOR_DB_PORT / SPLENDOR_DB_USER / SPLENDOR_DB_PASSWORD / SPLENDOR_DB_NAME。data/db.json 已被 .gitignore 排除，但改环境变量能让整个文件夹拷走也不泄露。",
+  "host": "127.0.0.1",
+  "port": 3306,
+  "user": "root",
+  "password": "在这里填数据库密码",
+  "database": "splendor"
+}

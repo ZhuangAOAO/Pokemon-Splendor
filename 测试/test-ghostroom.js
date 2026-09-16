@@ -22,7 +22,8 @@ async function post(obj) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
-  const db = require(path.join(__dirname, '..', 'data', 'db.json'));
+  // 走统一入口：环境变量优先，其次 data/db.json（见 db-config.js）
+const db = require(path.join(__dirname, '..', 'db-config.js'))();
   const pool = mysql.createPool(Object.assign({}, db, { waitForConnections: true }));
   const testName = '幽灵房测试' + Math.floor(Math.random() * 900 + 100);
   const testPass = crypto.randomBytes(8).toString('hex');
