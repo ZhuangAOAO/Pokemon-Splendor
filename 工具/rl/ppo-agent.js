@@ -36,7 +36,7 @@
  *                    [--sample-seed 777] [--rollback-stop 5] [--eval-only 权重文件]
  *                    [--eval-seats str,def,rand,...] [--str-weights 权重文件]
  *                    [--feat-opp2] [--feat-opp-rem] [--feat-opp-bonus-percolor]
- *                    [--eval-seed 21160917] [--tag 名字] [--allow-overwrite]
+ *                    [--train-seed 20260917] [--tag 名字] [--allow-overwrite]
  *      续跑时"训练局数"= 在检查点基础上追加的局数。
  * 产出：weights/ppo-agent-p{N}[-tag]-{累计局数}.json（最终权重）＋ -ckpt/-best ＋ data/ 下摘要与日志
  *
@@ -56,9 +56,10 @@
  *                             need 与启发式 globalNeed 同口径（可见卡最大缺口，不减已持有）
  *   --feat-opp-bonus-percolor +5 维：每色 max over 所有对手 永久加成数 /5
  *   --hidden <n>              Actor/Critic 隐层宽度（缺省 32）
- *   --eval-seed <base>        评测种子基（缺省 BASE_SEED+900000；与训练种子范围重叠会拒绝开跑，防泄题）
+ *   --train-seed <base>       训练种子基（缺省 20260917；训练种子范围与评估范围重叠会拒绝开跑，防泄题）；
+ *                             评估种子基硬编码 EVAL_SEED = 21160917（与缺省训练种子错开 90 万，防泄题）
  *   新特征一律追加在 56 维基础特征末尾（不动已有索引）；口径元数据 meta（featFlags/
- *   nFeat/hidden/evalSeed/evalGames）写进所有权重文件与 summary；--resume 时逐项防呆，
+ *   nFeat/hidden/trainSeed/evalSeed/evalGames）写进所有权重文件与 summary；--resume 时逐项防呆，
  *   口径不一致直接报错退出，绝不静默继续。
  *
  * 评估座位（AI 对打评估，--eval-seats / --str-weights）：
@@ -207,12 +208,20 @@ const MAX_TURNS = 800;
 // 每 N 局让出一次事件循环：否则整段训练是同步循环，SIGINT 要等训练全部结束才会触发
 const YIELD_EVERY = 100;
 const TARGET = 18;
-// 训练与评估种子分离（同 ppo-big-nn.js）：训练 BASE_SEED+n，评估 BASE_SEED+900000
-const BASE_SEED = 20260917;
-// 评估种子基：缺省 BASE_SEED+900000（与训练种子错开 90 万，防泄题），--eval-seed 可显式指定
-// （换评测口径用；开跑前校验与训练种子范围 [BASE_SEED, BASE_SEED+训练局数) 不重叠，重叠拒绝开跑）
-const EVAL_SEED = numFlag('--eval-seed', BASE_SEED + 900000);
-for (const [nm, v] of [['--eval-seed', EVAL_SEED], ['--alpha-front', ALPHA_FRONT], ['--beta-front', BETA_FRONT]]) {
+// 训练与评估种子分离（同 ppo-big-nn.js）：训练 TRAIN_SEED+n，评估固定 EVAL_SEED（与缺省训练种子错开 90 万，防泄题）
+const TRAIN_SEED = numFlag('--train-seed', 20260917);
+if (!Number.isInteger(TRAIN_SEED) || TRAIN_SEED < 0 || TRAIN_SEED >= 2 ** 32) {
+  console.error(`参数错误：--train-seed 需为 0~4294967295 的整数（收到 "${flagVal('--train-seed', 20260917)}"）`);
+  process.exit(1);
+}
+// 评估种子基硬编码 21160917；开跑前校验与训练种子范围 [TRAIN_SEED, TRAIN_SEED+累计训练局数) 不重叠，
+// 重叠拒绝开跑（评估局复用训练局的种子 = 泄题）。--eval-seed 已删除，传了直接报错（防旧命令行静默失效）
+const EVAL_SEED = 21160917;
+if (hasFlag('--eval-seed')) {
+  console.error('参数错误：--eval-seed 已删除，评估种子硬编码为 21160917。请移除该参数。');
+  process.exit(1);
+}
+for (const [nm, v] of [['--alpha-front', ALPHA_FRONT], ['--beta-front', BETA_FRONT]]) {
   if (!(v >= 0)) {
     console.error(`参数错误：${nm} 需为非负数字（收到 ${v}）`);
     process.exit(1);
@@ -303,6 +312,7 @@ const META = {
   featFlags: { opp2: FEAT_FLAGS.opp2, oppRem: FEAT_FLAGS.oppRem, oppBonusPerColor: FEAT_FLAGS.oppBonusPerColor },
   nFeat: N_FEAT,
   hidden: HIDDEN,
+  trainSeed: TRAIN_SEED,  // 训练种子基（评估种子基 evalSeed 硬编码 21160917）
   evalSeed: EVAL_SEED,
   evalGames: EVAL_GAMES,
   evalSeats: EVAL_SEATS.slice(),
@@ -523,7 +533,7 @@ function collectEpisode(seed, actor, rng) {
         traj.push(pending);
       }
       pending = smp.pick
-        ? { phi: smp.phi, a: smp.pick, logp: smp.logp, aIdx: smp.pickIdx, ep: seed - BASE_SEED,
+        ? { phi: smp.phi, a: smp.pick, logp: smp.logp, aIdx: smp.pickIdx, ep: seed - TRAIN_SEED,
             prevPts: p.points, r: 0, movesPhi: smp.sc.phis }
         : null;
     }
@@ -902,6 +912,10 @@ if (EVAL_ONLY) {
         console.error(`检查点与本次运行口径不一致，不能续跑：\n  - ${diffs.join('\n  - ')}`);
         process.exit(1);
       }
+      // 训练种子换了 ≠ 口径错（不影响网络结构），但 seedRanges 只反映本次口径 → 只提醒不拦
+      if (ckpt.meta.trainSeed != null && ckpt.meta.trainSeed !== TRAIN_SEED) {
+        console.log(`注意：检查点训练种子 ${ckpt.meta.trainSeed}，本次 --train-seed ${TRAIN_SEED} —— 历史局与续跑局种子不同，报数时请注明。`);
+      }
     }
     // 兜底：网络尺寸必须对得上（兼容没有 meta 的旧格式检查点）
     if (!ckpt.actor || !ckpt.critic
@@ -946,17 +960,19 @@ if (EVAL_ONLY) {
   }
   const totalEpisodes = startEp + nTrain;
   // —— 训练/评估种子范围校验（防泄题）——
-  // 训练局种子 = [BASE_SEED, BASE_SEED+totalEpisodes)，评估局 = [EVAL_SEED, EVAL_SEED+EVAL_GAMES)。
+  // 训练局种子 = [TRAIN_SEED, TRAIN_SEED+totalEpisodes)，评估局 = [EVAL_SEED, EVAL_SEED+EVAL_GAMES)。
   // 两区间重叠 = 评估局复用训练局的种子（背过的题再考），评测结果无效 → 拒绝开跑。
   // 用 totalEpisodes 而非本段 nTrain：续跑时历史局的种子也算"训练过"，同样不许评估复用。
-  const TRAIN_LO = BASE_SEED;
-  const TRAIN_HI = BASE_SEED + totalEpisodes;
+  const TRAIN_LO = TRAIN_SEED;
+  const TRAIN_HI = TRAIN_SEED + totalEpisodes;
   const EVAL_LO = EVAL_SEED;
   const EVAL_HI = EVAL_SEED + EVAL_GAMES;
   if (EVAL_LO < TRAIN_HI && EVAL_HI > TRAIN_LO) {
-    console.error(`种子范围重叠，拒绝开跑：训练 [${TRAIN_LO}, ${TRAIN_HI}) 与评估 [${EVAL_LO}, ${EVAL_HI}) 有交集（${Math.max(TRAIN_LO, EVAL_LO)} ~ ${Math.min(TRAIN_HI, EVAL_HI)}）。\n  评估局会复用训练局的种子 = 泄题，评测结果无效。请换 --eval-seed（缺省 EVAL_SEED = BASE_SEED + 900000 = ${BASE_SEED + 900000}），或缩小 --eval-games 至不重叠。`);
+    console.error(`种子范围重叠，拒绝开跑：训练 [${TRAIN_LO}, ${TRAIN_HI}) 与评估 [${EVAL_LO}, ${EVAL_HI}) 有交集（${Math.max(TRAIN_LO, EVAL_LO)} ~ ${Math.min(TRAIN_HI, EVAL_HI)}）。\n  评估局会复用训练局的种子 = 泄题，评测结果无效。请换 --train-seed（缺省 20260917，评估种子硬编码 21160917），或缩小 --eval-games / 训练局数至不重叠。`);
     process.exit(1);
   }
+  // 种子范围写进口径元数据（含续跑累计口径）：训练 [TRAIN_LO, TRAIN_HI)，评估 [EVAL_LO, EVAL_HI)
+  META.seedRanges = { train: [TRAIN_LO, TRAIN_HI], eval: [EVAL_LO, EVAL_HI] };
   const thetaFile = `weights/ppo-agent-p${N_PLAYERS}${tagSuffix}-${totalEpisodes}.json`;
   const runStartedAt = new Date().toISOString();
   const t0 = Date.now();
@@ -971,7 +987,7 @@ if (EVAL_ONLY) {
   if (SCHED_MODE === 'front-zero') schedDesc = 'front-zero（α/β 全程 0，无学习对照）';
   else if (LR_DECAY) schedDesc = `decay10（α ${ALPHA_FRONT}→${ALPHA_END} ｜ β ${BETA_FRONT}→${BETA_END}，底线 ×${LR_DECAY_TO}，随本段进度线性）`;
   else schedDesc = `恒定（α ${ALPHA_FRONT} ｜ β ${BETA_FRONT}，--no-lr-decay）`;
-  log(`种子：训练 [${TRAIN_LO}, ${TRAIN_HI}) ｜ 评估 [${EVAL_LO}, ${EVAL_HI})${EVAL_SEED === BASE_SEED + 900000 ? '（EVAL_SEED = BASE_SEED + 900000）' : '（--eval-seed 显式指定）'} ｜ 无重叠`);
+  log(`种子：训练 [${TRAIN_LO}, ${TRAIN_HI}) ｜ 评估 [${EVAL_LO}, ${EVAL_HI})（EVAL_SEED 硬编码） ｜ 无重叠`);
   log(`调度：${schedDesc} ｜ 超参：α ${ALPHA} / β ${BETA} / ent ${ENT_COEF} / shapeW ${SHAPE_W} / targetKL ${TARGET_KL} / gradClip ${GRAD_CLIP} / advNorm ${ADV_NORM ? '开' : '关'} / sampleSeed ${SAMPLE_SEED} / rollbackStop ${ROLLBACK_STOP}`);
   log(`启动：${RESUME ? `恢复自 ${path.basename(resumeFile)}（守恒违规 ${lastLeak} ｜ 卡死 ${lastStall} ｜ 池 ${pool.length}）` : '全新开始'}；检查点每 ${CKPT_EVERY} 局 → ${path.basename(ckptFile)}；最优 → ${path.basename(bestFile)}；日志 → ${path.basename(logFile)}${evalCurve.length ? `；历史评估 ${evalCurve.length} 次，最新 ${(evalCurve[evalCurve.length - 1].rate * 100).toFixed(1)}%@${evalCurve[evalCurve.length - 1].ep} 局` : ''}${best ? `；历史最优 ${(best.rate * 100).toFixed(1)}%@${best.ep} 局` : ''}${newFeats.length || HIDDEN !== 32 ? `；口径 hidden ${HIDDEN} / nFeat ${N_FEAT}` : ''}`);
   log(`评估座位：[${EVAL_SEATS.join(',')}]（座位0=被测策略${STR_WEIGHTS ? `；座位≥1 str=${path.basename(strWeightsPath)}` : '；其余 str 与被测同网'}）${EVAL_SEATS[0] !== 'str' ? ' ⚠️ 座位0非str：评估不测学习者，最优判定跳过' : ''}`);
@@ -1035,7 +1051,9 @@ if (EVAL_ONLY) {
       elapsedSec: Math.round((Date.now() - t0) / 100) / 10,
       thetaFile,
       ckptFile: path.basename(ckptFile),
-      seed: BASE_SEED, evalSeed: EVAL_SEED, evalSeats: EVAL_SEATS, strWeights: STR_WEIGHTS || null,
+      seed: TRAIN_SEED, trainSeed: TRAIN_SEED, evalSeed: EVAL_SEED,
+      seedRanges: { train: [TRAIN_LO, TRAIN_HI], eval: [EVAL_LO, EVAL_HI] },
+      evalSeats: EVAL_SEATS, strWeights: STR_WEIGHTS || null,
       meta: META,
       gamma: GAMMA, lambda: LAMBDA, clipEps: CLIP_EPS, alpha: ALPHA, beta: BETA,
       entCoef: ENT_COEF, shapeW: SHAPE_W, kEpochs: K_EPOCHS, batchEps: BATCH_EPS,
@@ -1059,7 +1077,7 @@ if (EVAL_ONLY) {
     try {
       writeCkpt(epDone, sig);
       writeSummary(epDone, true);
-      console.log(`检查点已保存。续跑：node 工具/rl/ppo-agent.js ${nTrain} ${EVAL_EVERY} --players ${N_PLAYERS}${TAG ? ` --tag ${TAG}` : ''} --resume`);
+      console.log(`检查点已保存。续跑：node 工具/rl/ppo-agent.js ${nTrain} ${EVAL_EVERY} --players ${N_PLAYERS}${TRAIN_SEED !== 20260917 ? ` --train-seed ${TRAIN_SEED}` : ''}${TAG ? ` --tag ${TAG}` : ''} --resume`);
       process.exit(0);
     } catch (e) {
       console.error('中断落盘失败：' + e.message);
@@ -1072,7 +1090,7 @@ if (EVAL_ONLY) {
   /* ---------- 训练循环 ---------- */
   for (; ep < totalEpisodes; ep++) {
     epDone = ep + 1;
-    const res = collectEpisode(BASE_SEED + ep, actor, H.mulberry32(SAMPLE_SEED + ep));
+    const res = collectEpisode(TRAIN_SEED + ep, actor, H.mulberry32(SAMPLE_SEED + ep));
     if (res.leak) lastLeak++;
     if (!res.finished) lastStall++;
     const { adv, vTarget } = computeGAE(res.traj, critic);
