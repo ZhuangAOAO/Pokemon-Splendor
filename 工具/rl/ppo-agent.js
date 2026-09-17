@@ -37,6 +37,7 @@
  *                    [--eval-seats str,def,rand,...] [--str-weights 权重文件]
  *                    [--feat-opp2] [--feat-opp-rem] [--feat-opp-bonus-percolor]
  *                    [--train-seed 20260917] [--tag 名字] [--allow-overwrite]
+ *                    [--snapshot-every 2000] [--pool-recent 0]
  *      续跑时"训练局数"= 在检查点基础上追加的局数。
  * 产出：weights/ppo-agent-p{N}[-tag]-{累计局数}.json（最终权重）＋ -ckpt/-best ＋ data/ 下摘要与日志
  *
@@ -74,6 +75,14 @@
  *   训练模式主指标 = 座位 0 的胜率（座位 0 非 str 时评估不测学习者，最优判定跳过）；
  *   --eval-only 模式另落档 weights/<权重名>.eval-<座位>[.vs-<对打权重>].json：
  *   分座位胜率/平均分/平均进化、逐局记录、被测与对打权重的 sha256 指纹。
+ *
+ * 对手池（快照节奏与上限，--snapshot-every / --pool-recent）：
+ *   对手池 = 2 个固定对手（heuristic / random）+ 训练中定期入池的 θ 快照（greedy 网）。
+ *   --snapshot-every <n>   每 n 局把当前 actor 快照写入对手池（缺省 2000）。
+ *   --pool-recent <K>      快照区上限：0（缺省）= 旧行为，快照区最多 12 个（池上限 14 = 2+12）；
+ *                          K > 0 = 每次入池后裁剪快照区只留最近 K 个（2 个固定对手不裁，
+ *                          池上限 = 2+K）。K=0 时行为与旧版逐位一致。
+ *   两个参数都写进 meta 与 summary（snapshotEvery / poolRecent）。
  *
  * 可调超参（CLI 覆盖，缺省 = 2026-09-16 教训值；含调度生效值，全量写进 meta 与 summary）：
  *   --alpha / --beta / --ent-coef / --shape-w   学习率 / 熵系数 / 塑形权重
@@ -203,7 +212,18 @@ for (const [nm, v] of [['--alpha', ALPHA], ['--beta', BETA], ['--ent-coef', ENT_
   }
 }
 const K_EPOCHS = 2, BATCH_EPS = 8;
-const SNAPSHOT_EVERY = 2000;
+// 对手池快照节奏与上限（缺省 = 旧行为：每 2000 局入池、快照区最多 12 个 → 池上限 14 = 2 固定 + 12 快照）
+const SNAPSHOT_EVERY = +flagVal('--snapshot-every', 2000);
+if (!Number.isInteger(SNAPSHOT_EVERY) || SNAPSHOT_EVERY < 1) {
+  console.error(`参数错误：--snapshot-every 需为正整数（收到 "${flagVal('--snapshot-every', 2000)}"）`);
+  process.exit(1);
+}
+// 0 = 旧行为（快照区上限 12，池上限 14）；K > 0 = 入池后裁剪快照区只留最近 K 个（固定对手不裁，池上限 = 2+K）
+const POOL_RECENT = +flagVal('--pool-recent', 0);
+if (!Number.isInteger(POOL_RECENT) || POOL_RECENT < 0) {
+  console.error(`参数错误：--pool-recent 需为非负整数（收到 "${flagVal('--pool-recent', 0)}"）`);
+  process.exit(1);
+}
 const MAX_TURNS = 800;
 // 每 N 局让出一次事件循环：否则整段训练是同步循环，SIGINT 要等训练全部结束才会触发
 const YIELD_EVERY = 100;
@@ -317,6 +337,8 @@ const META = {
   evalGames: EVAL_GAMES,
   evalSeats: EVAL_SEATS.slice(),
   strWeights: STR_WEIGHTS || null,
+  snapshotEvery: SNAPSHOT_EVERY,  // 对手池：每 n 局入一个 θ 快照
+  poolRecent: POOL_RECENT,        // 对手池：快照区只留最近 K 个（0 = 旧行为，上限 12）
   // 可调超参全量记录（新字段；旧检查点没有这些 = 按当时硬编码值跑出来的）
   alpha: ALPHA, beta: BETA, entCoef: ENT_COEF, shapeW: SHAPE_W,
   targetKl: TARGET_KL, gradClip: GRAD_CLIP, lrDecay: LR_DECAY, advNorm: ADV_NORM,
@@ -943,7 +965,8 @@ if (EVAL_ONLY) {
           ? { name: m.name, kind: 'net', actor: N.deserialize(m.actor) }
           : { name: m.name, kind: m.kind })));
     }
-    snapshots = pool.filter((m) => m.kind === 'net').length;
+    // 续跑恢复快照编号：取现有快照名里最大编号（--pool-recent 裁剪后数量 ≠ 已用编号，按数量算会重号）
+    snapshots = pool.reduce((mx, m) => (m.kind === 'net' ? Math.max(mx, parseInt(String(m.name).replace(/\D/g, ''), 10) || 0) : mx), 0);
     if (ckpt.best && typeof ckpt.best.rate === 'number') {
       best = { rate: ckpt.best.rate, ep: ckpt.best.ep, actor: ckpt.best.actor, critic: ckpt.best.critic };
     }
@@ -989,7 +1012,7 @@ if (EVAL_ONLY) {
   else schedDesc = `恒定（α ${ALPHA_FRONT} ｜ β ${BETA_FRONT}，--no-lr-decay）`;
   log(`种子：训练 [${TRAIN_LO}, ${TRAIN_HI}) ｜ 评估 [${EVAL_LO}, ${EVAL_HI})（EVAL_SEED 硬编码） ｜ 无重叠`);
   log(`调度：${schedDesc} ｜ 超参：α ${ALPHA} / β ${BETA} / ent ${ENT_COEF} / shapeW ${SHAPE_W} / targetKL ${TARGET_KL} / gradClip ${GRAD_CLIP} / advNorm ${ADV_NORM ? '开' : '关'} / sampleSeed ${SAMPLE_SEED} / rollbackStop ${ROLLBACK_STOP}`);
-  log(`启动：${RESUME ? `恢复自 ${path.basename(resumeFile)}（守恒违规 ${lastLeak} ｜ 卡死 ${lastStall} ｜ 池 ${pool.length}）` : '全新开始'}；检查点每 ${CKPT_EVERY} 局 → ${path.basename(ckptFile)}；最优 → ${path.basename(bestFile)}；日志 → ${path.basename(logFile)}${evalCurve.length ? `；历史评估 ${evalCurve.length} 次，最新 ${(evalCurve[evalCurve.length - 1].rate * 100).toFixed(1)}%@${evalCurve[evalCurve.length - 1].ep} 局` : ''}${best ? `；历史最优 ${(best.rate * 100).toFixed(1)}%@${best.ep} 局` : ''}${newFeats.length || HIDDEN !== 32 ? `；口径 hidden ${HIDDEN} / nFeat ${N_FEAT}` : ''}`);
+  log(`启动：${RESUME ? `恢复自 ${path.basename(resumeFile)}（守恒违规 ${lastLeak} ｜ 卡死 ${lastStall} ｜ 池 ${pool.length}）` : '全新开始'}；检查点每 ${CKPT_EVERY} 局 → ${path.basename(ckptFile)}；快照每 ${SNAPSHOT_EVERY} 局（池上限 ${POOL_RECENT > 0 ? 2 + POOL_RECENT : 14}）；最优 → ${path.basename(bestFile)}；日志 → ${path.basename(logFile)}${evalCurve.length ? `；历史评估 ${evalCurve.length} 次，最新 ${(evalCurve[evalCurve.length - 1].rate * 100).toFixed(1)}%@${evalCurve[evalCurve.length - 1].ep} 局` : ''}${best ? `；历史最优 ${(best.rate * 100).toFixed(1)}%@${best.ep} 局` : ''}${newFeats.length || HIDDEN !== 32 ? `；口径 hidden ${HIDDEN} / nFeat ${N_FEAT}` : ''}`);
   log(`评估座位：[${EVAL_SEATS.join(',')}]（座位0=被测策略${STR_WEIGHTS ? `；座位≥1 str=${path.basename(strWeightsPath)}` : '；其余 str 与被测同网'}）${EVAL_SEATS[0] !== 'str' ? ' ⚠️ 座位0非str：评估不测学习者，最优判定跳过' : ''}`);
 
   /* ---------- 落盘工具（检查点 / 最优权重 / 摘要） ---------- */
@@ -1062,7 +1085,7 @@ if (EVAL_ONLY) {
       lrSchedule: SCHED_MODE, alphaFront: ALPHA_FRONT, betaFront: BETA_FRONT,
       alphaEnd: ALPHA_END, betaEnd: BETA_END, lrDecayTo: LR_DECAY_TO,
       hidden: HIDDEN, nFeat: N_FEAT, nState: N_STATE, featNames: FEAT_NAMES,
-      snapshots,
+      snapshots, snapshotEvery: SNAPSHOT_EVERY, poolRecent: POOL_RECENT,
       createdAt: runStartedAt,
       updatedAt: new Date().toISOString(),
     }, null, 2));
@@ -1105,8 +1128,17 @@ if (EVAL_ONLY) {
       klStops += ppoUpdate(actor, critic, batch, ALPHA_FRONT * k, BETA_FRONT * k);
       batch = []; batchEps = 0;
     }
-    if ((ep + 1) % SNAPSHOT_EVERY === 0 && pool.length < 14) {
+    // 池上限：POOL_RECENT > 0 时由 K 决定（2+K），否则沿用旧上限 14（2 固定 + 12 快照）
+    if ((ep + 1) % SNAPSHOT_EVERY === 0 && (POOL_RECENT > 0 || pool.length < 14)) {
       pool.push({ name: 'snap' + (++snapshots), kind: 'net', actor: N.deserialize(N.serialize(actor)) });
+      // --pool-recent K>0：入池后裁剪快照区只留最近 K 个（heuristic/random 两个固定对手不裁）
+      if (POOL_RECENT > 0) {
+        const nets = pool.filter((m) => m.kind === 'net');
+        if (nets.length > POOL_RECENT) {
+          const drop = new Set(nets.slice(0, nets.length - POOL_RECENT));
+          for (let i = pool.length - 1; i >= 0; i--) if (drop.has(pool[i])) pool.splice(i, 1);
+        }
+      }
     }
     if ((ep + 1) % CKPT_EVERY === 0) writeCkpt(ep + 1, '定时');
     if ((ep + 1) % EVAL_EVERY === 0) {
