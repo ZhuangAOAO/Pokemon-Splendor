@@ -38,6 +38,7 @@
  *                    [--feat-opp2] [--feat-opp-rem] [--feat-opp-bonus-percolor]
  *                    [--train-seed 20260917] [--tag 名字] [--allow-overwrite]
  *                    [--snapshot-every 2000] [--pool-recent 0]
+ *                    [--rank-reward] [--debug-rewards]
  *      续跑时"训练局数"= 在检查点基础上追加的局数。
  * 产出：weights/ppo-agent-p{N}[-tag]-{累计局数}.json（最终权重）＋ -ckpt/-best ＋ data/ 下摘要与日志
  *
@@ -101,6 +102,15 @@
  *   --sample-seed   采样 / 对手池 / 初始化 RNG 种子（按局号续接；与游戏 RNG 分离 → 轨迹逐位复现）
  *   --rollback-stop 评估连续 n 次跌破历史最优 → 回滚权重并提前停训；0 = 关
  *   --eval-only     只评估指定权重文件（-best / -ckpt / 最终权重均可），不训练不落盘
+ *
+ * 终局奖励（名次奖励，--rank-reward / --debug-rewards）：
+ *   缺省（不传）= 旧行为：终局赢 +1 / 输 −1。3/4 人局里中间名次与"输给谁"没有区分信号。
+ *   --rank-reward 开 = 终局按名次线性打分：r = 1 − 2·(myRank−1)/(N−1)，myRank = 座位 0
+ *   的名次（1 基；终局名次按 分→进化数→卡数 排序，与判胜口径一致）。N=2 时退化为 ±1，
+ *   与缺省行为完全一致（no-op）；N=3 → 1/0/−1；N=4 → 1/+⅓/−⅓/−1。
+ *   只替换终局的 +1/−1 项，塑形项 SHAPE_W·Δ分 不变；卡死（未终局）两种模式都 −1。
+ *   --debug-rewards 训练结束（或 Ctrl+C 落盘后）打印终局奖励分布（只统计训练局，
+ *   不影响训练与落盘；键按 4 位小数防浮点尾差）。rankReward 开关写进 meta 与 summary。
  */
 
 const fs = require('fs');
@@ -108,6 +118,7 @@ const path = require('path');
 const crypto = require('crypto'); // 权重 sha256 指纹（评估结果落档用）
 const H = require('./harness');
 const N = require('./nn');
+const P = require('./policy-core'); // 动作枚举 + 特征 + greedy 决策（与冠军 AI 共用同一份代码，口径必须一致）
 
 /* ==================== 命令行参数 ==================== */
 const nTrain = +process.argv[2] || 10000;
@@ -166,6 +177,8 @@ const TARGET_KL = numFlag('--target-kl', 0.02);// PPO epoch 早停 KL 阈值
 const GRAD_CLIP = numFlag('--grad-clip', 0.5); // 全局 L2 梯度裁剪；0 = 关
 const LR_DECAY = !hasFlag('--no-lr-decay');    // 默认开：随训练进度线性衰减到前端值的 --lr-decay-to 倍（缺省 10%）
 const ADV_NORM = !hasFlag('--no-adv-norm');    // 默认开：(adv−mean)/(std+1e-8)
+const RANK_REWARD = hasFlag('--rank-reward');  // 终局按名次线性打分（缺省关 = 旧行为 赢 +1 / 输 −1）
+const DEBUG_REWARDS = hasFlag('--debug-rewards'); // 训练结束打印终局奖励分布（纯诊断，不影响训练）
 // decay10 衰减底线 = 前端值的比例（A/B 对照参数）：0.1 = 衰减到 10%（旧行为），0 = 一路衰减到 0
 const LR_DECAY_TO = numFlag('--lr-decay-to', 0.1);
 if (!(LR_DECAY_TO >= 0 && LR_DECAY_TO <= 1)) {
@@ -290,43 +303,14 @@ function makePlayers(n) {
   return players;
 }
 
-/* ==================== 特征机器（lqlearn/ppo-big 同款基础 56 维 + 可选新增维） ==================== */
-const KIND_OF = { buy: 1, buyReserved: 2, reserve: 3, reserveBlind: 4, takeMaster: 5, take3: 6, take2: 7, return: 8 };
-const BASE_FEAT_NAMES = [
-  '常数',
-  '类型=buy', '类型=buyReserved', '类型=reserve', '类型=reserveBlind',
-  '类型=takeMaster', '类型=take3', '类型=take2', '类型=return',
-  '我的分', '对手领先', '终局轮',
-  '我的大师球', '对手大师球', '对手加成',
-  '我的预约数', '我的预约总分', '对手预约数',
-  '市场非空卡数', '市场最高分', '市场总分', '我可负担卡数', '回合数',
-  '我的球·普通', '我的球·超级', '我的球·高级', '我的球·治愈', '我的球·快速',
-  '对手球·普通', '对手球·超级', '对手球·高级', '对手球·治愈', '对手球·快速',
-  '供应区·普通', '供应区·超级', '供应区·高级', '供应区·治愈', '供应区·快速',
-  '我的加成·普通', '我的加成·超级', '我的加成·高级', '我的加成·治愈', '我的加成·快速',
-  '卡分', '−缺口(effTot)', '卡阶', '卡成本', '买它触发终局', '预约得大师球',
-  '一步前瞻(拿球)', '命中缺口色', '池余量', '超手牌风险',
-  '已有大师球', '退球富余', '退球惩罚',
-];
-// 颜色中文名（按 COLORS 顺序：red/blue/black/pink/yellow，与基础特征名一致）
-const COLOR_ZH = ['普通', '超级', '高级', '治愈', '快速'];
-// 可选新增特征一律追加在 56 维基础特征末尾（不动已有索引），按开关拼装
-const FEAT_NAMES = BASE_FEAT_NAMES.slice();
-let featNext = BASE_FEAT_NAMES.length;
-const OPP2_IDX = FEAT_FLAGS.opp2 ? featNext++ : -1;
-if (FEAT_FLAGS.opp2) FEAT_NAMES.push('对手球数·次大');
-const OPP_REM_IDX = FEAT_FLAGS.oppRem ? featNext : -1;
-if (FEAT_FLAGS.oppRem) { COLOR_ZH.forEach((zh) => FEAT_NAMES.push('对手剩余需求·' + zh)); featNext += 5; }
-const OPP_BONUS_IDX = FEAT_FLAGS.oppBonusPerColor ? featNext : -1;
-if (FEAT_FLAGS.oppBonusPerColor) { COLOR_ZH.forEach((zh) => FEAT_NAMES.push('对手永久加成·' + zh)); featNext += 5; }
-const N_FEAT = FEAT_NAMES.length;
-const STATE_IDX = [0, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
-  23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42];
-// 新增的都是与动作无关的状态特征 → 同样进 Critic 的 psi（缺省时与旧版 STATE_IDX 相同）
-if (OPP2_IDX >= 0) STATE_IDX.push(OPP2_IDX);
-if (OPP_REM_IDX >= 0) for (let i = 0; i < COLOR_ZH.length; i++) STATE_IDX.push(OPP_REM_IDX + i);
-if (OPP_BONUS_IDX >= 0) for (let i = 0; i < COLOR_ZH.length; i++) STATE_IDX.push(OPP_BONUS_IDX + i);
-const N_STATE = STATE_IDX.length;
+/* ==================== 特征机器：抽到 工具/rl/policy-core.js（与冠军 AI 共用） ==================== */
+// 56 维基础特征 + 可选新增维（--feat-*）、动作枚举、greedy 决策全部在 policy-core：
+// 训练与线上用同一份代码，保证网口口径逐位一致；改动特征必须重新开练。
+// policy-core 用裸全局名（config.js + game-core.js 挂到 window），即 harness 挂的同一份函数，行为不变。
+P.configure(FEAT_FLAGS);
+const N_FEAT = P.N_FEAT, N_STATE = P.N_STATE, STATE_IDX = P.STATE_IDX;
+const FEAT_NAMES = P.FEAT_NAMES, BASE_FEAT_NAMES = P.BASE_FEAT_NAMES;
+const enumerateMoves = P.enumerateMoves, greedyMove = P.greedyMove;
 // 口径元数据：写进所有权重文件与 summary；--resume 防呆比对用的就是它
 const META = {
   featFlags: { opp2: FEAT_FLAGS.opp2, oppRem: FEAT_FLAGS.oppRem, oppBonusPerColor: FEAT_FLAGS.oppBonusPerColor },
@@ -340,7 +324,7 @@ const META = {
   snapshotEvery: SNAPSHOT_EVERY,  // 对手池：每 n 局入一个 θ 快照
   poolRecent: POOL_RECENT,        // 对手池：快照区只留最近 K 个（0 = 旧行为，上限 12）
   // 可调超参全量记录（新字段；旧检查点没有这些 = 按当时硬编码值跑出来的）
-  alpha: ALPHA, beta: BETA, entCoef: ENT_COEF, shapeW: SHAPE_W,
+  alpha: ALPHA, beta: BETA, entCoef: ENT_COEF, shapeW: SHAPE_W, rankReward: RANK_REWARD,
   targetKl: TARGET_KL, gradClip: GRAD_CLIP, lrDecay: LR_DECAY, advNorm: ADV_NORM,
   sampleSeed: SAMPLE_SEED, rollbackStop: ROLLBACK_STOP,
   // 学习率调度生效参数（A/B 对照落档用）
@@ -349,153 +333,9 @@ const META = {
 };
 const psiOf = (phi) => STATE_IDX.map((i) => phi[i]);
 
-function enumerateMoves(p) {
-  const moves = [];
-  [1, 2, 3, 4, 5].forEach((t) => S.market[t].forEach((c, idx) => {
-    if (c && H.canAfford(p, c)) moves.push({ type: 'buy', tier: t, idx, card: c });
-  }));
-  p.reserved.forEach((c, ridx) => {
-    if (H.canAfford(p, c)) moves.push({ type: 'buyReserved', ridx, card: c });
-  });
-  if (p.reserved.length < H.RULES.reserveLimit) {
-    [1, 2, 3].forEach((t) => S.market[t].forEach((c, idx) => {
-      if (c) moves.push({ type: 'reserve', tier: t, idx, card: c });
-    }));
-    [1, 2, 3].forEach((t) => { if (S.decks[t].length > 0) moves.push({ type: 'reserveBlind', tier: t }); });
-  }
-  if (H.RULES.takeMasterAlone !== false && S.pool.master > 0) moves.push({ type: 'takeMaster' });
-  const avail = COLORS.filter((c) => S.pool[c] > 0);
-  // 速度优化：正常局面只枚举 3 色组合；供应不足 3 色时才加入 1/2 色变体（保合法性）
-  if (avail.length >= 3) {
-    for (let i = 0; i < avail.length; i++)
-      for (let j = i + 1; j < avail.length; j++)
-        for (let k = j + 1; k < avail.length; k++)
-          moves.push({ type: 'take3', colors: [avail[i], avail[j], avail[k]] });
-  } else {
-    for (let i = 0; i < avail.length; i++)
-      for (let j = i + 1; j < avail.length; j++)
-        moves.push({ type: 'take3', colors: [avail[i], avail[j]] });
-    avail.forEach((c) => moves.push({ type: 'take3', colors: [c] }));
-  }
-  COLORS.forEach((c) => { if (S.pool[c] >= H.RULES.takeTwoMin) moves.push({ type: 'take2', color: c }); });
-  COLORS.forEach((c) => { if (p.balls[c] > 0) moves.push({ type: 'return', color: c }); });
-  if (p.balls.master > 0) moves.push({ type: 'return', color: 'master' });
-  return moves;
-}
-function buildCtx(p) {
-  const cards = [];
-  H.allMarketCards().concat(p.reserved).forEach((c) => {
-    const m = H.missingFor(p, c);
-    cards.push({ card: c, effTot: m.effTot, net: m.net });
-  });
-  let minEff = Infinity;
-  cards.forEach((x) => { if (x.effTot < minEff) minEff = x.effTot; });
-  const need = H.globalNeed(p);
-  const opps = S.players.filter((x) => x !== p);
-  const oppMax = Math.max(...opps.map((x) => x.points));
-  // 多人数聚合：对手特征对"所有对手"取 max（理由见文件头注释），归一化常数与 3 人局一致
-  const maxOf = (fn) => Math.max(...opps.map(fn));
-  const bonus = H.bonusOf(p);
-  const base = new Float64Array(N_FEAT);
-  base[0] = 1;
-  base[9] = p.points / TARGET;
-  base[10] = (oppMax - p.points) / TARGET;
-  base[11] = S.endTriggered ? 1 : 0;
-  base[12] = p.balls.master / 3;
-  base[13] = maxOf((x) => x.balls.master) / 3;
-  base[14] = maxOf((x) => COLORS.reduce((s, c) => s + (H.bonusOf(x)[c] || 0), 0)) / 12;
-  base[15] = p.reserved.length / 3;
-  base[16] = p.reserved.reduce((s, c) => s + c.vp, 0) / 12;
-  base[17] = maxOf((x) => x.reserved.length) / 3;
-  const market = H.allMarketCards();
-  base[18] = market.length / 14;
-  base[19] = (market.length ? Math.max(...market.map((c) => c.vp)) : 0) / 5;
-  base[20] = market.reduce((s, c) => s + c.vp, 0) / 40;
-  base[21] = market.filter((c) => H.canAfford(p, c)).length / 6;
-  base[22] = Math.min(1, S.turnIdx / 40);
-  COLORS.forEach((c, i) => {
-    base[23 + i] = p.balls[c] / 4;
-    base[28 + i] = maxOf((x) => x.balls[c]) / 4;
-    base[33 + i] = S.pool[c] / 5;
-    base[38 + i] = bonus[c] / 5;
-  });
-  // ---- 可选新增特征（对照实验开关）：一律追加在基础 56 维之后 ----
-  if (OPP2_IDX >= 0) {
-    // 对手总球数的次大值 /10：捕捉"第二威胁"；只有 1 个对手时该维恒为 0
-    const totals = opps.map((x) => H.totalBalls(x)).sort((a, b) => b - a);
-    base[OPP2_IDX] = (totals.length >= 2 ? totals[1] : 0) / 10;
-  }
-  if (OPP_REM_IDX >= 0) {
-    // 每色：max over 对手 max(0, need[c] − balls[c]) /5；
-    // need 与启发式 globalNeed 同口径（可见卡最大缺口，不减已持有）
-    COLORS.forEach((c, i) => {
-      let mx = 0;
-      opps.forEach((x) => { mx = Math.max(mx, Math.max(0, H.globalNeed(x)[c] - x.balls[c])); });
-      base[OPP_REM_IDX + i] = mx / 5;
-    });
-  }
-  if (OPP_BONUS_IDX >= 0) {
-    // 每色：对手永久加成数的 max /5（威胁口径与"对手加成"总维度一致）
-    COLORS.forEach((c, i) => { base[OPP_BONUS_IDX + i] = maxOf((x) => H.bonusOf(x)[c]) / 5; });
-  }
-  return { cards, minEff: minEff === Infinity ? 0 : minEff, need, base };
-}
-function featuresFor(p, m, ctx) {
-  const f = Float64Array.from(ctx.base);
-  f[KIND_OF[m.type]] = 1;
-  const card = m.card;
-  if (m.type === 'buy' || m.type === 'buyReserved' || m.type === 'reserve') {
-    f[43] = card.vp / 3;
-    f[44] = -(ctx.cards.find((x) => x.card === card) || { effTot: 0 }).effTot / 6;
-    f[45] = card.tier / 5;
-    f[46] = H.totalCost(card) / 8;
-    f[47] = (m.type !== 'reserve' && p.points + card.vp >= S.target && !S.endTriggered) ? 1 : 0;
-  }
-  if (m.type === 'reserve' || m.type === 'reserveBlind') {
-    f[48] = S.pool.master > 0 ? 1 : 0;
-    if (m.type === 'reserveBlind') f[45] = m.tier / 5;
-  }
-  if (m.type === 'take3' || m.type === 'take2') {
-    const colors = m.type === 'take2' ? [m.color, m.color] : m.colors;
-    const count = {};
-    colors.forEach((c) => { count[c] = (count[c] || 0) + 1; });
-    let afterMin = Infinity;
-    ctx.cards.forEach((x) => {
-      let red = 0;
-      for (const c in count) red += Math.min(x.net[c] || 0, count[c]);
-      const after = Math.max(0, x.effTot - red);
-      if (after < afterMin) afterMin = after;
-    });
-    f[49] = (ctx.minEff - (afterMin === Infinity ? 0 : afterMin)) / 3;
-    let hit = 0;
-    colors.forEach((c) => { if (ctx.need[c] - p.balls[c] > 0) hit++; });
-    f[50] = hit / 3;
-    f[51] = colors.reduce((s, c) => s + Math.min(4, S.pool[c]), 0) / colors.length / 4;
-    f[52] = H.totalBalls(p) + colors.length > H.RULES.handLimit ? -1 : 0;
-  }
-  if (m.type === 'takeMaster') f[53] = p.balls.master / 3;
-  if (m.type === 'return') {
-    f[54] = m.color === 'master' ? p.balls.master / 5 : (p.balls[m.color] - ctx.need[m.color]) / 5;
-    f[55] = -0.5;
-  }
-  return f;
-}
-
-/* ==================== Actor（NN softmax） ==================== */
-function scanActor(actor, p) {
-  const ctx = buildCtx(p);
-  const moves = enumerateMoves(p);
-  const phis = moves.map((mv) => featuresFor(p, mv, ctx));
-  const zs = phis.map((phi) => N.forward(actor, phi).out);
-  let maxZ = -Infinity;
-  for (const z of zs) if (z > maxZ) maxZ = z;
-  let lse = 0;
-  for (const z of zs) lse += Math.exp(z - maxZ);
-  lse = maxZ + Math.log(lse);
-  return { moves, phis, zs, lse };
-}
+/* ==================== 采样（训练专用：softmax 采样 + logp；决策在 policy-core） ==================== */
 function sampleMove(actor, p, rng) {
-  const sc = scanActor(actor, p);
+  const sc = P.scanActor(actor, p);
   if (!sc.moves.length) return { sc, pick: null, logp: 0, phi: null };
   const r = rng();
   let cum = 0;
@@ -505,13 +345,6 @@ function sampleMove(actor, p, rng) {
   }
   const j = sc.moves.length - 1;
   return { sc, pick: sc.moves[j], logp: sc.zs[j] - sc.lse, phi: sc.phis[j], pickIdx: j };
-}
-function greedyMove(actor, p) {
-  const sc = scanActor(actor, p);
-  if (!sc.moves.length) return null;
-  let best = 0;
-  for (let j = 1; j < sc.moves.length; j++) if (sc.zs[j] > sc.zs[best]) best = j;
-  return sc.moves[best];
 }
 const V = (critic, psi) => N.forward(critic, Float64Array.from(psi)).out;
 
@@ -544,7 +377,7 @@ function collectEpisode(seed, actor, rng) {
   H.newGame({ target: TARGET, players: makePlayers(N_PLAYERS) });
   const traj = [];
   let pending = null;
-  let guard = 0, finished = false, winnerSeat = -1;
+  let guard = 0, finished = false, winnerSeat = -1, myRank = 0;
   while (!S.over && guard < MAX_TURNS) {
     const p = H.curPlayer();
     if (p.id === 0) {
@@ -565,16 +398,23 @@ function collectEpisode(seed, actor, rng) {
       const rank = S.players.slice().sort((a, b) =>
         (b.points - a.points) || (b.evolutions - a.evolutions) || (a.cards.length - b.cards.length));
       winnerSeat = rank[0].id;
+      myRank = rank.findIndex((p) => p.id === 0) + 1; // 座位 0 的名次（1 基，--rank-reward 用）
       finished = true;
       break;
     }
   }
+  let rTerm = null; // 终局奖励（--debug-rewards 统计用）；pending 为空（座位 0 无动作）时为 null
   if (pending) {
-    pending.r = SHAPE_W * (S.players[0].points - pending.prevPts) + (finished ? (winnerSeat === 0 ? 1 : -1) : -1);
+    // 终局奖励：缺省 = 旧行为（赢 +1 / 输 −1）；--rank-reward = 按名次线性 1 − 2·(myRank−1)/(N−1)
+    // （N=2 退化为 ±1，与缺省一致）。卡死（未终局）两种模式都 −1。塑形项 SHAPE_W·Δ分 不变
+    rTerm = finished
+      ? (RANK_REWARD ? 1 - 2 * (myRank - 1) / (N_PLAYERS - 1) : (winnerSeat === 0 ? 1 : -1))
+      : -1;
+    pending.r = SHAPE_W * (S.players[0].points - pending.prevPts) + rTerm;
     traj.push(pending);
   }
   H.HOOKS.chooseAIMove = null;
-  return { traj, finished, winnerSeat, leak: H.checkConservation(), members: members.map((m) => m.name).join('+') };
+  return { traj, finished, winnerSeat, rTerm, leak: H.checkConservation(), members: members.map((m) => m.name).join('+') };
 }
 
 /* ==================== GAE ==================== */
@@ -1000,6 +840,20 @@ if (EVAL_ONLY) {
   const runStartedAt = new Date().toISOString();
   const t0 = Date.now();
   let batch = [], batchEps = 0;
+  // 终局奖励分布（--debug-rewards 诊断：只统计训练局，不影响训练；键按 4 位小数防浮点尾差）
+  const termRewardHist = {};
+  const noteTermReward = (rTerm) => {
+    if (DEBUG_REWARDS && rTerm != null) {
+      const k = String(Math.round(rTerm * 10000) / 10000);
+      termRewardHist[k] = (termRewardHist[k] || 0) + 1;
+    }
+  };
+  const printTermRewardHist = (episodesDone) => {
+    if (!DEBUG_REWARDS) return;
+    const body = Object.keys(termRewardHist).sort((a, b) => +a - +b)
+      .map((k) => `${k}: ${termRewardHist[k]}`).join(', ');
+    console.log(`[debug-rewards] 终局奖励分布（训练 ${episodesDone} 局 ｜ 卡死 ${lastStall} ｜ 键=终局奖励·次数）：{${body}}`);
+  };
   let ep = startEp, epDone = startEp;
 
   const newFeats = FEAT_NAMES.slice(BASE_FEAT_NAMES.length);
@@ -1011,7 +865,7 @@ if (EVAL_ONLY) {
   else if (LR_DECAY) schedDesc = `decay10（α ${ALPHA_FRONT}→${ALPHA_END} ｜ β ${BETA_FRONT}→${BETA_END}，底线 ×${LR_DECAY_TO}，随本段进度线性）`;
   else schedDesc = `恒定（α ${ALPHA_FRONT} ｜ β ${BETA_FRONT}，--no-lr-decay）`;
   log(`种子：训练 [${TRAIN_LO}, ${TRAIN_HI}) ｜ 评估 [${EVAL_LO}, ${EVAL_HI})（EVAL_SEED 硬编码） ｜ 无重叠`);
-  log(`调度：${schedDesc} ｜ 超参：α ${ALPHA} / β ${BETA} / ent ${ENT_COEF} / shapeW ${SHAPE_W} / targetKL ${TARGET_KL} / gradClip ${GRAD_CLIP} / advNorm ${ADV_NORM ? '开' : '关'} / sampleSeed ${SAMPLE_SEED} / rollbackStop ${ROLLBACK_STOP}`);
+  log(`调度：${schedDesc} ｜ 超参：α ${ALPHA} / β ${BETA} / ent ${ENT_COEF} / shapeW ${SHAPE_W} / targetKL ${TARGET_KL} / gradClip ${GRAD_CLIP} / advNorm ${ADV_NORM ? '开' : '关'} / rankReward ${RANK_REWARD ? '开' : '关'} / sampleSeed ${SAMPLE_SEED} / rollbackStop ${ROLLBACK_STOP}`);
   log(`启动：${RESUME ? `恢复自 ${path.basename(resumeFile)}（守恒违规 ${lastLeak} ｜ 卡死 ${lastStall} ｜ 池 ${pool.length}）` : '全新开始'}；检查点每 ${CKPT_EVERY} 局 → ${path.basename(ckptFile)}；快照每 ${SNAPSHOT_EVERY} 局（池上限 ${POOL_RECENT > 0 ? 2 + POOL_RECENT : 14}）；最优 → ${path.basename(bestFile)}；日志 → ${path.basename(logFile)}${evalCurve.length ? `；历史评估 ${evalCurve.length} 次，最新 ${(evalCurve[evalCurve.length - 1].rate * 100).toFixed(1)}%@${evalCurve[evalCurve.length - 1].ep} 局` : ''}${best ? `；历史最优 ${(best.rate * 100).toFixed(1)}%@${best.ep} 局` : ''}${newFeats.length || HIDDEN !== 32 ? `；口径 hidden ${HIDDEN} / nFeat ${N_FEAT}` : ''}`);
   log(`评估座位：[${EVAL_SEATS.join(',')}]（座位0=被测策略${STR_WEIGHTS ? `；座位≥1 str=${path.basename(strWeightsPath)}` : '；其余 str 与被测同网'}）${EVAL_SEATS[0] !== 'str' ? ' ⚠️ 座位0非str：评估不测学习者，最优判定跳过' : ''}`);
 
@@ -1079,7 +933,7 @@ if (EVAL_ONLY) {
       evalSeats: EVAL_SEATS, strWeights: STR_WEIGHTS || null,
       meta: META,
       gamma: GAMMA, lambda: LAMBDA, clipEps: CLIP_EPS, alpha: ALPHA, beta: BETA,
-      entCoef: ENT_COEF, shapeW: SHAPE_W, kEpochs: K_EPOCHS, batchEps: BATCH_EPS,
+      entCoef: ENT_COEF, shapeW: SHAPE_W, rankReward: RANK_REWARD, kEpochs: K_EPOCHS, batchEps: BATCH_EPS,
       targetKl: TARGET_KL, gradClip: GRAD_CLIP, lrDecay: LR_DECAY, advNorm: ADV_NORM,
       sampleSeed: SAMPLE_SEED, rollbackStop: ROLLBACK_STOP,
       lrSchedule: SCHED_MODE, alphaFront: ALPHA_FRONT, betaFront: BETA_FRONT,
@@ -1100,6 +954,7 @@ if (EVAL_ONLY) {
     try {
       writeCkpt(epDone, sig);
       writeSummary(epDone, true);
+      printTermRewardHist(epDone);
       console.log(`检查点已保存。续跑：node 工具/rl/ppo-agent.js ${nTrain} ${EVAL_EVERY} --players ${N_PLAYERS}${TRAIN_SEED !== 20260917 ? ` --train-seed ${TRAIN_SEED}` : ''}${TAG ? ` --tag ${TAG}` : ''} --resume`);
       process.exit(0);
     } catch (e) {
@@ -1116,6 +971,7 @@ if (EVAL_ONLY) {
     const res = collectEpisode(TRAIN_SEED + ep, actor, H.mulberry32(SAMPLE_SEED + ep));
     if (res.leak) lastLeak++;
     if (!res.finished) lastStall++;
+    noteTermReward(res.rTerm);
     const { adv, vTarget } = computeGAE(res.traj, critic);
     res.traj.forEach((tr, i) => { tr.adv = adv[i]; tr.vTarget = vTarget[i]; });
     batch.push(...res.traj);
@@ -1195,6 +1051,7 @@ if (EVAL_ONLY) {
   log(`训练完成：p${N_PLAYERS}人局 守恒违规 ${lastLeak} ｜ 卡死 ${lastStall} ｜ KL 早停 ${klStops} ｜ 池 ${pool.length} ｜ 耗时 ${elapsed}s`);
   log(`最终胜率：${last.rate != null ? (last.rate * 100).toFixed(1) + '%' : '（无 str 座位，未测策略）'}（守恒违规 ${lastLeak}）｜ 权重 ${thetaFile}`);
   if (best) log(`历史最优：${(best.rate * 100).toFixed(1)}%（第 ${best.ep} 局）→ ${path.basename(bestFile)}`);
+  printTermRewardHist(totalEpisodes);
 })().catch((e) => {
   console.error('训练异常退出：', e);
   process.exit(1);
