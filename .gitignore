@@ -16,5 +16,8 @@ data/
 # RL 实验产物（对局数据 + 报告，seed 可复现，不进版本库）
 工具/rl/data/
 
+# tagtest 事故的备份现场（旧 p3 产物副本，正本在 data/ 与 weights/）
+工具/rl/tagtest-backup/
+
 # sim 跑的原始指标（汇总台账在根目录 实验台账.md，那个进版本库）
 工具/sim-runs/

@@ -231,5 +231,6 @@ module.exports = {
   COLORS, BALLS, RULES, CARD_TABLE, // config 数据（供实验脚本标注/自检用）
   // game-core 会话 API（window 路径 = B 会话；S 用 getter 保持实时）
   newGame, aiTurn, curPlayer, totalBalls, allMarketCards, missingFor, HOOKS,
+  canAfford, globalNeed, bonusOf, totalCost,
   get S() { return S; },
 };

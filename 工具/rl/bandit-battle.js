@@ -29,26 +29,11 @@ const variants = [
   { key: 'uniform', label: '均匀随机（基线）',  bandit: () => H.makeBandit(arms, { eps: 1 }) },
   { key: 'eps01',   label: 'ε-greedy  ε=0.1',  bandit: () => H.makeBandit(arms, { eps: 0.1 }) },
   { key: 'opt3',    label: '乐观初始化 Q₀=3',  bandit: () => H.makeBandit(arms, { eps: 0.1, qInit: 3 }) },
-  { key: 'take3only', label: '恒 take3（缺口前3）', hook: makeTake3OnlyHook() },
   { key: 'def',     label: '手写规则（参考线）', bandit: () => null },
 ];
 
-// ⭐ 实验发现（2026-09-15 诊断确认）：手写困难 AI 的拿球逻辑是真实弱点——
-// take2 偏好 + globalNeed 无视已持球 → 过度囤球 → 超手牌上限退球浪费回合。
-// 连"均匀随机拿球"（偏向 take3）都能把它从 33% 打到 64%。
-// 此变体把"拿球"恒改成缺口前 3 色的 take3，作为该发现的永久对照。
-function makeTake3OnlyHook() {
-  return (p, def) => {
-    if (p.id !== 0) return def(p);
-    const mv = def(p);
-    if (!mv || (mv.type !== 'take2' && mv.type !== 'take3')) return mv;
-    const g = globalNeed(p);
-    const avail = COLORS.filter((c) => S.pool[c] > 0);
-    if (avail.length < 3) return mv; // 供应不足 3 色，回退原逻辑
-    const chosen = avail.slice().sort((a, b) => g[b] - g[a]).slice(0, 3);
-    return { type: 'take3', colors: chosen };
-  };
-}
+// （历史：2026-09-15 曾有"恒 take3"诊断变体，证实旧 AI 的 take2 偏见是弱点；
+//  启发式 AI 已按此修复（rem = need − 已持球 + take3 优先），该变体使命完成已移除。）
 
 const names = [];
 for (let i = 0; i < nPlayers; i++) names.push(String.fromCharCode(65 + i));
@@ -59,10 +44,9 @@ console.log('（各变体共用同一 seed 序列 20260915+i，座位 A 为被�
 const results = [];
 for (const v of variants) {
   const bandit = v.bandit ? v.bandit() : null;
-  if (v.hook) H.HOOKS.chooseAIMove = v.hook; // 自定义钩子变体（恒 take3）
-  else H.installBanditHook(bandit, 0);       // 座位 0 的拿球决策交给变体，其余行动与座位走原逻辑
+  H.installBanditHook(bandit, 0); // 座位 0 的拿球决策交给变体，其余行动与座位走原逻辑
   const players = names.map((nm, i) => ({ name: nm, type: i === 0 ? 'hard' : 'hard' }));
-  const res = H.runSeries({ name: `bandit-${v.key}`, seed: BASE_SEED, n: nGames, players, target, bandit });
+  const res = H.runSeries({ name: `bandit-${v.key}-p${nPlayers}-t${target}`, seed: BASE_SEED, n: nGames, players, target, bandit });
   H.clearBanditHook();
   results.push({ key: v.key, label: v.label, res });
   const leakNote = res.leaks.length ? `　⚠️守恒违规 ${res.leaks.length} 局` : '';
@@ -180,7 +164,7 @@ function buildReport(results, meta) {
 <section><h2>① 胜率对比（座位 A 用该变体，其余座位为困难 AI）</h2>
 ${winBars}
 <div class="legend">${wb.map((v, i) => `<span><i style="background:${COLORS_PALETTE[i % 5]}"></i>${esc(v.label)}</span>`).join('')}</div>
-<p class="meta">⚠️ 实验发现：手写规则参考线低于随机基线——困难 AI 的拿球逻辑过度偏好 take2、且 globalNeed 无视已持球，导致囤球→超手牌上限→退球浪费回合。恒 take3 变体（缺口前 3 色）把胜率从 ≈33% 抬到 ≈67%，是本轮最有价值的发现。</p>
+<p class="meta">基线说明：均匀随机是下限参照（随机线 = 1/人数），手写规则是当前启发式 AI。若手写规则低于随机线，说明拿球逻辑有漏洞（2026-09-15 曾发现 take2 偏好问题，已修复）。</p>
 </section>
 
 <section><h2>② 学习曲线（累计胜率）</h2>
