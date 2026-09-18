@@ -961,8 +961,9 @@ h3{ font-size:14px; }
 /* 选中态：非主按钮红字红边；主按钮金边 + 面板色字（对齐 demo） */
 #screen-lobby .nav-btn:not(.primary).on{ color:var(--red); border-color:var(--red); }
 #screen-lobby .nav-btn.primary.on{ color:var(--panel-bg); border-color:var(--gold); }
-/* 新手教程按钮（tutorial.js 注入）：大厅里隐藏，只留工具条「教程」 */
-#screen-lobby .tut-btn{ display:none; }
+/* 新手教程按钮：只注入到「本地设置页」（tutorial.js），大厅统一走工具条「教程」。
+   —— 去重靠"少注入一处"，不要再用 `#screen-lobby .tut-btn{display:none}` 把入口藏起来：
+   藏起来的那颗正是唯一真的能启动教程的按钮，会让人误判成"教程没接入"。 */
 #screen-lobby .rail .foot{ margin-top:auto; font-size:11px; color:var(--ink-faint); text-align:center; }
 #screen-lobby .stage{
   position:relative; z-index:1; flex:1; min-width:0;

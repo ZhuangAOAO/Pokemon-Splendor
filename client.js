@@ -107,14 +107,19 @@ function toast(msg) {
 
 /* ==================== 屏幕切换 ==================== */
 function showScreen(id) {
+  // 过场只在"真的切屏"时播：进来前这一屏已经可见 → 不播。
+  // 否则联机每次服务器推送状态（handleServerMsg → showScreen('game')）都会重放
+  // 一次全屏球体开合，对局中每动一下屏幕就闪一下。
+  const targetEl = document.getElementById('screen-' + id);
+  const alreadyShown = !!(targetEl && !targetEl.hidden);
   ['setup', 'login', 'lobby', 'game'].forEach((s) => {
     const el = document.getElementById('screen-' + s);
     if (el) el.hidden = (s !== id);
   });
   // C1 切屏转场（球体开合 .30s）：只给「本次被显示的那一屏」加一次性 class，动画跑完就摘掉。
   // 关掉：删掉这一段（或删掉 style.css 里的 .pk-anim-switch / @keyframes pkOpen）。
-  const shownEl = document.getElementById('screen-' + id);
-  if (shownEl && !motionReduced()) {
+  const shownEl = targetEl;
+  if (shownEl && !alreadyShown && !motionReduced()) {
     shownEl.classList.remove('pk-anim-switch');
     void shownEl.offsetWidth;                       // 强制重排：连着切同一屏也能重放
     shownEl.classList.add('pk-anim-switch');
@@ -411,32 +416,93 @@ function spawnLeaveGhosts(root) {
   });
 }
 
+/* ==================== 就地更新（只改变化的那部分） ====================
+   整块 innerHTML 重建会把未变的卡／座位／球格销毁重建：<img> 重新解码、无限动画从第 0 帧重启，
+   观感就像"被刷新了一下、有的地方还得加载一会"。下面三个小工具让 render 只动真正变了的东西：
+   - reconcile：按 key 复用子节点，key 相同就原样留着（连它的 <img>／动画／事件），只改差异
+   - setRegion：只在"内容签名"变了时才重填 innerHTML
+   - setClass：只在类变化时才 toggle（不重复写同名 class）
+   key 必须能表达"这就是同一个东西"：卡片用 card.id，球格用颜色，玩家块用座位号。 */
+function reconcile(parent, items, keyOf, build, update) {
+  const old = new Map();
+  for (const el of Array.from(parent.children)) {
+    const k = el.__pkk; // 记账用 JS 属性（不进 DOM）：不污染 innerHTML，也就不会影响任何选择器/CSS
+    if (k !== undefined && !old.has(k)) old.set(k, el);
+  }
+  let prev = null;
+  items.forEach((item, i) => {
+    const k = String(keyOf(item, i));
+    let el = old.get(k);
+    if (el) { old.delete(k); if (update) update(el, item, i); }
+    // 新建的节点 build 只搭骨架（如空的 .tier-row / 座位块），必须再走一次 update 才算填好
+    else { el = build(item, i); el.__pkk = k; if (update) update(el, item, i); }
+    const want = prev ? prev.nextSibling : parent.firstChild;
+    if (el !== want) parent.insertBefore(el, want);
+    prev = el;
+  });
+  for (const el of old.values()) el.remove();
+}
+function setRegion(el, sig, htmlFn) {
+  if (!el) return;
+  if (el.__sig === sig) return;
+  el.__sig = sig; // 同上：签名放 JS 属性，不写在节点上
+  el.innerHTML = htmlFn();
+}
+function setClass(el, name, on) {
+  if (!el) return;
+  if (el.classList.contains(name) !== !!on) el.classList.toggle(name, !!on);
+}
+function tierLabelHtml(t) {
+  return `<span class="tier-dot t${t}"></span>${TIER_NAMES[t]}宝可梦<span class="deck-count">剩 ${S.decks[t].length} 张</span>`;
+}
+function tierLabelEl(t, extraCls, blindable, withTierAttr) {
+  const label = document.createElement('div');
+  label.className = 'tier-label' + (extraCls ? ' ' + extraCls : '');
+  if (withTierAttr) label.dataset.tier = t;
+  if (blindable) label.classList.add('blind-clickable');
+  label.innerHTML = tierLabelHtml(t);
+  return label;
+}
+function syncTierLabel(el, t, blindable) {
+  setClass(el, 'blind-clickable', blindable);
+  setRegion(el, 'lbl|' + t + '|' + (blindable ? 1 : 0) + '|' + S.decks[t].length, () => tierLabelHtml(t));
+}
+// 复用卡片节点时只同步"随状态变"的部分（行/列位置、可收服、已选中）
+function syncCardEl(el, card, t, idx) {
+  if (!card) return; // 空槽（牌堆耗尽）：保持原样
+  if (el.dataset.idx !== String(idx)) el.dataset.idx = String(idx);
+  const p = curPlayer();
+  const myTurn = ONLINE ? (mySeat === S.current) : !p.isAI;
+  const humanTurn = myTurn && S.phase === 'normal';
+  setClass(el, 'affordable', humanTurn && canAfford(p, card));
+  const sel = !!(S.selCard && S.selCard.kind === 'market' && S.selCard.tier === t && S.selCard.idx === idx
+    && (S.mode === 'buy' || S.mode === 'reserve'));
+  setClass(el, 'selected', sel);
+}
+
 function renderMarket() {
   const mk = $('#market');
-  spawnLeaveGhosts(mk); // 先让旧 DOM 里消失的卡"掀角"离场，再重建市场
-  mk.innerHTML = '';
-  const tierLabel = (t) => {
-    const label = document.createElement('div');
-    label.className = 'tier-label';
-    label.dataset.tier = t;
-    // 预约模式下，一/二/三阶的牌堆标签可点击盲抽
-    const blindable = S.mode === 'reserve' && t <= 3 && S.decks[t].length > 0;
-    if (blindable) label.classList.add('blind-clickable');
-    label.innerHTML = `<span class="tier-dot t${t}"></span>${TIER_NAMES[t]}宝可梦<span class="deck-count">剩 ${S.decks[t].length} 张</span>`;
-    return label;
-  };
-  [3, 2, 1].forEach((t) => {
-    const row = document.createElement('div');
-    row.className = 'tier-row';
-    row.appendChild(tierLabel(t));
-    const prevIds = lastMarketIds[t] || [];
-    S.market[t].forEach((card, idx) => {
-      const isNew = prevIds[idx] !== (card ? card.id : null); // 只有新补的卡播放入场动画
-      row.appendChild(cardEl(card, t, idx, false, isNew));
-    });
-    mk.appendChild(row);
-  });
+  spawnLeaveGhosts(mk); // 先让旧 DOM 里消失的卡"掀角"离场，再做就地更新（没变的卡不动）
+  reconcile(mk, [3, 2, 1], (t) => 'row' + t,
+    () => { const row = document.createElement('div'); row.className = 'tier-row'; return row; },
+    (row, t) => fillTierRow(row, t, false));
   [1, 2, 3].forEach((t) => { lastMarketIds[t] = S.market[t].map((c) => (c ? c.id : null)); });
+}
+// 一行 = 1 个牌堆标签 + 4 张卡；卡按 id 复用 → 没换卡的那几格连 <img> 都不动
+function fillTierRow(row, t, mini) {
+  const blindable = !mini && S.mode === 'reserve' && t <= 3 && S.decks[t].length > 0;
+  const prevIds = lastMarketIds[t] || [];
+  const items = [{ label: t }].concat(S.market[t].map((card, idx) => ({ card, idx })));
+  reconcile(row, items,
+    (it) => (it.label !== undefined) ? ('label' + it.label)
+      : ('c:' + (it.card ? it.card.id : 'empty' + t + '_' + it.idx)),
+    (it) => (it.label !== undefined)
+      ? tierLabelEl(it.label, '', blindable, true)
+      : cardEl(it.card, t, it.idx, false, prevIds.indexOf(it.card ? it.card.id : null) < 0), // 只有新补的卡播放入场动画
+    (el, it) => {
+      if (it.label !== undefined) syncTierLabel(el, it.label, blindable);
+      else syncCardEl(el, it.card, t, it.idx);
+    });
 }
 function cardEl(card, t, idx, mini, isNew) {
   if (!card) {
@@ -487,69 +553,95 @@ function cardEl(card, t, idx, mini, isNew) {
 // 稀有/传说：右栏顶部并排展示（粉=稀有，紫=传说）
 function renderRareLegend() {
   const box = $('#rl-wrap');
-  spawnLeaveGhosts(box); // 稀有/传说同理：被收服顶掉的旧卡先离场再重建
-  box.innerHTML = '';
-  [4, 5].forEach((t) => {
-    const label = document.createElement('div');
-    label.className = 'tier-label rl-label';
-    label.innerHTML = `<span class="tier-dot t${t}"></span>${TIER_NAMES[t]}宝可梦<span class="deck-count">剩 ${S.decks[t].length} 张</span>`;
-    box.appendChild(label);
-    const prevIds = lastMarketIds[t] || [];
-    S.market[t].forEach((card, idx) => {
-      const isNew = prevIds[idx] !== (card ? card.id : null);
-      box.appendChild(cardEl(card, t, idx, true, isNew));
+  spawnLeaveGhosts(box); // 稀有/传说同理：被收服顶掉的旧卡先离场，再做就地更新
+  const items = [{ label: 4 }]
+    .concat(S.market[4].map((card, idx) => ({ card, idx, t: 4 })))
+    .concat([{ label: 5 }])
+    .concat(S.market[5].map((card, idx) => ({ card, idx, t: 5 })));
+  reconcile(box, items,
+    (it) => (it.label !== undefined) ? ('label' + it.label)
+      : ('c:' + (it.card ? it.card.id : 'empty' + it.t + '_' + it.idx)),
+    (it) => (it.label !== undefined)
+      ? tierLabelEl(it.label, 'rl-label', false, false) // rl 标签一直不带 data-tier（保持原行为）
+      : cardEl(it.card, it.t, it.idx, true, (lastMarketIds[it.t] || []).indexOf(it.card ? it.card.id : null) < 0),
+    (el, it) => {
+      if (it.label !== undefined) syncTierLabel(el, it.label, false);
+      else syncCardEl(el, it.card, it.t, it.idx);
     });
-    lastMarketIds[t] = S.market[t].map((c) => (c ? c.id : null));
-  });
+  [4, 5].forEach((t) => { lastMarketIds[t] = S.market[t].map((c) => (c ? c.id : null)); });
 }
 
 function renderPool() {
   const pool = $('#pool');
-  pool.innerHTML = '';
-  COLORS.forEach((c) => {
-    const g = document.createElement('div');
-    g.className = 'pool-group c-' + c; // 每种球用主题色底色，便于辨别
-    g.dataset.color = c;
-    const cnt = S.pool[c];
-    g.title = BALLS[c].name; // 名字不占画面，悬停可见
-    g.innerHTML = `${ballHtml(c)}<span class="pool-count">${cnt}</span>`;
-    // 已选中的颜色也保持可点：再点一次 = 取消选择
-    const selectable =
-      (S.mode === 'take3' && cnt > 0) ||
-      (S.mode === 'take2' && cnt >= RULES.takeTwoMin);
-    if (selectable) g.classList.add('clickable');
-    if (S.selColors.includes(c)) g.classList.add('selected');
-    pool.appendChild(g);
-  });
-  // 大师球：万能球，只能通过预约（或 config 开放的"只拿大师球"行动）获得
-  const gm = document.createElement('div');
-  gm.className = 'pool-group master';
-  gm.dataset.color = 'master';
-  gm.title = '大师球（万能球，可代替任意颜色）';
-  gm.innerHTML = `${ballHtml('master')}<i class="spark"></i><i class="spark spark2"></i><span class="pool-count">${S.pool.master}</span>`;
-  pool.appendChild(gm);
+  // 球格按颜色复用：数量变了只改那个数字，节点不重建 → 大师球的光晕/星点不从头重播
+  reconcile(pool, COLORS.concat(['master']), (c) => 'pool:' + c,
+    (c) => {
+      const g = document.createElement('div');
+      g.dataset.color = c;
+      if (c === 'master') {
+        // 大师球：万能球，只能通过预约（或 config 开放的"只拿大师球"行动）获得
+        g.className = 'pool-group master';
+        g.title = '大师球（万能球，可代替任意颜色）';
+        g.innerHTML = `${ballHtml('master')}<i class="spark"></i><i class="spark spark2"></i><span class="pool-count">${S.pool.master}</span>`;
+      } else {
+        g.className = 'pool-group c-' + c; // 每种球用主题色底色，便于辨别
+        g.title = BALLS[c].name; // 名字不占画面，悬停可见
+        g.innerHTML = `${ballHtml(c)}<span class="pool-count">${S.pool[c]}</span>`;
+      }
+      return g;
+    },
+    (g, c) => syncPoolGroup(g, c));
+}
+function syncPoolGroup(g, c) {
+  const cnt = (c === 'master') ? S.pool.master : S.pool[c];
+  const cntEl = g.querySelector('.pool-count');
+  if (cntEl && cntEl.textContent !== String(cnt)) cntEl.textContent = cnt;
+  if (c === 'master') return; // 大师球格不是行动目标：没有 clickable/selected 语义
+  // 已选中的颜色也保持可点：再点一次 = 取消选择
+  const selectable =
+    (S.mode === 'take3' && cnt > 0) ||
+    (S.mode === 'take2' && cnt >= RULES.takeTwoMin);
+  setClass(g, 'clickable', selectable);
+  setClass(g, 'selected', S.selColors.includes(c));
 }
 
 function renderPlayers() {
   const col = $('#players');
   const heroBox = $('#my-panel');
-  col.innerHTML = '';
-  heroBox.innerHTML = '';
   col.dataset.n = S.n; // 人数：CSS 用来自适应密度（4 人局更紧凑）
   // 主角面板：联机=自己；本地=当前玩家。其余玩家放左侧竖排。
   const heroSeat = ONLINE ? mySeat : S.current;
-  S.players.forEach((p, pi) => {
-    if (pi === heroSeat) heroBox.appendChild(boardEl(p, pi, true));
-    else col.appendChild(boardEl(p, pi, false));
-  });
+  // 座位块按座位号复用：没变化的座位不重建（里面的卡面 <img> 也就不会重新解码）
+  const sideSeats = S.players.map((_, pi) => pi).filter((pi) => pi !== heroSeat);
+  // heroSeat 理论上一定有；真缺失时就不渲染主角块（与原行为一致：原来靠 pi === undefined 比较也不渲染）
+  const heroOk = !!(heroSeat != null && S.players[heroSeat]);
+  reconcile(col, sideSeats, (pi) => 'seat:' + pi,
+    () => document.createElement('div'),
+    (el, pi) => boardEl(el, S.players[pi], pi, false));
+  reconcile(heroBox, heroOk ? [heroSeat] : [], (pi) => 'seat:' + pi,
+    () => document.createElement('div'),
+    (el, pi) => boardEl(el, S.players[pi], pi, true));
 }
-function boardEl(p, pi, isHero) {
-  const b = document.createElement('div');
+// 把一个座位块"就地"填好：外框 + 四个区域（头像行 / 球行 / 卡牌行 / 侧栏），
+// 每个区域只在"内容签名"变了才重填 → 没变的卡面不重解码、没变的动画不重播
+function boardEl(b, p, pi, isHero) {
   b.className = 'player' + (pi === S.current ? ' active' : '') + (ONLINE && pi === mySeat ? ' self' : '') + (isHero ? ' hero' : '');
   b.dataset.p = pi; // 漂移动画的定位锚点
   const discarding = S.phase === 'discard' && pi === S.current;
   const returning = S.mode === 'returnBalls' && pi === S.current && !p.isAI;
-  if (discarding) b.classList.add('discarding');
+  // 骨架（主角面板=左身份+右卡牌区；其他人=竖排）只在"身份变了"时重建一次
+  const kind = isHero ? 'hero' : 'side';
+  if (b.__kind !== kind) {
+    b.__kind = kind;
+    b.innerHTML = isHero
+      ? '<div class="hero-left"><div class="p-head"></div></div>'
+        + '<div class="hero-body"><div class="p-balls pp"></div><div class="p-cards"></div></div>'
+      : '<div class="p-head"></div><div class="p-balls"></div><div class="p-cards"></div>';
+    delete b.querySelector('.p-head').__sig;
+    delete b.querySelector('.p-balls').__sig;
+    delete b.querySelector('.p-cards').__sig;
+  }
+  setClass(b, 'discarding', discarding);
   const typeLabel = p.isAI
     ? (p.aiLevel === 'easy' ? '电脑·简单' : (p.aiLevel === 'champion' ? '电脑·阿尔宙斯' : '电脑·困难'))
     : ''; // 真人玩家不显示标签
@@ -563,37 +655,17 @@ function boardEl(p, pi, isHero) {
   const ballsHtml = COLORS.map((c) => ballRow(c, p.balls[c])).join('') + ballRow('master', p.balls.master);
   // 已收服的宝可梦：按加成颜色分组排列（红→蓝→黑→粉→黄，组内按到手顺序）
   const sortedCards = COLORS.flatMap((c) => p.cards.filter((cd) => cd.bonus === c));
-  const cardsHtml = sortedCards.map((cd) => `
-    <span class="pcard" title="${cd.name}（+${cd.tier >= 4 ? '2×' : ''}${BALLS[cd.bonus].name}加成）">
-      <img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy">
-    </span>`).join('');
-  // 预约 + 图鉴合并成一行（省高度）。
-  // 盲抽的卡：本地模式只有"当前玩家（主角）"可见；联机模式服务器已按人打码
-  const seeBlind = ONLINE ? (pi === mySeat) : isHero;
-  const sideThumbs = [
-    ...p.reserved.map((rc) => {
-      const hidden = rc.blind && !seeBlind;
-      return `<span class="pcard reserved ${hidden ? 'blind' : ''}" title="${hidden ? '盲抽的卡（未知）' : rc.name}"><img class="pcard-img" alt="${hidden ? '?' : rc.name}" src="pictures/${encodeURIComponent(rc.name)}.jpg" loading="lazy"></span>`;
-    }),
-    ...(p.dex || []).map((cd) => `<span class="pcard dex" title="${cd.name}"><img class="pcard-img" alt="${cd.name}" src="pictures/${encodeURIComponent(cd.name)}.jpg" loading="lazy"></span>`),
-  ].join('');
-  const sideHtml = sideThumbs
-    ? `<div class="p-side" title="预约与图鉴">${p.reserved.length ? `<span class="p-label">预约 ${p.reserved.length}</span>` : ''}${(p.dex && p.dex.length) ? `<span class="p-label">图鉴 ${p.dex.length}</span>` : ''}${sideThumbs}</div>`
-    : '';
-  const headHtml = `
-    <div class="p-head">
+  // 头像行（.p-head 的壳在骨架里，这里只填里面的 span）
+  setRegion(b.querySelector('.p-head'),
+    'h|' + [avatar, nameLabel, typeLabel, pi === S.firstPlayer ? 1 : 0, p.evolutions, p.points, isHero ? 1 : 0, p.cards.length].join('|'),
+    () => `
       <span class="p-avatar">${avatar}</span>
       <span class="p-name">${nameLabel}</span>
       ${typeLabel ? `<span class="p-type">${typeLabel}</span>` : ''}
       ${pi === S.firstPlayer ? `<span class="p-first">先手</span>` : ''}
       ${p.evolutions > 0 ? `<span class="p-evo">进化 ${p.evolutions}</span>` : ''}
       <span class="p-pts">${p.points} 分</span>
-      ${isHero ? `<span class="p-count">${p.cards.length} 只</span>` : ''}
-    </div>`;
-  // 主角面板的卡牌行不带标签（第一张卡贴左缘，与上方球行对齐）
-  const cardsRow = isHero
-    ? `<div class="p-cards">${cardsHtml || '<span class="p-empty">还没有宝可梦</span>'}</div>`
-    : `<div class="p-cards"><span class="p-label">${p.cards.length} 只</span>${cardsHtml || '<span class="p-empty">还没有宝可梦</span>'}</div>`;
+      ${isHero ? `<span class="p-count">${p.cards.length} 只</span>` : ''}`);
   if (isHero) {
     // 主角面板：左侧身份 + 购买力（手持精灵球 + 永久加成合并显示），右侧卡牌区
     const bonus = bonusOf(p);
@@ -605,22 +677,76 @@ function boardEl(p, pi, isHero) {
         ${ballHtml('master', 'sm')}<b>${p.balls.master}</b>
       </span>
       <span class="pball total${totalBalls(p) > RULES.handLimit ? ' over' : ''}" title="手牌总数（含大师球），上限 ${RULES.handLimit} 个">共 ${totalBalls(p)}/${RULES.handLimit}</span>`;
-    b.innerHTML = `
-      <div class="hero-left">
-        ${headHtml}
-      </div>
-      <div class="hero-body">
-        <div class="p-balls pp">${ppHtml}</div>
-        ${cardsRow}
-        ${sideHtml}
-      </div>`;
+    setRegion(b.querySelector('.p-balls'),
+      'pp|' + [discarding ? 1 : 0, returning ? 1 : 0, totalBalls(p), p.balls.master, COLORS.map((c) => p.balls[c] + '+' + bonus[c]).join(',')].join('|'),
+      () => ppHtml);
   } else {
-    b.innerHTML = `${headHtml}
-      <div class="p-balls">${ballsHtml}</div>
-      ${cardsRow}
-      ${sideHtml}`;
+    setRegion(b.querySelector('.p-balls'),
+      'b|' + [discarding ? 1 : 0, returning ? 1 : 0, p.balls.master, COLORS.map((c) => p.balls[c]).join(',')].join('|'),
+      () => ballsHtml);
   }
+  // 卡牌行：按卡 id 复用节点（主角的卡牌行不带标签，非主角带「N 只」标签）
+  fillCardsRow(b.querySelector('.p-cards'), sortedCards, p, isHero);
+  // 预约 + 图鉴：没有内容就整块不建，有则按名单就地更新
+  fillSide(b, p, pi, isHero);
   return b;
+}
+// 卡牌缩略图（收藏 / 预约 / 图鉴共用）
+function pcardImgHtml(name, alt) {
+  return `<img class="pcard-img" alt="${alt}" src="pictures/${encodeURIComponent(name)}.jpg" loading="lazy">`;
+}
+function pcardEl(cd) {
+  const s = document.createElement('span');
+  s.className = 'pcard';
+  s.title = `${cd.name}（+${cd.tier >= 4 ? '2×' : ''}${BALLS[cd.bonus].name}加成）`;
+  s.innerHTML = pcardImgHtml(cd.name, cd.name);
+  return s;
+}
+function fillCardsRow(box, sortedCards, p, isHero) {
+  if (!box) return;
+  const items = sortedCards.map((cd) => ({ cd }));
+  const all = isHero ? items.slice() : [{ label: p.cards.length }].concat(items);
+  if (!items.length) all.push({ empty: 1 });
+  reconcile(box, all,
+    (it) => (it.label !== undefined) ? 'lbl' : (it.empty ? 'empty' : 'card:' + it.cd.id),
+    (it) => {
+      if (it.label !== undefined) { const s = document.createElement('span'); s.className = 'p-label'; s.textContent = it.label + ' 只'; return s; }
+      if (it.empty) { const s = document.createElement('span'); s.className = 'p-empty'; s.textContent = '还没有宝可梦'; return s; }
+      return pcardEl(it.cd);
+    },
+    (el, it) => {
+      if (it.label === undefined) return;
+      const txt = it.label + ' 只';
+      if (el.textContent !== txt) el.textContent = txt;
+    });
+}
+function fillSide(b, p, pi, isHero) {
+  const host = isHero ? b.querySelector('.hero-body') : b;
+  if (!host) return;
+  // 盲抽的卡：本地模式只有"当前玩家（主角）"可见；联机模式服务器已按人打码
+  const seeBlind = ONLINE ? (pi === mySeat) : isHero;
+  const reserved = p.reserved || [];
+  const dex = p.dex || [];
+  let el = host.querySelector('.p-side');
+  if (!(reserved.length + dex.length)) { if (el) el.remove(); return; }
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'p-side';
+    el.title = '预约与图鉴';
+    host.appendChild(el);
+  }
+  const sig = 's|' + reserved.map((rc) => (rc.blind && !seeBlind ? '?' : rc.name)).join(',')
+    + '|' + dex.map((cd) => cd.name).join(',');
+  setRegion(el, sig, () => {
+    const thumbs = reserved.map((rc) => {
+      const hidden = rc.blind && !seeBlind;
+      return `<span class="pcard reserved ${hidden ? 'blind' : ''}" title="${hidden ? '盲抽的卡（未知）' : rc.name}">${pcardImgHtml(rc.name, hidden ? '?' : rc.name)}</span>`;
+    }).join('')
+      + dex.map((cd) => `<span class="pcard dex" title="${cd.name}">${pcardImgHtml(cd.name, cd.name)}</span>`).join('');
+    return (reserved.length ? `<span class="p-label">预约 ${reserved.length}</span>` : '')
+      + (dex.length ? `<span class="p-label">图鉴 ${dex.length}</span>` : '')
+      + thumbs;
+  });
 }
 // 联机：某座位的人类玩家是否在线
 function isConnected(seat) {

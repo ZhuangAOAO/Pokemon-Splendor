@@ -380,7 +380,9 @@
 
   /* ==================== 点击拦截（捕获阶段，早于所有冒泡监听） ==================== */
   function utilClick(e) {
-    return !!(e.target.closest('#tut-bar,#btn-sound,#btn-rules,#btn-logs,#btn-exit,.modal,#modal-overlay,#zoom,#vote-banner'));
+    // .spc2-mask = 自定义确认框（confirm-dialog.js）。教程的「结束教程」自己就走这个框，
+    // 白名单里漏了它 → 确认按钮的 click 会被捕获层 preventDefault 掉，框永远关不掉。
+    return !!(e.target.closest('#tut-bar,#btn-sound,#btn-rules,#btn-logs,#btn-exit,.modal,#modal-overlay,.spc2-mask,#zoom,#vote-banner'));
   }
   function tutCapture(e) {
     if (!TUT.active || TUT.finished) return;
@@ -566,14 +568,18 @@
       b.addEventListener('click', startTutorial);
       return b;
     };
-    // 本地设置页（开始游戏前）与联机加入页（进入游戏前）各注入一个
+    // 本地设置页（开始游戏前）注入：那一屏没有工具条，这是唯一入口。
+    // 联机侧不再注入 —— 大厅（未进房 / 房内同一套外壳）统一走顶栏工具条「教程」，
+    // 避免同一屏出现两颗教程按钮（去重靠"少注入一处"，不靠 CSS 藏起来）。
     const startBtn = document.getElementById('btn-start');
     if (startBtn && startBtn.parentNode) startBtn.parentNode.insertBefore(make(), startBtn);
-    const joinBtn = document.getElementById('btn-join');
-    if (joinBtn && joinBtn.parentNode) joinBtn.parentNode.insertBefore(make(), joinBtn);
   }
 
   /* ---- 初始化：装包装器、样式、按钮、拦截监听（两模式通用） ---- */
+  // 教程入口要能被**本 IIFE 之外**的代码调用：大厅工具条「教程」弹层走 client.js，
+  // 那里判的是全局 `typeof startTutorial === 'function'`。不挂到 window 上，
+  // 工具条那颗按钮就永远落到 `toast('教程入口待接入')` 分支（濠哥报的"教程没接入"）。
+  window.startTutorial = startTutorial;
   injectCSS();
   ensureUI();
   wrapGlobals();

@@ -447,19 +447,39 @@ async function handleLeaderboard(body) {
 function safeJson(text, fallback) {
   try { return JSON.parse(text || ''); } catch (e) { return fallback; }
 }
-// ④ 光荣榜：只收挑战局（mode=challenge）；按人数分栏 / 按模型版本分季；每条挂回放（复用 ③ 已落库的字段）
+// 一个座位是不是人类：终局/开局快照里 isAI=false，或老记录只留了 type==='human'。
+// alt 是同一座位在另一份快照里的条目（两份快照的座位序一致），当前条目缺字段时回退用它。
+function seatIsHuman(p, alt) {
+  const src = (p && (p.isAI !== undefined || p.type)) ? p : (alt || p);
+  return !!(src && src.isAI !== true && (src.isAI === false || src.type === 'human'));
+}
+// 光荣榜的准入门槛：这局必须有人类赢家。
+// 设计是「赢了就留名」—— AI 全胜 / 人类全败 / 终局快照缺失，整局都不进榜。
+// 平局共享：rankEndgame 的 winners 已经包含并列者，这里只要有一个人赢家就放行。
+function hasHumanWinner(playersCol, fin) {
+  if (!fin || !Array.isArray(fin.players) || !fin.players.length) return false;
+  const { winners } = rankEndgame(fin.players);
+  if (!winners.length) return false;
+  const winSet = new Set(winners);
+  const cols = playersCol || [];
+  return fin.players.some((p, i) => !!(p && winSet.has(p.name)) && seatIsHuman(p, cols[i]));
+}
+// ④ 光荣榜：只收挑战局（mode=challenge）**且这局有人类赢家**；按人数分栏 / 按模型版本分季；每条挂回放（复用 ③ 已落库的字段）
 async function handleHallOfFame(body) {
   const u = await authUser(body.token);
   if (!u) return { ok: false, msg: '请先登录' };
   const [rows] = await pool.query(
     "SELECT id, room_id, target, players, final, created_at, ai_ver, ai_name FROM replays " +
     "WHERE mode = 'challenge' ORDER BY id DESC LIMIT 200");
-  const entries = rows.map((r) => {
+  const entries = [];
+  rows.forEach((r) => {
     const players = safeJson(r.players, []);
     const fin = safeJson(r.final, null);
+    // 只在读时筛，不去改/迁老记录：以前存进去的败局会自动从榜上消失
+    if (!hasHumanWinner(players, fin)) return;
     const ranked = fin && Array.isArray(fin.players) ? rankEndgame(fin.players) : null;
     const humans = (players || []).filter((p) => p && p.type === 'human');
-    return {
+    entries.push({
       id: r.id,
       roomId: r.room_id,
       target: r.target,
@@ -472,7 +492,7 @@ async function handleHallOfFame(body) {
       // 回放权限：挑战局对全站登录用户开放（canView），普通局仍沿用参与者/管理员
       mine: humans.some((p) => p.account && p.account === u.name) || u.role === 'admin',
       canView: true,
-    };
+    });
   });
   // 赛季：按模型版本（ai_ver + 档名）分季 —— 换一版 AI 就天然开新赛季，不用手工清榜
   const seasonMap = new Map();
@@ -493,12 +513,19 @@ async function handleReplayList(body) {
     [rows] = await pool.query(
       'SELECT id, room_id, target, players, actions, final, created_at, mode, ai_name FROM replays ORDER BY id DESC LIMIT 50');
   } else if (u.name) {
-    // players 是 JSON 数组（每人带 account），用 JSON_CONTAINS 挑出这局里有当前账号的。
-    // 注意：电脑座位的 account 是空串，所以绝不能用空账号去查，否则会把电脑局全捞出来。
+    // players 是 JSON 数组（每人带 name/account），挑出「我参与的对局」：
+    // 老记录 account 存的是手机号，新记录可能只对得上显示名，所以 account / name 两个键都要试（命中其一即算）。
+    // 注意：电脑座位的 account/name 是空串，所以绝不能用空账号去查，否则会把电脑局全捞出来
+    //       （这里靠外层 u.name 非空来保证）。
+    // 注意：MySQL 8.4 不接受 JSON_CONTAINS(x, val, '$[*].account') 这种带 * 的路径
+    //       （报 path expressions may not contain the * and ** tokens），
+    //       所以先用 JSON_EXTRACT 把每个座位的 account/name 取成数组，再对这个数组判包含。
     [rows] = await pool.query(
       'SELECT id, room_id, target, players, actions, final, created_at, mode, ai_name FROM replays ' +
-      'WHERE JSON_CONTAINS(CAST(players AS JSON), ?) ORDER BY id DESC LIMIT 50',
-      [JSON.stringify({ account: u.name })]);
+      "WHERE JSON_CONTAINS(JSON_EXTRACT(CAST(players AS JSON), '$[*].account'), JSON_QUOTE(?)) " +
+      "   OR JSON_CONTAINS(JSON_EXTRACT(CAST(players AS JSON), '$[*].name'), JSON_QUOTE(?)) " +
+      'ORDER BY id DESC LIMIT 50',
+      [u.name, u.name]);
   }
   return {
     ok: true,
