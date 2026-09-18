@@ -1,6 +1,6 @@
 {
   "name": "splendor-pokemon",
-  "version": "3.4.4",
+  "version": "3.4.5",
   "scripts": {
     "test": "node 测试/run-all.js",
     "check": "node 工具/check-syntax.js"

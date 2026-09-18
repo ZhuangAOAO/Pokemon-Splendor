@@ -504,6 +504,27 @@ function fillTierRow(row, t, mini) {
       else syncCardEl(el, it.card, t, it.idx);
     });
 }
+// 新补的卡入场：必须"只播一次、播完即摘"。
+//   .card.affordable{animation:pulseGold} 与 .card.new{animation:cardIn} 是两条互斥的 animation 简写，
+//   谁在 CSS 里靠后谁生效（affordable 在 378 行、new 在 282 行 → affordable 赢）。
+//   原实现只加 .new 类且永不摘除 → 凡是"回合易手让 myTurn 变化"（买完牌轮到对手/电脑）时，
+//   整排卡的 affordable 被摘掉 → 那些还留着 .new 的卡把 cardIn 重播一遍 = 买一张牌同排全动。
+//   对策：入场 animation 写成**内联**（内联优先级压过任何类规则，affordable/selected 都盖不掉它），
+//   播完（animationend，另有 1.1s 兜底）先把 .new 摘掉、再清内联 → 之后任何类变化都不可能重播。
+const CARD_ENTER_ANIM = 'cardIn .9s cubic-bezier(.25,.7,.35,1)';
+function playCardEnter(el) {
+  el.style.animation = CARD_ENTER_ANIM;
+  let cleared = false;
+  const done = () => {
+    if (cleared) return; // 不能拿 el.style.animation 去比字符串：读回来是规范化过的值，永远比不中
+    cleared = true;
+    el.classList.remove('new'); // 顺序要紧：先摘类再清内联，反过来会立刻重启一次 cardIn
+    el.style.animation = '';
+  };
+  const onEnd = (e) => { if (e.animationName !== 'cardIn') return; el.removeEventListener('animationend', onEnd); done(); };
+  el.addEventListener('animationend', onEnd);
+  setTimeout(done, 1100); // 兜底：动画被跳过（标签页隐藏等）时不会触发 animationend
+}
 function cardEl(card, t, idx, mini, isNew) {
   if (!card) {
     const d = document.createElement('div');
@@ -547,6 +568,7 @@ function cardEl(card, t, idx, mini, isNew) {
   img.src = 'pictures/' + encodeURIComponent(card.name) + '.jpg';
   img.addEventListener('error', () => img.remove());
   d.appendChild(img);
+  if (isNew) playCardEnter(d); // 只有"这一帧才补上"的那张卡播入场（其余卡连类都不动）
   return d;
 }
 
