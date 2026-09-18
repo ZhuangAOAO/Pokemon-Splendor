@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>璀璨宝石·宝可梦</title>
+<script>
+  // 系统开启"减弱动态效果"时提前打标：CSS 与 JS 据此关掉装饰动画
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.documentElement.classList.add('reduced-motion');
+  }
+</script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -249,6 +255,12 @@
     <h2>排行榜</h2>
     <div id="lb-body"></div>
     <button class="btn primary" data-close>关闭</button>
+  </div>
+
+  <div class="modal" id="modal-update" hidden>
+    <h2>版本更新 <span id="upd-ver" class="upd-ver"></span></h2>
+    <ul id="upd-body" class="upd-list"></ul>
+    <button id="btn-upd-close" class="btn primary">知道了</button>
   </div>
 </div>
 

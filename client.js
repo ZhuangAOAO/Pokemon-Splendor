@@ -70,6 +70,9 @@ let actingSeq = 0;     // 行动发送序号：迟到的旧回包/超时不得�
 let overShown = false; // 本局结算框是否已弹出
 let prevSnap = null;      // 上一次状态快照（漂移动画差分用）
 const lastMarketIds = {}; // 每个市场槽位上次的卡 id（只给新补的卡播入场动画）
+// 系统"减弱动态效果"偏好：装饰动画（入场/离场）自动降级，状态时序不受影响
+const REDUCED_MOTION = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+const motionReduced = () => !!(REDUCED_MOTION && REDUCED_MOTION.matches);
 let prevMyTurn = false;   // 轮到自己时的提示音触发
 
 /* ---- 核心事件钩子：本地模式下由 game-core 驱动界面 ---- */
@@ -328,8 +331,30 @@ function fadeVoteBanner() {
   }, 1500);
 }
 
+// 离场动画：本回合从场上消失的卡（被收服/预约后顶掉）→ 克隆旧卡面播"掀角"动画，播完再移除。
+// 纯视觉层：新卡照常立即渲染，行动时序不受影响；系统开了"减弱动态效果"则直接跳过。
+function spawnLeaveGhosts(root) {
+  if (motionReduced()) return;
+  root.querySelectorAll('.card[data-tier]:not(.empty)').forEach((el) => {
+    const t = +el.dataset.tier;
+    const idx = +el.dataset.idx;
+    const prevIds = lastMarketIds[t] || [];
+    const cur = S.market[t] ? S.market[t][idx] : null;
+    if (prevIds[idx] == null) return; // 上一帧这个槽位没卡（新登场），不播离场
+    if (prevIds[idx] === (cur ? cur.id : null)) return; // 槽位没换卡，不播
+    const rect = el.getBoundingClientRect();
+    const ghost = el.cloneNode(true);
+    ghost.classList.remove('new', 'selected', 'affordable');
+    ghost.classList.add('leaving');
+    ghost.style.cssText = 'position:fixed;left:' + rect.left + 'px;top:' + rect.top + 'px;width:' + rect.width + 'px;height:' + rect.height + 'px;margin:0;z-index:60;pointer-events:none;';
+    document.body.appendChild(ghost);
+    setTimeout(() => ghost.remove(), 280); // 动画播完再移除 DOM
+  });
+}
+
 function renderMarket() {
   const mk = $('#market');
+  spawnLeaveGhosts(mk); // 先让旧 DOM 里消失的卡"掀角"离场，再重建市场
   mk.innerHTML = '';
   const tierLabel = (t) => {
     const label = document.createElement('div');
@@ -403,6 +428,7 @@ function cardEl(card, t, idx, mini, isNew) {
 // 稀有/传说：右栏顶部并排展示（粉=稀有，紫=传说）
 function renderRareLegend() {
   const box = $('#rl-wrap');
+  spawnLeaveGhosts(box); // 稀有/传说同理：被收服顶掉的旧卡先离场再重建
   box.innerHTML = '';
   [4, 5].forEach((t) => {
     const label = document.createElement('div');
@@ -812,6 +838,24 @@ function showModal(id) {
   $('#modal-overlay').hidden = false;
 }
 function hideModals() { $('#modal-overlay').hidden = true; }
+
+/* ---- 版本更新弹窗：发版说明，每台设备每个版本只弹一次 ---- */
+let updLatestVer = ''; // 本次弹出的最新版本号（关闭时写入已读标记）
+async function checkUpdate() {
+  try {
+    const r = await fetch('更新日志.json', { cache: 'no-store' });
+    if (!r.ok) return;
+    const log = await r.json();
+    const vers = Object.keys(log);
+    if (!vers.length) return;
+    const latest = vers[0]; // 约定：最新版本排最前
+    if (localStorage.getItem('update-seen-' + latest)) return; // 本设备已读过这一版
+    updLatestVer = latest;
+    $('#upd-ver').textContent = 'v' + latest;
+    $('#upd-body').innerHTML = (log[latest] || []).map((s) => `<li>${s}</li>`).join('');
+    showModal('#modal-update');
+  } catch (e) { /* 拉取失败（本地 file:// 模式等）不打扰玩家 */ }
+}
 
 function showGameOver() {
   if (!S || overShown) return;
@@ -1419,6 +1463,11 @@ function init() {
   });
   document.querySelectorAll('[data-close]').forEach((b) =>
     b.addEventListener('click', hideModals));
+  // 版本更新弹窗：关闭时记下"已读"，本设备不再弹这一版
+  $('#btn-upd-close').addEventListener('click', () => {
+    if (updLatestVer) localStorage.setItem('update-seen-' + updLatestVer, '1');
+    hideModals();
+  });
 
   // config 里开放"只拿大师球"行动时，在规则说明的大师球章节补充一句
   if (RULES.takeMasterAlone !== false) {
@@ -1439,7 +1488,7 @@ function init() {
   // 卡面大图：点击遮罩关闭
   $('#zoom').addEventListener('click', () => { $('#zoom').hidden = true; });
 
-  if (ONLINE) initOnline();
+  if (ONLINE) { initOnline(); checkUpdate(); } // 联机模式：顺便检查有没有没读过的版本更新说明
   else showScreen('setup');
 }
 
