@@ -109,7 +109,10 @@
  *                         作为固定成员（kind=best，不随快照裁剪）。加载清单（文件名 + winRate +
  *                         sha256 前 16 位）写进 meta.poolBestsLoaded 与 summary。
  *   五个字段都写进 meta（poolVariants/poolVariantDefs/poolVariantNoise/poolBests/poolBestsLoaded）。
- *   --resume 时池成员随检查点原样恢复；两个开关只在全新开练时决定初始池。
+ *   --resume 时池成员随检查点原样恢复；若续跑时也传了 --pool-variants/--pool-bests，则在
+ *   恢复的池上追加缺失的固定成员（同名不重复加 → 重复续跑幂等）；不传开关 = 池与检查点
+ *   逐位一致（旧行为）。启动时打印"对手池汇总"（以实际成员为准：固定/变体/最优档/快照
+ *   逐类计数 + 最优档 文件名/winRate/sha256），meta 与 summary 同步记录。
  *   （变体/最优档是固定成员：快照区上限 12 与 --pool-recent 的裁剪只作用于 kind=net 快照。）
  *
  * 可调超参（CLI 覆盖，缺省 = 2026-09-16 教训值；含调度生效值，全量写进 meta 与 summary）：
@@ -289,7 +292,10 @@ const profOfVar = (varIdx) => {
 };
 const variantDefOf = (varIdx) => {
   const pr = profOfVar(varIdx);
-  return { name: pr.key, label: pr.label, scoreSigma: pr.scoreSigma, needSigma: pr.needSigma, phase: pr.phase, style: pr.style, fumble: pr.fumble };
+  return {
+    name: pr.key, summary: pr.summary, label: pr.label,
+    scoreSigma: pr.scoreSigma, needSigma: pr.needSigma, phase: pr.phase, style: pr.style, fumble: pr.fumble,
+  };
 };
 const MAX_TURNS = 800;
 // 每 N 局让出一次事件循环：否则整段训练是同步循环，SIGINT 要等训练全部结束才会触发
@@ -469,14 +475,25 @@ function loadPoolBests() {
   // winRate 降序取前 2 档（同分按文件名定序，保证多次运行结果确定）
   cands.sort((a, b) => (b.winRate - a.winRate) || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
   const top = cands.slice(0, 2);
-  META.poolBestsLoaded = top.map((c) => ({
-    file: c.file,
-    winRate: c.winRate,
-    sha256: sha256Hex(path.join(weightsDir, c.file)).slice(0, 16),
-  }));
-  top.forEach((c) => pool.push({ name: c.file.replace(/\.json$/, ''), kind: 'best', actor: c.actor }));
-  if (top.length) {
-    log(`对手池最优档：加载 ${top.length} 档 → ${META.poolBestsLoaded.map((b) => `${b.file}（${(b.winRate * 100).toFixed(1)}%｜sha256 ${b.sha256}）`).join(' ｜ ')}`);
+  // 池里已有同名最优档时跳过（--resume + --pool-bests 重复续跑幂等；全新开练时池里必无 best）
+  const added = [];
+  top.forEach((c) => {
+    if (pool.some((m) => m.kind === 'best' && m.name === c.file.replace(/\.json$/, ''))) return;
+    added.push({
+      file: c.file, winRate: c.winRate,
+      sha256: sha256Hex(path.join(weightsDir, c.file)).slice(0, 16),
+      actor: c.actor,
+    });
+  });
+  added.forEach((r) => {
+    META.poolBestsLoaded.push({ file: r.file, winRate: r.winRate, sha256: r.sha256 });
+    pool.push({ name: r.file.replace(/\.json$/, ''), kind: 'best', actor: r.actor });
+  });
+  const verb = pool.filter((m) => m.kind === 'best').length > added.length ? '追加' : '加载';
+  if (added.length) {
+    log(`对手池最优档：${verb} ${added.length} 档 → ${added.map((r) => `${r.file}（${(r.winRate * 100).toFixed(1)}%｜sha256 ${r.sha256}）`).join(' ｜ ')}${top.length - added.length ? `；同名已在池，跳过 ${top.length - added.length} 档` : ''}`);
+  } else if (top.length) {
+    log(`对手池最优档：${top.length} 档均为池里已有同名档，跳过（幂等）`);
   } else {
     log('对手池最优档：没有找到可用档，池保持默认');
   }
@@ -938,6 +955,29 @@ if (EVAL_ONLY) {
       // 续跑：变体数/档案按恢复的池成员重算（meta 反映实际池，而非本次 CLI 的 --pool-variants）
       META.poolVariants = pool.filter((m) => m.kind === 'var').length;
       META.poolVariantDefs = pool.filter((m) => m.kind === 'var').map((m) => variantDefOf(m.varIdx));
+      // 续跑：最优档加载清单随检查点恢复（meta 反映实际池；旧检查点没记清单时按池成员重建，winRate 置 null）
+      META.poolBestsLoaded = (ckpt.meta && Array.isArray(ckpt.meta.poolBestsLoaded))
+        ? ckpt.meta.poolBestsLoaded.map((b) => ({ file: b.file, winRate: b.winRate, sha256: b.sha256 }))
+        : pool.filter((m) => m.kind === 'best').map((m) => ({ file: m.name + '.json', winRate: null, sha256: null }));
+    }
+    // 续跑 + 开关：在恢复的池上追加缺失的固定成员（同名不重复加 → 重复续跑幂等）。
+    // 不传开关 = 池与检查点逐位一致（旧行为）。追加后重算 meta 变体字段（最优档清单由 loadPoolBests 追加）
+    if (POOL_VARIANTS > 0 || POOL_BESTS) {
+      let addedVars = 0;
+      const haveVar = new Set(pool.filter((m) => m.kind === 'var').map((m) => m.name));
+      for (let k = 1; k <= POOL_VARIANTS; k++) {
+        if (!haveVar.has('var' + k)) { pool.push({ name: 'var' + k, kind: 'var', varIdx: k }); addedVars++; }
+      }
+      const bestBefore = pool.filter((m) => m.kind === 'best').length;
+      loadPoolBests();
+      const addedBests = pool.filter((m) => m.kind === 'best').length - bestBefore;
+      META.poolVariants = pool.filter((m) => m.kind === 'var').length;
+      META.poolVariantDefs = pool.filter((m) => m.kind === 'var').map((m) => variantDefOf(m.varIdx));
+      if (addedVars || addedBests) {
+        log(`对手池：--resume 在检查点池上追加固定成员（变体 +${addedVars} ｜ 最优档 +${addedBests} → 池 ${pool.length} 名）`);
+      } else {
+        log('对手池：--resume 检查点池已含全部开关成员，无需追加（幂等）');
+      }
     }
     // 续跑恢复快照编号：取现有快照名里最大编号（--pool-recent 裁剪后数量 ≠ 已用编号，按数量算会重号）
     snapshots = pool.reduce((mx, m) => (m.kind === 'net' ? Math.max(mx, parseInt(String(m.name).replace(/\D/g, ''), 10) || 0) : mx), 0);
@@ -1003,9 +1043,21 @@ if (EVAL_ONLY) {
   log(`种子：训练 [${TRAIN_LO}, ${TRAIN_HI}) ｜ 评估 [${EVAL_LO}, ${EVAL_HI})（EVAL_SEED 硬编码） ｜ 无重叠`);
   log(`调度：${schedDesc} ｜ 超参：α ${ALPHA} / β ${BETA} / ent ${ENT_COEF} / shapeW ${SHAPE_W} / targetKL ${TARGET_KL} / gradClip ${GRAD_CLIP} / advNorm ${ADV_NORM ? '开' : '关'} / rankReward ${RANK_REWARD ? '开' : '关'} / sampleSeed ${SAMPLE_SEED} / rollbackStop ${ROLLBACK_STOP}`);
   log(`启动：${RESUME ? `恢复自 ${path.basename(resumeFile)}（守恒违规 ${lastLeak} ｜ 卡死 ${lastStall} ｜ 池 ${pool.length}）` : '全新开始'}；检查点每 ${CKPT_EVERY} 局 → ${path.basename(ckptFile)}；快照每 ${SNAPSHOT_EVERY} 局（快照区上限 ${POOL_RECENT > 0 ? POOL_RECENT : 12}）；最优 → ${path.basename(bestFile)}；日志 → ${path.basename(logFile)}${evalCurve.length ? `；历史评估 ${evalCurve.length} 次，最新 ${(evalCurve[evalCurve.length - 1].rate * 100).toFixed(1)}%@${evalCurve[evalCurve.length - 1].ep} 局` : ''}${best ? `；历史最优 ${(best.rate * 100).toFixed(1)}%@${best.ep} 局` : ''}${newFeats.length || HIDDEN !== 32 ? `；口径 hidden ${HIDDEN} / nFeat ${N_FEAT}` : ''}`);
-  if (META.poolVariants > 0) {
-    log(`对手池变体：基础 AI ×${META.poolVariants}（${META.poolVariantDefs.map((d) => `${d.name}=${d.label} σ${d.scoreSigma}/${d.needSigma}`).join('、')} ｜ 决策骨架+评估层噪声，RNG 按 局种子+座位+变体号×65536 派生${POOL_VARIANT_NOISE > 0 ? ` ｜ 全局额外噪声 +${POOL_VARIANT_NOISE}` : ''}）`);
-  }
+  // —— 对手池汇总（加载验证 + 输出验证：启动时打印一次，以实际成员为准；meta 与 summary 同步记录） ——
+  const poolVarMs = pool.filter((m) => m.kind === 'var');
+  const poolBestMs = pool.filter((m) => m.kind === 'best');
+  const poolNetMs = pool.filter((m) => m.kind === 'net');
+  const varDesc = poolVarMs.length
+    ? `${poolVarMs.map((m) => {
+        const d = variantDefOf(m.varIdx);
+        return `${m.name}=${d.summary}`;
+      }).join('、')}｜决策骨架+评估层噪声，RNG 按 局种子+座位+变体号×65536 派生${POOL_VARIANT_NOISE > 0 ? ` ｜ 全局额外噪声 +${POOL_VARIANT_NOISE}` : ''}`
+    : '无';
+  log(`对手池汇总：共 ${pool.length} 名 = 2 固定（heuristic、random）+ ${poolVarMs.length} 变体（${varDesc}）+ ${poolBestMs.length} 最优档 + ${poolNetMs.length} 快照（上限 ${POOL_RECENT > 0 ? POOL_RECENT : 12}，只裁 kind=net）`);
+  META.poolBestsLoaded.forEach((b, i) => {
+    const rate = b.winRate != null ? `${(b.winRate * 100).toFixed(1)}%` : 'winRate 未记录';
+    log(`  最优档 ${i + 1}/${META.poolBestsLoaded.length}：${b.file}（${rate}｜sha256 ${b.sha256 || '未记录'}）`);
+  });
   log(`评估座位：[${EVAL_SEATS.join(',')}]（座位0=被测策略${STR_WEIGHTS ? `；座位≥1 str=${path.basename(strWeightsPath)}` : '；其余 str 与被测同网'}）${EVAL_SEATS[0] !== 'str' ? ' ⚠️ 座位0非str：评估不测学习者，最优判定跳过' : ''}`);
 
   /* ---------- 落盘工具（检查点 / 最优权重 / 摘要） ---------- */

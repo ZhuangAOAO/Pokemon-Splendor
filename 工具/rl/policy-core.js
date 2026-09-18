@@ -261,22 +261,50 @@ function greedyMove(actor, p) {
 //   种子不同行为仍不同）；--pool-variant-noise 是叠加的全局额外 σ（缺省 0 = 只用内置档位）。
 //   rng 为变体专用种子 RNG（mulberry32，按 局种子+座位+变体号×65536 派生，与游戏/采样 RNG
 //   分离）：同 (局种子, 座位, 变体号) 逐位可复现。训练对手池与 --eval-only 评估共用这一份逻辑。
+// 4 份内置噪声档案（2026-09-18 重调）：
+//   · score 噪声收进 1.0~1.8 紧凑带（旧版 2.5 太噪：收服/预约打分被搅乱，口味不稳）
+//   · need 噪声拉开成风格主轴：平稳 0.7 < 囤卡 1.8 < 中局 2.5 < 终局 3.0（终局拉满 = 末期
+//     拿球节奏乱序，风格最鲜明；平稳 = 缺口判断稳，节奏贴着 def 走）
 const VARIANT_DEFS = [
-  { key: 'var1', label: '轻噪·全局', scoreSigma: 1.0, needSigma: 1.0, phase: 'all', style: null, fumble: 0.015 },
-  { key: 'var2', label: '中噪·中盘', scoreSigma: 2.5, needSigma: 2.5, phase: 'mid', style: null, fumble: 0.025 },
-  { key: 'var3', label: '噪·终局',   scoreSigma: 2.5, needSigma: 2.5, phase: 'end', style: null, fumble: 0.015 },
-  { key: 'var4', label: '中噪·囤高阶', scoreSigma: 1.0, needSigma: 1.0, phase: 'all', style: 'hoard', fumble: 0 },
+  { key: 'var1', label: '平稳',     scoreSigma: 1.6, needSigma: 0.7, phase: 'all', style: null,   fumble: 0.015 },
+  { key: 'var2', label: '中局激进', scoreSigma: 1.8, needSigma: 2.5, phase: 'mid', style: null,   fumble: 0.025 },
+  { key: 'var3', label: '终局',     scoreSigma: 1.5, needSigma: 3.0, phase: 'end', style: null,   fumble: 0.015 },
+  { key: 'var4', label: '囤卡',     scoreSigma: 1.0, needSigma: 1.8, phase: 'all', style: 'hoard', fumble: 0 },
 ];
-// varIdx（1 基）→ 生效档案：内置 σ 档案 + 调用方叠加的全局额外 σ（extra，缺省 0）
+// varIdx（1 基）→ 生效档案：内置 σ 档案 + 调用方叠加的全局额外 σ（extra，缺省 0）。
+// 硬下限：scoreSigma/needSigma ≥ 0.5（σ=0 会让并列规则完全退化成 def，档案失去意义；
+// 想跑"纯 def"用 --pool-variants 0），fumble ≥ 0（手滑只能往下调强度，不许反向）。
+// summary 是给 meta.poolVariantDefs 落档的紧凑签名（例：var1=平稳/score1.6/need0.7）。
 function variantProfile(varIdx, extraNoise) {
   const base = VARIANT_DEFS[(varIdx - 1) % VARIANT_DEFS.length];
+  const scoreSigma = Math.max(0.5, base.scoreSigma);
+  const needSigma = Math.max(0.5, base.needSigma);
+  const fumble = Math.max(0, base.fumble);
   return {
     key: 'var' + varIdx, label: base.label,
-    scoreSigma: base.scoreSigma, needSigma: base.needSigma,
-    phase: base.phase, style: base.style, fumble: base.fumble,
+    scoreSigma, needSigma,
+    phase: base.phase, style: base.style, fumble,
+    summary: `${base.label}/score${scoreSigma}/need${needSigma}`,
     extra: extraNoise || 0,
   };
 }
+// 启发式常数兜底：正常路径下 config.js 会把 HEUR_PARAMS 挂到全局（浏览器/服务器/训练三处一致），
+// 这里只在"裸挂载"场景兜底一份逐位相同的副本。改数只改 config.js 的 HEUR_PARAMS，勿改这份兜底。
+const DEFAULT_HEUR_PARAMS = {
+  buyTieTierW: 0.5, buyTieCostW: 0.05,
+  reserveVpW: 4, reserveEffW: 1.1, reserveTierW: 0.5, reserveCostW: 0.05,
+  blindReserveRate: 0.3,
+};
+let heurWarned = false;
+function heurParams() {
+  if (typeof HEUR_PARAMS !== 'undefined') return HEUR_PARAMS;
+  if (!heurWarned) {
+    heurWarned = true;
+    console.warn('[policy-core] HEUR_PARAMS 未挂载（config.js 未加载？），用内置兜底常数（与 config.js 逐位一致）');
+  }
+  return DEFAULT_HEUR_PARAMS;
+}
+
 // 噪声相位缩放：all = 全程 1；mid = 中盘（8 ≤ 回合 < 28 且未进终局）1、其余 0.25；
 // end = 终局（已触发终局或回合 ≥ 28）1、其余 0（= 与 def 无差别）
 function phaseScaleOf(phase) {
@@ -300,6 +328,7 @@ function variantMove(p, rng, prof) {
   const sSigma = prof.scoreSigma + prof.extra;   // 收服/预约打分噪声 σ
   const nSigma = prof.needSigma + prof.extra;    // 拿球缺口排序噪声 σ
   const engineCards = (typeof AI_CONFIG !== 'undefined' && AI_CONFIG) ? AI_CONFIG.engineCards : 5;
+  const HP = heurParams(); // 启发式常数（单一参数源 = config.js 的 HEUR_PARAMS；与 def 逐位同源）
 
   // 1) 能收服就收服：def 只挑 vp 最高的可收服卡（并列比阶、再比成本）。这里的"最高 vp"
   //    是硬规则、不加噪声——实测零均值评估噪声在 buy 上净赚（def 太刚性，噪声偶尔换到
@@ -321,7 +350,7 @@ function variantMove(p, rng, prof) {
     const top = list.filter((a) => a.card.vp === maxVp);
     let best = null, bestScore = -Infinity;
     top.forEach((a) => {
-      const score = a.card.tier * 0.5 - totalCost(a.card) * 0.05 + jit(sSigma);
+      const score = a.card.tier * HP.buyTieTierW - totalCost(a.card) * HP.buyTieCostW + jit(sSigma);
       if (score > bestScore) { bestScore = score; best = a; }
     });
     return best.kind === 'buy' ? { type: 'buy', tier: best.tier, idx: best.idx }
@@ -336,7 +365,8 @@ function variantMove(p, rng, prof) {
     if (engine && c.tier === 3 && prof.style !== 'hoard') return;              // def 结构规则
     if (engine && c.tier === 3 && prof.style === 'hoard' && rng() >= 0.35) return; // 囤高阶风格：35% 破例
     const m = missingFor(p, c);
-    let score = c.vp * 4 - m.effTot * 1.1 + c.tier * 0.5 - totalCost(c) * 0.05 + jit(sSigma);
+    let score = c.vp * HP.reserveVpW - m.effTot * HP.reserveEffW + c.tier * HP.reserveTierW
+      - totalCost(c) * HP.reserveCostW + jit(sSigma);
     if (prof.style === 'hoard' && c.tier === 3) score += 2;                    // 囤高阶风格：三阶卡加分
     if (score > rtScore) { rtScore = score; rt = { tier: t, idx, card: c }; }
   }));
@@ -350,7 +380,7 @@ function variantMove(p, rng, prof) {
   // 4) 偶尔从牌堆盲抽（同样拿大师球），尤其是没有好明牌时（硬币走变体 RNG）
   if (p.reserved.length < RULES.reserveLimit && S.pool.master > 0) {
     const tiers = [1, 2, 3].filter((t) => S.decks[t].length > 0);
-    if (tiers.length && rng() < 0.3) return { type: 'reserveBlind', tier: pickRng(tiers) };
+    if (tiers.length && rng() < HP.blindReserveRate) return { type: 'reserveBlind', tier: pickRng(tiers) };
   }
 
   // 5) 收集资源：按"全场需求 − 已持有"的缺口拿球；缺色够 3 种就优先拿满 3 色

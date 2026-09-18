@@ -20,6 +20,9 @@ const AI_CONFIG = window.AI_CONFIG;
 const CARD_TABLE = window.CARD_TABLE || [];
 const EVO_LINES = window.EVOLUTION_LINES || [];
 const EVO_NEEDS = window.EVOLUTION_NEEDS || {};
+// 电脑 AI 启发式常数（单一参数源：定义在 config.js 的 HEUR_PARAMS；
+// 浏览器/服务器/RL 训练三处共用，改数去 config.js，勿在本文件改字面量）
+const HEUR_PARAMS = window.HEUR_PARAMS;
 
 // 卡名去掉数字后缀："波波2" → "波波"（同一进化线的多张卡共用名字判定）
 function baseNameOf(name) { return String(name).replace(/\d+$/, ''); }
@@ -463,7 +466,7 @@ function chooseAIMoveDefault(p) {
   // 偶尔从牌堆盲抽（同样拿大师球），尤其是没有好明牌时
   if (p.reserved.length < RULES.reserveLimit && S.pool.master > 0) {
     const tiers = [1, 2, 3].filter((t) => S.decks[t].length > 0);
-    if (tiers.length && Math.random() < 0.3) return { type: 'reserveBlind', tier: pick(tiers) };
+    if (tiers.length && Math.random() < HEUR_PARAMS.blindReserveRate) return { type: 'reserveBlind', tier: pick(tiers) };
   }
 
   // 收集资源：按"全场需求 − 已持有"的缺口拿球；缺色够 3 种就优先拿满 3 色
@@ -515,7 +518,8 @@ function pickMarketTarget(p) {
   [1, 2, 3].forEach((t) => S.market[t].forEach((c, idx) => {
     if (!c || (engine && c.tier === 3)) return;
     const m = missingFor(p, c);
-    const score = c.vp * 4 - m.effTot * 1.1 + c.tier * 0.5 - totalCost(c) * 0.05;
+    const score = c.vp * HEUR_PARAMS.reserveVpW - m.effTot * HEUR_PARAMS.reserveEffW
+      + c.tier * HEUR_PARAMS.reserveTierW - totalCost(c) * HEUR_PARAMS.reserveCostW;
     if (score > bestScore) { bestScore = score; best = { card: c, tier: t, idx }; }
   }));
   return best;
@@ -527,8 +531,10 @@ function pickTarget(p) {
   const consider = (card, tier, idx, ridx) => {
     if (!card) return;
     const m = missingFor(p, card);
-    let score = card.vp * 4 - m.effTot * 1.1 + card.tier * 0.5 - totalCost(card) * 0.05 + (ridx !== undefined ? 0.5 : 0);
-    if (engine && tier !== undefined && card.tier >= 3) score -= 8; // 前期不囤高阶/稀有/传说
+    let score = card.vp * HEUR_PARAMS.reserveVpW - m.effTot * HEUR_PARAMS.reserveEffW
+      + card.tier * HEUR_PARAMS.reserveTierW - totalCost(card) * HEUR_PARAMS.reserveCostW
+      + (ridx !== undefined ? HEUR_PARAMS.targetReservedBonus : 0);
+    if (engine && tier !== undefined && card.tier >= 3) score -= HEUR_PARAMS.targetEngineTierPenalty; // 前期不囤高阶/稀有/传说
     if (score > bestScore) { bestScore = score; best = { card, tier, idx, ridx }; }
   };
   [1, 2, 3, 4, 5].forEach((t) => S.market[t].forEach((c, idx) => consider(c, t, idx, undefined)));

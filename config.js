@@ -44,6 +44,21 @@ window.AI_CONFIG = {
   engineCards: 5,            // 困难电脑前期先攒够几张卡，才去追三阶卡
 };
 
+/* ---------- 3b. 电脑 AI 启发式常数（单一参数源） ----------
+   困难 AI（game-core.chooseAIMoveDefault）与 RL 变体（工具/rl/policy-core.variantMove）
+   都从这里取值：改数只改这里，两边同步生效。变体专用常数（囤卡加分等）不在此列。 */
+window.HEUR_PARAMS = {
+  buyTieTierW: 0.5,          // 收服并列偏好：阶权重（def 用结构化排序，变体用它复刻并列规则）
+  buyTieCostW: 0.05,         // 收服并列偏好：成本权重（同上）
+  reserveVpW: 4,             // 预约打分：卡分权重
+  reserveEffW: 1.1,          // 预约打分：缺口(effTot)惩罚权重
+  reserveTierW: 0.5,         // 预约打分：阶权重
+  reserveCostW: 0.05,        // 预约打分：成本权重
+  blindReserveRate: 0.3,     // 盲抽预约概率（没有好明牌时的兜底探索）
+  targetReservedBonus: 0.5,  // pickTarget：已预约卡打分加成（game-core 专用）
+  targetEngineTierPenalty: 8, // pickTarget：前期追三阶卡的惩罚（game-core 专用）
+};
+
 /* ---------- 4. 联机设置 ---------- */
 window.NETWORK = {
   port: 3000,                // 服务器端口（启动 node server.js 后访问 http://局域网IP:端口）
