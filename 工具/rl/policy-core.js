@@ -242,16 +242,148 @@ function greedyMove(actor, p) {
 }
 
 /* ==================== 基础 AI 变体（--pool-variants / --eval-seats var1..varN） ==================== */
-// 困难启发式 AI 的变体：以 noiseX 概率走均匀随机合法动作，其余走 def（基础 AI 动作，
-// 由调用方经 chooseAIMove 钩子的 def 参数传入 = game-core 的 chooseAIMoveDefault，同款逻辑）。
-// rng 为变体专用种子 RNG（mulberry32，按 局种子+座位+变体号×65536 派生，与游戏/采样 RNG
-// 分离）：同 (局种子, 座位, 变体号) 逐位可复现。训练对手池与 --eval-only 评估共用这一份逻辑。
-function variantMove(p, def, rng, noiseX) {
-  if (rng() < noiseX) {
+// 困难启发式 AI（game-core.chooseAIMoveDefault，aiLevel==='hard'）的变体。
+// 2026-09-18 改版：噪声从"动作层均匀随机"改为"评估层噪声"。
+//   旧版 = 以 noiseX 概率走均匀随机合法动作：noiseX=0.2 实测 def vs var1 = 74.6/25.4，
+//   随机动作会把局面搅崩，变体弱得没法当对手。
+//   新版 = 完整复刻 def 的决策骨架（能买就买 → 预约 → 攒球 → 兜底，结构规则逐条一致），
+//   只在"选哪张 / 选哪个色"的评估值上注入噪声：
+//     · 收服      "最高 vp"是硬规则（与 def 一致，噪声不许把高分卡换成低分卡——实测零均值
+//       噪声在 buy 上净赚：def 太刚性，噪声偶尔换到更便宜的卡反而赚节奏，会系统性抬高
+//       变体强度）。噪声只作用在同 vp 并列卡的 tier·0.5 − cost·0.05 偏好上（σ=0 时与
+//       def 的 (vp 降, tier 降, cost 升) 并列规则一致）
+//     · 预约打分  vp·4 − effTot·1.1 + tier·0.5 − cost·0.05 + jitter(σ)（def 同款公式；
+//       engineCards 前期不追三阶的结构规则保留）
+//     · 拿球      缺口 rem[c] 的排序键加 jitter(σ)：只打乱"先拿哪个缺色"，结构不变
+//     · 随机点    （盲抽 30% 硬币、并列 pick、补齐色 pick）全走变体 RNG
+//   噪声只换选择、不破坏结构 → 强度贴着 def 小幅波动，不会把必赢局打输。
+//   每个变体 = 一份内置噪声档案（VARIANT_DEFS：var1..var4 四种风格；var5+ 循环复用档案，
+//   种子不同行为仍不同）；--pool-variant-noise 是叠加的全局额外 σ（缺省 0 = 只用内置档位）。
+//   rng 为变体专用种子 RNG（mulberry32，按 局种子+座位+变体号×65536 派生，与游戏/采样 RNG
+//   分离）：同 (局种子, 座位, 变体号) 逐位可复现。训练对手池与 --eval-only 评估共用这一份逻辑。
+const VARIANT_DEFS = [
+  { key: 'var1', label: '轻噪·全局', scoreSigma: 1.0, needSigma: 1.0, phase: 'all', style: null, fumble: 0.015 },
+  { key: 'var2', label: '中噪·中盘', scoreSigma: 2.5, needSigma: 2.5, phase: 'mid', style: null, fumble: 0.025 },
+  { key: 'var3', label: '噪·终局',   scoreSigma: 2.5, needSigma: 2.5, phase: 'end', style: null, fumble: 0.015 },
+  { key: 'var4', label: '中噪·囤高阶', scoreSigma: 1.0, needSigma: 1.0, phase: 'all', style: 'hoard', fumble: 0 },
+];
+// varIdx（1 基）→ 生效档案：内置 σ 档案 + 调用方叠加的全局额外 σ（extra，缺省 0）
+function variantProfile(varIdx, extraNoise) {
+  const base = VARIANT_DEFS[(varIdx - 1) % VARIANT_DEFS.length];
+  return {
+    key: 'var' + varIdx, label: base.label,
+    scoreSigma: base.scoreSigma, needSigma: base.needSigma,
+    phase: base.phase, style: base.style, fumble: base.fumble,
+    extra: extraNoise || 0,
+  };
+}
+// 噪声相位缩放：all = 全程 1；mid = 中盘（8 ≤ 回合 < 28 且未进终局）1、其余 0.25；
+// end = 终局（已触发终局或回合 ≥ 28）1、其余 0（= 与 def 无差别）
+function phaseScaleOf(phase) {
+  if (phase === 'mid') return (S.turnIdx >= 8 && S.turnIdx < 28 && !S.endTriggered) ? 1 : 0.25;
+  if (phase === 'end') return (S.endTriggered || S.turnIdx >= 28) ? 1 : 0;
+  return 1;
+}
+// def 决策骨架 + 评估层噪声。prof 由 variantProfile 组装（内置 σ + 全局额外 σ）
+function variantMove(p, rng, prof) {
+  // fumble（手滑）：以极小概率走均匀随机合法动作。为什么需要它：零均值评估噪声实测
+  // 净赚（def 的预约/拿球启发式粗糙，随机扰动平均反而更优），纯噪声压不回 def 强度；
+  // fumble 是只往下的强度旋钮，把变体校准回"贴 def 或略弱"（≈10% 远小于旧版的 20%
+  // 全随机，且其余动作仍是 def 骨架 → 局面不会被搅崩）
+  if (rng() < prof.fumble) {
     const moves = enumerateMoves(p);
-    return moves.length ? moves[Math.floor(rng() * moves.length)] : def(p);
+    if (moves.length) return moves[Math.floor(rng() * moves.length)];
   }
-  return def(p);
+  const scale = phaseScaleOf(prof.phase);
+  const jit = (sigma) => (rng() * 2 - 1) * sigma * scale; // 均匀 [−σ, σ] × 相位
+  const pickRng = (arr) => arr[Math.floor(rng() * arr.length)];
+  const sSigma = prof.scoreSigma + prof.extra;   // 收服/预约打分噪声 σ
+  const nSigma = prof.needSigma + prof.extra;    // 拿球缺口排序噪声 σ
+  const engineCards = (typeof AI_CONFIG !== 'undefined' && AI_CONFIG) ? AI_CONFIG.engineCards : 5;
+
+  // 1) 能收服就收服：def 只挑 vp 最高的可收服卡（并列比阶、再比成本）。这里的"最高 vp"
+  //    是硬规则、不加噪声——实测零均值评估噪声在 buy 上净赚（def 太刚性，噪声偶尔换到
+  //    更便宜的卡反而赚节奏），会系统性抬高变体强度。噪声只作用在同 vp 并列卡的阶/成本
+  //    偏好上（tier·0.5 − cost·0.05 + jitter，σ=0 时与 def 的并列规则一致）：
+  //    风格差异 = "同为最高分，选哪张"的口味，强度不漂移
+  const aff = [];
+  [1, 2, 3, 4, 5].forEach((t) => S.market[t].forEach((c, idx) => {
+    if (c && canAfford(p, c)) aff.push({ kind: 'buy', tier: t, idx, card: c });
+  }));
+  p.reserved.forEach((c, ridx) => {
+    if (canAfford(p, c)) aff.push({ kind: 'buyReserved', ridx, card: c });
+  });
+  if (aff.length) {
+    const vpCards = aff.filter((a) => a.card.vp > 0);
+    const list = vpCards.length ? vpCards : aff;
+    let maxVp = -Infinity;
+    list.forEach((a) => { if (a.card.vp > maxVp) maxVp = a.card.vp; });
+    const top = list.filter((a) => a.card.vp === maxVp);
+    let best = null, bestScore = -Infinity;
+    top.forEach((a) => {
+      const score = a.card.tier * 0.5 - totalCost(a.card) * 0.05 + jit(sSigma);
+      if (score > bestScore) { bestScore = score; best = a; }
+    });
+    return best.kind === 'buy' ? { type: 'buy', tier: best.tier, idx: best.idx }
+                               : { type: 'buyReserved', ridx: best.ridx };
+  }
+
+  // 2) 收不起 → 预约场上最有价值的卡（def 同款公式 + 噪声；engine 前期不追三阶的结构规则保留）
+  const engine = p.cards.length < engineCards;
+  let rt = null, rtScore = -1e9;
+  [1, 2, 3].forEach((t) => S.market[t].forEach((c, idx) => {
+    if (!c) return;
+    if (engine && c.tier === 3 && prof.style !== 'hoard') return;              // def 结构规则
+    if (engine && c.tier === 3 && prof.style === 'hoard' && rng() >= 0.35) return; // 囤高阶风格：35% 破例
+    const m = missingFor(p, c);
+    let score = c.vp * 4 - m.effTot * 1.1 + c.tier * 0.5 - totalCost(c) * 0.05 + jit(sSigma);
+    if (prof.style === 'hoard' && c.tier === 3) score += 2;                    // 囤高阶风格：三阶卡加分
+    if (score > rtScore) { rtScore = score; rt = { tier: t, idx, card: c }; }
+  }));
+  if (rt && p.reserved.length < RULES.reserveLimit && (S.pool.master > 0 || rt.card.vp >= 2)) {
+    return { type: 'reserve', tier: rt.tier, idx: rt.idx };
+  }
+  // 3) 开启"只拿大师球"行动时：预约没得约了，就攒大师球当万能球用
+  if (RULES.takeMasterAlone !== false && S.pool.master > 0 && p.balls.master < 3) {
+    return { type: 'takeMaster' };
+  }
+  // 4) 偶尔从牌堆盲抽（同样拿大师球），尤其是没有好明牌时（硬币走变体 RNG）
+  if (p.reserved.length < RULES.reserveLimit && S.pool.master > 0) {
+    const tiers = [1, 2, 3].filter((t) => S.decks[t].length > 0);
+    if (tiers.length && rng() < 0.3) return { type: 'reserveBlind', tier: pickRng(tiers) };
+  }
+
+  // 5) 收集资源：按"全场需求 − 已持有"的缺口拿球；缺色够 3 种就优先拿满 3 色
+  //    （排序键加噪声：只打乱缺色的先后，不改变"只拿缺色"的结构）
+  const need = globalNeed(p);
+  const rem = {};
+  COLORS.forEach((c) => { rem[c] = Math.max(0, need[c] - p.balls[c]); });
+  const noisyRem = {};
+  COLORS.forEach((c) => { noisyRem[c] = rem[c] + jit(nSigma); });
+  const avail = COLORS.filter((c) => S.pool[c] > 0);
+  const wanted = avail.filter((c) => rem[c] > 0).sort((a, b) => noisyRem[b] - noisyRem[a]);
+  const surplus = COLORS.filter((c) => p.balls[c] > 0 && p.balls[c] > need[c]);
+  // 池子里没有自己还缺的球 → 退还富余的球周转供应区（防止全桌卡死）
+  if (!wanted.length) {
+    if (surplus.length) {
+      return { type: 'return', color: surplus.sort((a, b) => (p.balls[b] - need[b]) - (p.balls[a] - need[a]))[0] };
+    }
+    if (avail.length) return { type: 'take3', colors: [pickRng(avail)] };
+    const held = COLORS.filter((c) => p.balls[c] > 0);
+    if (held.length) return { type: 'return', color: pickRng(held) };
+    if (p.balls.master > 0) return { type: 'return', color: 'master' };
+    return null;
+  }
+  // 还缺至少 3 种颜色 → 一次拿满 3 色（过度偏好 take2 会拖慢节奏）
+  if (wanted.length >= 3) return { type: 'take3', colors: wanted.slice(0, 3) };
+  // 只缺 1~2 种颜色：某色还缺至少 2 个且供应足 → 拿 2 个同色（取缺口最大者）；否则用别的颜色补满 3 色
+  const twoOpt = wanted.find((c) => S.pool[c] >= RULES.takeTwoMin && rem[c] >= 2);
+  if (twoOpt) return { type: 'take2', color: twoOpt };
+  const chosen = wanted.slice();
+  while (chosen.length < Math.min(3, avail.length)) {
+    chosen.push(pickRng(avail.filter((x) => !chosen.includes(x))));
+  }
+  return { type: 'take3', colors: chosen };
 }
 
 module.exports = {
@@ -262,4 +394,5 @@ module.exports = {
   get STATE_IDX() { return STATE_IDX; },
   get N_STATE() { return N_STATE; },
   enumerateMoves, buildCtx, featuresFor, scanActor, greedyMove, variantMove,
+  VARIANT_DEFS, variantProfile,
 };
