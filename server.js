@@ -748,9 +748,9 @@ function startGame(room, humans) {
   const total = humans.length + room.ais.length;
   if (total < 2) return { ok: false, msg: '至少需要 2 名玩家' };
   if (total > 4) return { ok: false, msg: '最多 4 名玩家' };
-  if (room.ais.some((a) => a.level === 'champion') && !aiPolicy.isReady()) {
-    logEvent(room, '对局', `开局被拦：冠军 AI 未就绪（${aiPolicy.errorMessage()}）`);
-    return { ok: false, msg: '冠军 AI 未就绪（权重加载失败），请先把该座位换成简单/困难电脑' };
+  if (room.ais.some((a) => a.level === 'champion') && !aiPolicy.isReadyFor(total)) {
+    logEvent(room, '对局', `开局被拦：冠军 AI 未就绪（${total} 人局：${aiPolicy.errorMessage(total)}）`);
+    return { ok: false, msg: `冠军 AI 未就绪（${total} 人局权重加载失败），请先把该座位换成简单/困难电脑` };
   }
   humans.forEach((h, i) => { h.seat = i; });
   const cfg = {
