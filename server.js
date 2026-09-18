@@ -10,6 +10,7 @@
 require('./config.js');            // 数据配置（挂到全局）
 const core = require('./game-core.js'); // 游戏核心逻辑（工厂）
 const { COLORS, RULES, sameLoc } = core;
+const aiPolicy = require('./ai-policy.js'); // 冠军 AI（RL 权重）：isReady / installHook
 
 const http = require('http');
 const fs = require('fs');
@@ -127,6 +128,8 @@ function createRoom(isPublic) {
   session.HOOKS.onStateChanged = () => broadcastRoom(room);
   session.HOOKS.onToast = (m) => { broadcastToast(room, m); logEvent(room, '事件', m); };
   session.HOOKS.onGameOver = () => { recordGameStats(room); saveReplay(room); broadcastRoom(room); };
+  // AI 决策钩子：champion 座位走 RL 策略网络，easy/hard 走内置启发式（ai-policy 内分发）
+  aiPolicy.installHook(session);
   // 每一步真实行动都记进回放（人类与电脑的行动都在这里流过；自动退球/自动进化不记）
   session.HOOKS.onAction = (kind, params) => {
     if (!room.rec) return;
@@ -185,6 +188,7 @@ function broadcastRoom(room) {
         isPublic: room.isPublic,
         phase: room.phase,
         target: room.target,
+        championReady: aiPolicy.isReady(), // 冠军 AI 权重是否就绪（前端据此置灰冠军选项）
         ais: room.ais,
         humans: humansList(room).map((h) => ({ cid: h.cid, name: h.name, seat: h.seat, connected: h.connected, isHost: h.isHost })),
         log: room.log,
@@ -744,6 +748,10 @@ function startGame(room, humans) {
   const total = humans.length + room.ais.length;
   if (total < 2) return { ok: false, msg: '至少需要 2 名玩家' };
   if (total > 4) return { ok: false, msg: '最多 4 名玩家' };
+  if (room.ais.some((a) => a.level === 'champion') && !aiPolicy.isReady()) {
+    logEvent(room, '对局', `开局被拦：冠军 AI 未就绪（${aiPolicy.errorMessage()}）`);
+    return { ok: false, msg: '冠军 AI 未就绪（权重加载失败），请先把该座位换成简单/困难电脑' };
+  }
   humans.forEach((h, i) => { h.seat = i; });
   const cfg = {
     target: room.target,
@@ -826,7 +834,7 @@ function handleSetAIs(conn, ais) {
   if (!conn.isHost || room.phase !== 'lobby') return { ok: false, msg: '只有房主在大厅时可以设置' };
   const list = (Array.isArray(ais) ? ais : []).slice(0, 4).map((a) => ({
     name: String((a && a.name) || '电脑').trim().slice(0, 8) || '电脑',
-    level: a && a.level === 'hard' ? 'hard' : 'easy',
+    level: ['hard', 'champion'].includes(a && a.level) ? a.level : 'easy',
   }));
   if (connectedHumans(room).length + list.length > 4) return { ok: false, msg: '总共最多 4 名玩家' };
   room.ais = list;

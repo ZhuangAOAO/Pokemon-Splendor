@@ -139,7 +139,11 @@ function newGame(cfg) {
       id: i,
       name: pc.name || ('玩家' + (i + 1)),
       isAI: pc.type !== 'human',
-      aiLevel: pc.type === 'easy' ? 'easy' : (pc.type === 'hard' ? 'hard' : null),
+      aiLevel: pc.type === 'easy' ? 'easy'
+        : (pc.type === 'hard' ? 'hard'
+        : (pc.type === 'champion' ? 'champion' // RL 冠军策略：由服务器 ai-policy 钩子决策
+        : null)),
+      type: pc.type, // 座位角色原文（回放落库按 AI 难度筛局用，server.beginRecording 读它）
       balls: { red: 0, blue: 0, black: 0, pink: 0, yellow: 0, master: 0 },
       cards: [],
       reserved: [], // 预约的卡（上限 RULES.reserveLimit 张）

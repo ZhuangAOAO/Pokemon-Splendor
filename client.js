@@ -465,7 +465,9 @@ function boardEl(p, pi, isHero) {
   const discarding = S.phase === 'discard' && pi === S.current;
   const returning = S.mode === 'returnBalls' && pi === S.current && !p.isAI;
   if (discarding) b.classList.add('discarding');
-  const typeLabel = p.isAI ? (p.aiLevel === 'easy' ? '电脑·简单' : '电脑·困难') : ''; // 真人玩家不显示标签
+  const typeLabel = p.isAI
+    ? (p.aiLevel === 'easy' ? '电脑·简单' : (p.aiLevel === 'champion' ? '电脑·冠军' : '电脑·困难'))
+    : ''; // 真人玩家不显示标签
   const offline = ONLINE && !p.isAI && !isConnected(pi);
   const nameLabel = p.name + (offline ? '（离线）' : '') + (ONLINE && pi === mySeat ? '（你）' : '');
   const avatar = p.name.slice(-1); // 头像 = 名字尾字
@@ -1131,7 +1133,7 @@ function renderLobby() {
     <div class="lobby-row">
       <span class="lobby-dot on"></span>
       <span class="lobby-name">${a.name}</span>
-      <span class="lobby-tag">电脑·${a.level === 'easy' ? '简单' : '困难'}</span>
+      <span class="lobby-tag">电脑·${a.level === 'easy' ? '简单' : (a.level === 'champion' ? '冠军' : '困难')}</span>
     </div>`).join('');
 
   // 房主控制区
@@ -1157,6 +1159,8 @@ function renderAiRows() {
       <select class="ai-level">
         <option value="easy" ${a.level === 'easy' ? 'selected' : ''}>电脑·简单</option>
         <option value="hard" ${a.level === 'hard' ? 'selected' : ''}>电脑·困难</option>
+        <option value="champion" ${a.level === 'champion' ? 'selected' : ''} ${room.championReady ? '' : 'disabled'}
+          title="${room.championReady ? '' : '服务器未加载到冠军权重，暂时不可选'}">电脑·冠军（RL）</option>
       </select>
       <button class="btn ghost sm ai-del">×</button>`;
     const send = () => {

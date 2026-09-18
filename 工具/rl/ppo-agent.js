@@ -34,10 +34,11 @@
  *                    [--ent-coef 0.01] [--shape-w 0.01]
  *                    [--target-kl 0.02] [--grad-clip 0.5] [--no-adv-norm]
  *                    [--sample-seed 777] [--rollback-stop 5] [--eval-only 权重文件]
- *                    [--eval-seats str,def,rand,...] [--str-weights 权重文件]
+ *                    [--eval-seats str,def,rand,var1,...] [--str-weights 权重文件]
  *                    [--feat-opp2] [--feat-opp-rem] [--feat-opp-bonus-percolor]
  *                    [--train-seed 20260917] [--tag 名字] [--allow-overwrite]
  *                    [--snapshot-every 2000] [--pool-recent 0]
+ *                    [--pool-variants 0] [--pool-variant-noise 0.2] [--pool-bests]
  *                    [--rank-reward] [--debug-rewards]
  *      续跑时"训练局数"= 在检查点基础上追加的局数。
  * 产出：weights/ppo-agent-p{N}[-tag]-{累计局数}.json（最终权重）＋ -ckpt/-best ＋ data/ 下摘要与日志
@@ -67,6 +68,9 @@
  * 评估座位（AI 对打评估，--eval-seats / --str-weights）：
  *   --eval-seats <座位列表>   逗号分隔，每个座位指定一个 AI：str = 策略 AI、def = 困难
  *                             启发式 AI、rand = 随机合法动作 AI（走游戏种子 RNG，可复现）；
+ *                             varN = 基础 AI 变体（与 --pool-variants 同款逻辑：以
+ *                             --pool-variant-noise 概率走均匀随机合法动作，其余走 def；
+ *                             变体 RNG 按 局种子+座位+变体号×65536 派生 mulberry32，可复现）；
  *                             列表长度 ≤ --players，不足的座位自动补 def
  *                             （"str" + --players 2 → [str,def]），超长报错。
  *                             缺省 ['str','def',...] = 旧行为（贪心 vs 启发式）。
@@ -84,6 +88,21 @@
  *                          K > 0 = 每次入池后裁剪快照区只留最近 K 个（2 个固定对手不裁，
  *                          池上限 = 2+K）。K=0 时行为与旧版逐位一致。
  *   两个参数都写进 meta 与 summary（snapshotEvery / poolRecent）。
+ *
+ * 对手池扩展（--pool-variants / --pool-bests，2026-09-18 新增，缺省全关 = 旧行为）：
+ *   --pool-variants <N>   从基础 AI（困难启发式，走钩子 def 的同款逻辑）变异出 N 个变体对手
+ *                         var1..varN 加入对手池（固定成员，不随快照裁剪）。每个变体用自己的
+ *                         种子 RNG（mulberry32，按 局种子+座位+变体号×65536 派生，与游戏/采样
+ *                         RNG 分离）：以 --pool-variant-noise（缺省 0.2 = 20%）概率走均匀随机
+ *                         合法动作，其余走基础 AI 动作。变体逻辑定义在 policy-core.variantMove，
+ *                         训练对手池与 --eval-seats 的 var1..varN 座位共用同一份（口径一致）。
+ *   --pool-bests          对手池加装 weights/ 下 p{N} 历史最优档（-best.json，排除 *.eval-*），
+ *                         按 winRate 降序取前 2 档（Actor 尺寸/特征开关与本轮不符的跳过），
+ *                         作为固定成员（kind=best，不随快照裁剪）。加载清单（文件名 + winRate +
+ *                         sha256 前 16 位）写进 meta.poolBestsLoaded 与 summary。
+ *   四个字段都写进 meta（poolVariants/poolVariantNoise/poolBests/poolBestsLoaded）。
+ *   --resume 时池成员随检查点原样恢复；两个开关只在全新开练时决定初始池。
+ *   （变体/最优档是固定成员：快照区上限 12 与 --pool-recent 的裁剪只作用于 kind=net 快照。）
  *
  * 可调超参（CLI 覆盖，缺省 = 2026-09-16 教训值；含调度生效值，全量写进 meta 与 summary）：
  *   --alpha / --beta / --ent-coef / --shape-w   学习率 / 熵系数 / 塑形权重
@@ -237,6 +256,21 @@ if (!Number.isInteger(POOL_RECENT) || POOL_RECENT < 0) {
   console.error(`参数错误：--pool-recent 需为非负整数（收到 "${flagVal('--pool-recent', 0)}"）`);
   process.exit(1);
 }
+// 基础 AI 变体数：0 = 关（旧行为，池里只有 heuristic/random 两个固定对手）；N > 0 = 变异出
+// var1..varN 加入对手池（固定成员不裁剪）。变体逻辑见 policy-core.variantMove
+const POOL_VARIANTS = +flagVal('--pool-variants', 0);
+if (!Number.isInteger(POOL_VARIANTS) || POOL_VARIANTS < 0) {
+  console.error(`参数错误：--pool-variants 需为非负整数（收到 "${flagVal('--pool-variants', 0)}"）`);
+  process.exit(1);
+}
+// 变体随机化概率：每个动作以该概率走均匀随机合法动作，其余走基础 AI 动作（0~1）
+const POOL_VARIANT_NOISE = numFlag('--pool-variant-noise', 0.2);
+if (!(POOL_VARIANT_NOISE >= 0 && POOL_VARIANT_NOISE <= 1)) {
+  console.error(`参数错误：--pool-variant-noise 需为 0~1 的概率（收到 ${POOL_VARIANT_NOISE}）`);
+  process.exit(1);
+}
+// 对手池加载历史最优档（--pool-bests，缺省关 = 旧行为）：全新开练时从 weights/ 挑 p{N} 最优档入池
+const POOL_BESTS = hasFlag('--pool-bests');
 const MAX_TURNS = 800;
 // 每 N 局让出一次事件循环：否则整段训练是同步循环，SIGINT 要等训练全部结束才会触发
 const YIELD_EVERY = 100;
@@ -281,8 +315,8 @@ const EVAL_SEATS = (() => {
     process.exit(1);
   }
   for (const s of seats) {
-    if (!['str', 'def', 'rand'].includes(s)) {
-      console.error(`参数错误：--eval-seats 每个座位只能是 str/def/rand（收到 "${s}"）`);
+    if (!['str', 'def', 'rand'].includes(s) && !/^var[1-9]\d*$/.test(s)) {
+      console.error(`参数错误：--eval-seats 每个座位只能是 str/def/rand/var1..varN（收到 "${s}"）`);
       process.exit(1);
     }
   }
@@ -323,6 +357,10 @@ const META = {
   strWeights: STR_WEIGHTS || null,
   snapshotEvery: SNAPSHOT_EVERY,  // 对手池：每 n 局入一个 θ 快照
   poolRecent: POOL_RECENT,        // 对手池：快照区只留最近 K 个（0 = 旧行为，上限 12）
+  poolVariants: POOL_VARIANTS,    // 对手池：基础 AI 变体数 var1..varN（0 = 关，旧行为）
+  poolVariantNoise: POOL_VARIANT_NOISE, // 对手池：变体随机化概率（每动作走随机合法动作的概率）
+  poolBests: POOL_BESTS,          // 对手池：加载历史最优档（缺省关）
+  poolBestsLoaded: [],            // 对手池：加载的最优档清单（文件名+winRate+sha256 前 16 位；--pool-bests 时填充）
   // 可调超参全量记录（新字段；旧检查点没有这些 = 按当时硬编码值跑出来的）
   alpha: ALPHA, beta: BETA, entCoef: ENT_COEF, shapeW: SHAPE_W, rankReward: RANK_REWARD,
   targetKl: TARGET_KL, gradClip: GRAD_CLIP, lrDecay: LR_DECAY, advNorm: ADV_NORM,
@@ -353,15 +391,72 @@ const pool = [
   { name: 'heuristic', kind: 'def' },
   { name: 'random', kind: 'rand' },
 ];
+// 基础 AI 变体（--pool-variants N）：固定成员 var1..varN（全新开练时加入；续跑随检查点恢复）
+for (let k = 1; k <= POOL_VARIANTS; k++) pool.push({ name: 'var' + k, kind: 'var', varIdx: k });
 let snapshots = 0;
 const poolPick = (rng) => pool[Math.floor(rng() * pool.length)];
-function poolMove(p, def, member, rng) {
+function poolMove(p, def, member, seatIdx, seed, rng) {
   if (member.kind === 'def') return def(p);
   if (member.kind === 'rand') {
     const moves = enumerateMoves(p);
     return moves.length ? moves[Math.floor(rng() * moves.length)] : null;
   }
-  return greedyMove(member.actor, p);
+  // 变体：以 POOL_VARIANT_NOISE 概率走均匀随机合法动作，其余走基础 AI 动作（policy-core.variantMove）。
+  // 变体 RNG = mulberry32(局种子+座位+变体号×65536)：与游戏/采样 RNG 分离，同口径逐位可复现，
+  // 且变体行为只取决于局种子——池里还抽到谁、抽到几个，都不改变它的轨迹
+  if (member.kind === 'var') {
+    return P.variantMove(p, def, H.mulberry32(seed + seatIdx + member.varIdx * 65536), POOL_VARIANT_NOISE);
+  }
+  return greedyMove(member.actor, p); // 'net' 快照 / 'best' 历史最优档
+}
+
+/* ---------- --pool-bests：加载历史最优档入池（全新开练时调用；续跑池成员随检查点恢复） ---------- */
+function loadPoolBests() {
+  if (!POOL_BESTS) return;
+  const re = new RegExp(`^ppo-agent-p${N_PLAYERS}-.*-best\\.json$`);
+  const cands = [];
+  try {
+    fs.readdirSync(weightsDir).filter((f) => re.test(f) && !f.includes('.eval-')).forEach((f) => {
+      let d;
+      try {
+        d = JSON.parse(fs.readFileSync(path.join(weightsDir, f), 'utf8'));
+      } catch (e) {
+        log(`对手池最优档：跳过 ${f}（读取失败：${e.message}）`);
+        return;
+      }
+      // 口径防呆：Actor 尺寸 / 特征开关必须与本轮一致，不一致的网不能当对手（前向会读错特征）
+      if (!d.actor || d.actor.sizes.join(',') !== [N_FEAT, HIDDEN, 1].join(',')) {
+        log(`对手池最优档：跳过 ${f}（Actor 尺寸不符，需 ${N_FEAT}→${HIDDEN}→1）`);
+        return;
+      }
+      if (d.meta && d.meta.featFlags
+          && Object.keys(FEAT_FLAGS).some((k) => !!d.meta.featFlags[k] !== !!FEAT_FLAGS[k])) {
+        log(`对手池最优档：跳过 ${f}（特征开关与本轮不一致）`);
+        return;
+      }
+      if (typeof d.winRate !== 'number') {
+        log(`对手池最优档：跳过 ${f}（无 winRate）`);
+        return;
+      }
+      cands.push({ file: f, winRate: d.winRate, actor: N.deserialize(d.actor) });
+    });
+  } catch (e) {
+    log(`对手池最优档：扫描失败（${e.message}）`);
+  }
+  // winRate 降序取前 2 档（同分按文件名定序，保证多次运行结果确定）
+  cands.sort((a, b) => (b.winRate - a.winRate) || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+  const top = cands.slice(0, 2);
+  META.poolBestsLoaded = top.map((c) => ({
+    file: c.file,
+    winRate: c.winRate,
+    sha256: sha256Hex(path.join(weightsDir, c.file)).slice(0, 16),
+  }));
+  top.forEach((c) => pool.push({ name: c.file.replace(/\.json$/, ''), kind: 'best', actor: c.actor }));
+  if (top.length) {
+    log(`对手池最优档：加载 ${top.length} 档 → ${META.poolBestsLoaded.map((b) => `${b.file}（${(b.winRate * 100).toFixed(1)}%｜sha256 ${b.sha256}）`).join(' ｜ ')}`);
+  } else {
+    log('对手池最优档：没有找到可用档，池保持默认');
+  }
 }
 
 /* ==================== 收集一局 ==================== */
@@ -372,7 +467,7 @@ function collectEpisode(seed, actor, rng) {
   let chosen = null;
   H.HOOKS.chooseAIMove = (p, def) => {
     if (p.id === 0) return chosen;
-    return poolMove(p, def, members[p.id - 1], rng);
+    return poolMove(p, def, members[p.id - 1], p.id, seed, rng);
   };
   H.newGame({ target: TARGET, players: makePlayers(N_PLAYERS) });
   const traj = [];
@@ -522,6 +617,7 @@ function evalVs(seats, seatNets, seed0, nGames) {
   const seatEvo = new Array(n).fill(0);
   let finished = 0, leaks = 0, turnsSum = 0;
   const games = [];
+  let varRngs = null; // 变体座位 RNG：每局按 (局种子+座位+变体号×65536) 重建，与游戏 RNG 分离，逐位可复现
   H.HOOKS.chooseAIMove = (p, def) => {
     const r = seatNets[p.id];
     if (r.kind === 'str') return greedyMove(r.net, p);
@@ -529,11 +625,14 @@ function evalVs(seats, seatNets, seed0, nGames) {
       const moves = enumerateMoves(p);
       return moves.length ? moves[Math.floor(Math.random() * moves.length)] : null;
     }
+    if (r.kind === 'var') return P.variantMove(p, def, varRngs[p.id], r.noiseX);
     return def(p);
   };
   for (let i = 0; i < nGames; i++) {
     const seed = seed0 + i;
     H.seedRNG(seed);
+    varRngs = seatNets.map((r, sIdx) =>
+      (r.kind === 'var' ? H.mulberry32(seed + sIdx + r.varIdx * 65536) : null));
     H.newGame({ target: TARGET, players: makePlayers(N_PLAYERS) });
     let guard = 0;
     while (!S.over && guard < MAX_TURNS) { H.aiTurn(H.curPlayer()); guard++; }
@@ -589,9 +688,14 @@ function loadActorNet(file, what) {
 }
 // 权重文件 sha256 指纹（评估结果落档：换权重重评时靠它核对"评的到底是不是这份"）
 const sha256Hex = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-// 组装座位配置：座位 0 的 str = 被测策略，座位 ≥1 的 str = strNet（缺省传被测同网 = 自对弈）
+// 组装座位配置：座位 0 的 str = 被测策略，座位 ≥1 的 str = strNet（缺省传被测同网 = 自对弈）；
+// varN 座位 = 基础 AI 变体（噪声概率 POOL_VARIANT_NOISE，RNG 在 evalVs 里按局派生）
 const seatNetsOf = (primaryNet, strNet) =>
-  EVAL_SEATS.map((s, i) => ({ kind: s, net: s === 'str' ? (i === 0 ? primaryNet : strNet) : null }));
+  EVAL_SEATS.map((s, i) => {
+    if (s === 'str') return { kind: 'str', net: i === 0 ? primaryNet : strNet };
+    if (s.startsWith('var')) return { kind: 'var', varIdx: parseInt(s.slice(3), 10), noiseX: POOL_VARIANT_NOISE };
+    return { kind: s };
+  });
 
 /* ==================== 长跑基础设施：检查点 / 最优权重 / 日志 / 摘要 ==================== */
 const weightsDir = path.join(__dirname, 'weights');
@@ -800,10 +904,11 @@ if (EVAL_ONLY) {
       console.log(`注意：检查点评估曲线座位口径 [${lastCurve.seats.join(',')}]，本次 [${EVAL_SEATS.join(',')}] —— 曲线前后对比口径不同，报数时请注明。`);
     }
     if (Array.isArray(ckpt.pool) && ckpt.pool.length) {
-      pool.splice(0, pool.length, ...ckpt.pool.map((m) =>
-        (m.kind === 'net'
-          ? { name: m.name, kind: 'net', actor: N.deserialize(m.actor) }
-          : { name: m.name, kind: m.kind })));
+      pool.splice(0, pool.length, ...ckpt.pool.map((m) => {
+        if (m.kind === 'net' || m.kind === 'best') return { name: m.name, kind: m.kind, actor: N.deserialize(m.actor) };
+        if (m.kind === 'var') return { name: m.name, kind: 'var', varIdx: m.varIdx || parseInt(String(m.name).replace(/\D/g, ''), 10) || 1 };
+        return { name: m.name, kind: m.kind };
+      }));
     }
     // 续跑恢复快照编号：取现有快照名里最大编号（--pool-recent 裁剪后数量 ≠ 已用编号，按数量算会重号）
     snapshots = pool.reduce((mx, m) => (m.kind === 'net' ? Math.max(mx, parseInt(String(m.name).replace(/\D/g, ''), 10) || 0) : mx), 0);
@@ -814,6 +919,8 @@ if (EVAL_ONLY) {
     // 初始化也走种子 RNG（两个网络种子分开，防止首层参数完全相同）
     actor = N.makeMLP([N_FEAT, HIDDEN, 1], H.mulberry32(SAMPLE_SEED));
     critic = N.makeMLP([N_STATE, HIDDEN, 1], H.mulberry32(SAMPLE_SEED + 1));
+    // 全新开练：--pool-bests 的历史最优档在此入池（--pool-variants 的 var1..varN 已在 pool 初始化时加入）
+    loadPoolBests();
   }
   // 对打方权重（座位 ≥1 的 str）：缺省 = 当前模型（自对弈，评估时即时用最新 actor）
   let strNet = null, strWeightsPath = null;
@@ -866,7 +973,10 @@ if (EVAL_ONLY) {
   else schedDesc = `恒定（α ${ALPHA_FRONT} ｜ β ${BETA_FRONT}，--no-lr-decay）`;
   log(`种子：训练 [${TRAIN_LO}, ${TRAIN_HI}) ｜ 评估 [${EVAL_LO}, ${EVAL_HI})（EVAL_SEED 硬编码） ｜ 无重叠`);
   log(`调度：${schedDesc} ｜ 超参：α ${ALPHA} / β ${BETA} / ent ${ENT_COEF} / shapeW ${SHAPE_W} / targetKL ${TARGET_KL} / gradClip ${GRAD_CLIP} / advNorm ${ADV_NORM ? '开' : '关'} / rankReward ${RANK_REWARD ? '开' : '关'} / sampleSeed ${SAMPLE_SEED} / rollbackStop ${ROLLBACK_STOP}`);
-  log(`启动：${RESUME ? `恢复自 ${path.basename(resumeFile)}（守恒违规 ${lastLeak} ｜ 卡死 ${lastStall} ｜ 池 ${pool.length}）` : '全新开始'}；检查点每 ${CKPT_EVERY} 局 → ${path.basename(ckptFile)}；快照每 ${SNAPSHOT_EVERY} 局（池上限 ${POOL_RECENT > 0 ? 2 + POOL_RECENT : 14}）；最优 → ${path.basename(bestFile)}；日志 → ${path.basename(logFile)}${evalCurve.length ? `；历史评估 ${evalCurve.length} 次，最新 ${(evalCurve[evalCurve.length - 1].rate * 100).toFixed(1)}%@${evalCurve[evalCurve.length - 1].ep} 局` : ''}${best ? `；历史最优 ${(best.rate * 100).toFixed(1)}%@${best.ep} 局` : ''}${newFeats.length || HIDDEN !== 32 ? `；口径 hidden ${HIDDEN} / nFeat ${N_FEAT}` : ''}`);
+  log(`启动：${RESUME ? `恢复自 ${path.basename(resumeFile)}（守恒违规 ${lastLeak} ｜ 卡死 ${lastStall} ｜ 池 ${pool.length}）` : '全新开始'}；检查点每 ${CKPT_EVERY} 局 → ${path.basename(ckptFile)}；快照每 ${SNAPSHOT_EVERY} 局（快照区上限 ${POOL_RECENT > 0 ? POOL_RECENT : 12}）；最优 → ${path.basename(bestFile)}；日志 → ${path.basename(logFile)}${evalCurve.length ? `；历史评估 ${evalCurve.length} 次，最新 ${(evalCurve[evalCurve.length - 1].rate * 100).toFixed(1)}%@${evalCurve[evalCurve.length - 1].ep} 局` : ''}${best ? `；历史最优 ${(best.rate * 100).toFixed(1)}%@${best.ep} 局` : ''}${newFeats.length || HIDDEN !== 32 ? `；口径 hidden ${HIDDEN} / nFeat ${N_FEAT}` : ''}`);
+  if (POOL_VARIANTS > 0) {
+    log(`对手池变体：基础 AI ×${POOL_VARIANTS}（var1..var${POOL_VARIANTS}，每动作 ${Math.round(POOL_VARIANT_NOISE * 100)}% 概率走随机合法动作，RNG 按 局种子+座位+变体号×65536 派生）`);
+  }
   log(`评估座位：[${EVAL_SEATS.join(',')}]（座位0=被测策略${STR_WEIGHTS ? `；座位≥1 str=${path.basename(strWeightsPath)}` : '；其余 str 与被测同网'}）${EVAL_SEATS[0] !== 'str' ? ' ⚠️ 座位0非str：评估不测学习者，最优判定跳过' : ''}`);
 
   /* ---------- 落盘工具（检查点 / 最优权重 / 摘要） ---------- */
@@ -879,9 +989,11 @@ if (EVAL_ONLY) {
       meta: META,
       actor: packNet(actor),
       critic: packNet(critic),
-      pool: pool.map((m) => (m.kind === 'net'
-        ? { name: m.name, kind: m.kind, actor: N.serialize(m.actor) }
-        : { name: m.name, kind: m.kind })),
+      pool: pool.map((m) => {
+        if (m.kind === 'net' || m.kind === 'best') return { name: m.name, kind: m.kind, actor: N.serialize(m.actor) };
+        if (m.kind === 'var') return { name: m.name, kind: 'var', varIdx: m.varIdx };
+        return { name: m.name, kind: m.kind };
+      }),
       snapshots,
       evalCurve,
       counters: { leaks: lastLeak, stalls: lastStall, klStops },
@@ -940,6 +1052,8 @@ if (EVAL_ONLY) {
       alphaEnd: ALPHA_END, betaEnd: BETA_END, lrDecayTo: LR_DECAY_TO,
       hidden: HIDDEN, nFeat: N_FEAT, nState: N_STATE, featNames: FEAT_NAMES,
       snapshots, snapshotEvery: SNAPSHOT_EVERY, poolRecent: POOL_RECENT,
+      poolVariants: POOL_VARIANTS, poolVariantNoise: POOL_VARIANT_NOISE,
+      poolBests: POOL_BESTS, poolBestsLoaded: META.poolBestsLoaded,
       createdAt: runStartedAt,
       updatedAt: new Date().toISOString(),
     }, null, 2));
@@ -984,10 +1098,12 @@ if (EVAL_ONLY) {
       klStops += ppoUpdate(actor, critic, batch, ALPHA_FRONT * k, BETA_FRONT * k);
       batch = []; batchEps = 0;
     }
-    // 池上限：POOL_RECENT > 0 时由 K 决定（2+K），否则沿用旧上限 14（2 固定 + 12 快照）
-    if ((ep + 1) % SNAPSHOT_EVERY === 0 && (POOL_RECENT > 0 || pool.length < 14)) {
+    // 快照区上限：POOL_RECENT > 0 时由 K 决定，否则沿用旧上限 12（= 池上限 14 − 2 固定对手）。
+    // 上限与裁剪只作用于 kind=net 快照——var1..varN 变体与 --pool-bests 最优档都是固定成员不裁；
+    // 不传新开关时池里只有 2 固定 + 快照，行为与旧版逐位一致
+    if ((ep + 1) % SNAPSHOT_EVERY === 0 && (POOL_RECENT > 0 || pool.filter((m) => m.kind === 'net').length < 12)) {
       pool.push({ name: 'snap' + (++snapshots), kind: 'net', actor: N.deserialize(N.serialize(actor)) });
-      // --pool-recent K>0：入池后裁剪快照区只留最近 K 个（heuristic/random 两个固定对手不裁）
+      // --pool-recent K>0：入池后裁剪快照区只留最近 K 个（固定对手不裁）
       if (POOL_RECENT > 0) {
         const nets = pool.filter((m) => m.kind === 'net');
         if (nets.length > POOL_RECENT) {
