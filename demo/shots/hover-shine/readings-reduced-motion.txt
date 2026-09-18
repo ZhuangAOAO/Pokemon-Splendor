@@ -1,0 +1,17 @@
+== 环境 ==
+innerWidth×innerHeight = 876×1508；dpr=1
+prefers-reduced-motion:reduce matches = true
+生产 CSS = ../style.css?t=1789746063654（58232 字符）；强制 hover 副本 = /:hover/g → .force-hover
+按钮实测宽 w = 146.0px
+
+== E prefers-reduced-motion 分支（本页只跑这一段）==
+真实环境：matchMedia 命中 → 下面读数是**真的**在 reduced-motion 下取到的
+
+[E] 强制 hover 的扫光 伪元素=存在 content="" transform=matrix(1, 0, 0, 1, -160.6, 0) tx=-160.60px w=146.0px opacity=1 bg-pos=0% 0% anim=none/0s fill=none | 动画对象: (无动画对象)
+[E] → 不可见（带子整体移出按钮框：|tx|=160.60px >= w=146.0px，被 .btn.pk-anim-hover 的 overflow:hidden 裁掉）
+[E] 判定：animation-name=none（应 none，= 不播）；静止态 transform=matrix(1, 0, 0, 1, -160.6, 0)（应为 -110%，= 不可见）
+[E] 旧态复现下的同一读数 伪元素=存在 content="" transform=none tx=n/a w=146.0px opacity=1 bg-pos=0% 0% anim=none/0s fill=none | 动画对象: (无动画对象)
+[E] → ★ 可见（带子落在按钮框内）   ← 修复前 reduced-motion 用户 hover 时看到的就是这条静止白带
+[E] 切屏替身 anim=none / 徽章替身 anim=none / 加载小球 anim=none（都应为 none）
+[E] 动画对象：切屏=(无动画对象)；徽章=(无动画对象)；小球=(无动画对象)
+== EOF ==

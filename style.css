@@ -125,7 +125,9 @@ h3{ font-size:14px; }
 .setup-actions .btn{ white-space:nowrap; } /* 按钮文字永不竖排，放不下就整按钮换行 */
 .setup-actions + .setup-actions{ margin-top:12px; } /* 多行按钮组：第二行间距收紧 */
 .footnote{ text-align:center; color:var(--ink-faint); font-size:12px; margin-top:16px; }
-.deco{ position:absolute; opacity:.14; pointer-events:none; animation:floaty 6s ease-in-out infinite; }
+/* 装饰球层：z-index:0 —— **压在卡面下面**（卡面/外壳是 z-index:1，见下）。
+   这样球就算落在文字/输入框上也不会遮内容，因而不需要把球从文字区挪走（见 client.js 的 decorForbidden）。 */
+.deco{ position:absolute; z-index:0; opacity:.14; pointer-events:none; animation:floaty 6s ease-in-out infinite; }
 @keyframes floaty{
   0%,100%{ transform:translateY(0) rotate(0deg); }
   50%{ transform:translateY(-22px) rotate(14deg); }
@@ -175,7 +177,7 @@ h3{ font-size:14px; }
 .lb-table td{ padding:8px 12px; border-bottom:1px solid #eef2f7; white-space:nowrap; }
 .lb-table .lb-name{ font-weight:900; }
 .lb-empty{ color:#93a2b3; text-align:center; padding:20px; font-size:14px; }
-/* 排行榜：人数多到一屏装不下时在弹窗内部滚动（人少时不会出现滚动条，外观维持原样）；表头吸顶 */
+/* 训练家排行：人数多到一屏装不下时在弹窗内部滚动（人少时不会出现滚动条，外观维持原样）；表头吸顶 */
 #lb-body{ max-height:64vh; overflow-y:auto; }
 .lb-table thead th{ position:sticky; top:0; z-index:1; }
 .join-as{ text-align:center; margin-bottom:12px; }
@@ -278,13 +280,58 @@ h3{ font-size:14px; }
   transition:transform .16s, box-shadow .16s;
 }
 .card.new{ animation:cardIn .9s cubic-bezier(.25,.7,.35,1); } /* 只有新补的卡播放入场动画 */
-.card.leaving{ animation:cardOut .26s cubic-bezier(.55,.1,.75,.45) forwards; transform-origin:50% 100%; } /* 被拿走的卡：掀角离场（幽灵元素，播完由 JS 移除） */
+.card.leaving{ animation:cardOut .26s cubic-bezier(.55,.1,.75,.45) forwards; transform-origin:50% 100%; } /* 被拿走的卡：单段整体后仰（现在只作卡面图未加载时的回退）*/
+/* ---- 拿卡离场动画（visual 口径 = demo ⑥「拿起·翘右上·微变形，520ms」）----
+   第一段(~40%) 只有角动：绕对角支点 3D 翘起 + 卡面 9 段逐条微弯（轻微变形）+ 接触阴影拉开
+   第二段(~60%) 角领着整张牌沿掀角方向被带走（缓出）
+   纯视觉层：幽灵 DOM，不参与任何状态；减弱动态效果下 JS 直接跳过（这里再兜底） */
+.card-lift{
+  perspective:900px; animation:liftCarry 520ms linear forwards;
+  /* 强度系数（默认 1 = 定稿 ⑥ 的「微变形」）。
+     游戏内卡片尺寸比 demo 小、同一角度的感知会弱一截，按比例补偿时把这两个数改大即可：
+     建议档位 角度 ×1.3 / 位移 ×1.2（仍是微变形，不会变成夸张感）*/
+  --lift-tilt-k:1; --lift-dx-k:1;
+}
+.card-lift .sh{
+  position:absolute; left:5%; right:5%; bottom:-7%; height:14%; border-radius:50%;
+  background:radial-gradient(ellipse at 50% 50%, rgba(9,14,20,.5), rgba(9,14,20,0) 72%);
+  filter:blur(3px); animation:liftSh 520ms linear forwards;
+}
+.card-lift .lift3d{
+  position:absolute; inset:0; transform-style:preserve-3d; transform-origin:0% 100%;
+  animation:liftTilt 520ms linear forwards;
+}
+.card-lift .seg{
+  position:absolute; left:0; width:100%; background-repeat:no-repeat;
+  transform-origin:50% 100%; transform-style:preserve-3d; backface-visibility:visible;
+  animation:liftSeg 520ms linear forwards; animation-delay:calc(var(--i) * 10ms);
+}
+@keyframes liftCarry{           /* 第二段：被带走（缓出） */
+  0%,40%{ transform:translate(0,0) rotate(0deg); opacity:1; animation-timing-function:cubic-bezier(.16,.84,.3,1); }
+  100%  { transform:translate(calc(74px * var(--lift-dx-k)), calc(-74px * var(--lift-dx-k))) rotate(6deg) scale(.86); opacity:0; }
+}
+@keyframes liftTilt{            /* 第一段：绕对角支点翘起（缓入）；第二段再抬一点 */
+  0%  { transform:translateZ(0) rotate3d(216,140,0,0deg); animation-timing-function:cubic-bezier(.55,0,.85,.4); }
+  40% { transform:translateZ(calc(12px * var(--lift-tilt-k))) rotate3d(216,140,0,calc(26deg * var(--lift-tilt-k))); animation-timing-function:cubic-bezier(.16,.84,.3,1); }
+  100%{ transform:translateZ(calc(22px * var(--lift-tilt-k))) rotate3d(216,140,0,calc(32deg * var(--lift-tilt-k))); }
+}
+@keyframes liftSeg{             /* 每段逐次倾斜 → 卡面轻微弯曲（弧） */
+  0%  { transform:rotateX(0deg); animation-timing-function:cubic-bezier(.55,0,.85,.4); }
+  40% { transform:rotateX(calc(-2.4deg * var(--lift-tilt-k))); animation-timing-function:cubic-bezier(.16,.84,.3,1); }
+  100%{ transform:rotateX(calc(-1.6deg * var(--lift-tilt-k))); }
+}
+@keyframes liftSh{              /* 接触阴影：越翘越淡、越散 */
+  0%  { opacity:.75; transform:translate(0,0) scale(1); }
+  40% { opacity:.32; transform:translate(6px,5px) scale(1.45); }
+  100%{ opacity:0;   transform:translate(9px,7px) scale(1.6); }
+}
 /* 系统"减弱动态效果"：入场/离场动画降级为直接出现。
    index.html 会在 <html> 上打 reduced-motion 类（JS 侧还会跳过离场克隆），这里用媒体查询再兜底 */
 .reduced-motion .card.new,
-.reduced-motion .card.leaving{ animation:none; }
+.reduced-motion .card.leaving,
+.reduced-motion .card-lift{ animation:none; }
 @media (prefers-reduced-motion: reduce){
-  .card.new, .card.leaving{ animation:none; }
+  .card.new, .card.leaving, .card-lift{ animation:none; }
 }
 .card-img{
   position:absolute; inset:0; width:100%; height:100%;
@@ -725,4 +772,365 @@ h3{ font-size:14px; }
   .player-row{ flex-wrap:wrap; }
   .row-name{ min-width:140px; }
   .target-row label{ padding:5px 10px; }
+}
+
+/* ==================== 大厅四区（v3.2.3：房间身份 / 座位 / 房主设置 / 次级入口） ==================== */
+.lobby-zone{ margin:10px 0 14px; }
+.lobby-roomid{ font-size:15px; }
+.lobby-vis{ font-size:13px; color:#5b6b7c; margin-top:2px; }
+.lobby-target-ro{ font-size:14px; color:#5b6b7c; margin:6px 0 2px; }
+.lobby-seat{
+  display:flex; align-items:center; gap:8px; padding:9px 11px; margin-bottom:7px;
+  border:1px solid var(--line); border-radius:12px; background:#fff;
+}
+.lobby-seat.self{ border-color:var(--blue); box-shadow:0 0 0 2px rgba(47,86,206,.16); }
+.lobby-seat.empty{ border-style:dashed; background:#fafbfd; color:#8b97a4; }
+.lobby-seat .seat-no{
+  width:22px; height:22px; border-radius:50%; background:var(--line); color:#3b4754;
+  font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:0 0 auto;
+}
+.lobby-seat .seat-empty{ font-size:13px; }
+.lobby-seat .seat-ai-name{ width:92px; padding:4px 6px; border-radius:8px; border:1px solid var(--line); font:inherit; font-size:13px; }
+.lobby-seat .seat-ai-level{ padding:4px 6px; border-radius:8px; border:1px solid var(--line); font:inherit; font-size:13px; }
+.lobby-seat .lobby-tag.champ{ background:#fdf3d8; border:1px solid #e8c86a; color:#8a6b12; }
+.lobby-links{ display:flex; gap:8px; flex-wrap:wrap; margin:12px 0 4px; opacity:.9; }
+.lobby-actions{ position:sticky; bottom:0; background:linear-gradient(rgba(255,255,255,0), #fff 45%); padding-top:10px; }
+/* ---- 座位行排版修正（v3.2.3a）：修「移除」被挤成竖排 + 房主可改标签 ---- */
+.lobby-seat{ flex-wrap:wrap; row-gap:6px; }
+.lobby-seat .btn{ flex:0 0 auto; white-space:nowrap; }
+.lobby-seat .seat-ai-name{ flex:1 1 84px; min-width:64px; width:auto; }
+.lobby-seat .seat-ai-level{ flex:1 1 96px; min-width:88px; }
+.lobby-seat .lobby-tag{ white-space:nowrap; }
+.lobby-seat .seat-ai-del{ min-width:28px; padding:2px 8px; line-height:1; }
+.lobby-chip{
+  font-size:11px; padding:1px 7px; border-radius:999px; margin-left:6px;
+  background:#eef3ff; border:1px solid #c9d8f7; color:#2f56ce;
+}
+/* ==================== 联机大厅：方案 A 外壳（v3.2.3b） ====================
+   布局：标题独立一条（不被竖栏压）→ 下面 [左竖栏 | 内容区]
+   断点：≥1280px 用顶部导航（隐藏左竖栏）；<1280px 用左竖栏（隐藏顶部导航）；<640px 竖栏转横向滑动条 */
+#screen-lobby{ position:fixed; inset:0; }
+.lobby-shell{ position:absolute; inset:0; display:flex; flex-direction:column; }
+/* 球层压到卡片下层：整个大厅外壳（含左竖栏 + 卡片）抬到 .deco 之上 */
+#screen-lobby .shell{ z-index:1; }
+#screen-lobby .sec{ position:relative; z-index:1; }
+.logo-strip{
+  position:relative; z-index:2; display:flex; align-items:center; gap:12px;
+  padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel-bg);
+}
+.logo-strip .logo-ball{ flex:0 0 auto; }
+.logo-text{ flex:0 1 auto; min-width:0; }
+.logo-strip h1{ margin:0; font-size:clamp(20px,2vw,28px); white-space:nowrap; }
+.logo-strip .sub{ margin:2px 0 0; color:var(--ink-soft); font-size:11px; letter-spacing:1px; }
+.nav-wide{ display:flex; gap:8px; margin-left:auto; flex-wrap:wrap; justify-content:flex-end; }
+.lobby-body{ position:relative; z-index:1; flex:1; display:flex; min-height:0; }
+.rail{
+  flex:none; width:clamp(150px,15vw,210px); padding:12px 10px;
+  border-right:1px solid var(--line); background:var(--panel-bg);
+  display:flex; flex-direction:column;
+}
+.rail .nav{ display:flex; flex-direction:column; gap:8px; }
+.rail .nav-btn{ display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:10px 12px; font-size:14px; }
+.nav-btn{ display:flex; align-items:center; gap:8px; }
+.nav-btn.on{ border-color:var(--red-deep); box-shadow:0 0 0 2px rgba(227,53,13,.15); }
+.rail .foot{ margin-top:auto; color:var(--ink-soft); font-size:11px; }
+.stage{ flex:1; display:flex; flex-direction:column; min-width:0; }
+.stage .topbar{ display:flex; align-items:center; gap:10px; padding:10px 16px 6px; flex-wrap:wrap; }
+.stage .topbar h2{ margin:0; font-size:17px; }
+.stage .utils{ margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
+.stage .content{ flex:1; overflow:auto; display:flex; justify-content:center; align-items:flex-start; padding:6px 16px 24px; }
+.stage .content .sec{ width:min(640px,100%); }
+@media (max-width:1279px){ .nav-wide{ display:none; } }
+@media (min-width:1280px){ .lobby-body > .rail{ display:none; } }
+@media (max-width:640px){
+  .lobby-body{ flex-direction:column; }
+  .rail{ width:auto; flex-direction:row; overflow-x:auto; border-right:0; border-bottom:1px solid var(--line); }
+  .rail .nav{ flex-direction:row; }
+  .rail .foot{ display:none; }
+}
+/* ==================== ④ 名人堂（v3.2.4：殿堂/赛季 × 人数分栏 × 卡片/紧凑两版式） ==================== */
+.hall-bar{ display:flex; flex-wrap:wrap; gap:10px; margin:8px 0 12px; }
+.hall-bar .chips{ display:flex; gap:6px; }
+.hall-cards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:10px; }
+.hall-card{
+  border:1px solid var(--line); border-radius:14px; background:#fff; padding:12px;
+  display:flex; flex-direction:column; gap:6px;
+  transition:transform .22s cubic-bezier(.4,0,.2,1), box-shadow .22s cubic-bezier(.4,0,.2,1);
+}
+.hall-card:hover{ transform:translateY(-2px); box-shadow:0 6px 16px rgba(20,30,60,.10); }
+.hall-card-top{ display:flex; align-items:center; justify-content:space-between; }
+.hall-rank{
+  width:26px; height:26px; border-radius:50%; background:linear-gradient(135deg,var(--gold),#e8b923);
+  color:#5a4300; font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center;
+}
+.hall-who{ font-weight:700; font-size:15px; }
+.hall-meta{ font-size:12px; color:var(--ink-soft); }
+.hall-meta.dim, .hall-tag.dim{ opacity:.72; }
+.hall-rows{ display:flex; flex-direction:column; gap:6px; }
+.hall-row{ display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+.hall-row .hall-who{ flex:1 1 auto; min-width:0; font-size:14px; }
+.hall-date{ font-size:12px; color:var(--ink-soft); white-space:nowrap; }
+.hall-empty{
+  border:1px dashed var(--line-strong); border-radius:14px; padding:26px 18px; text-align:center;
+  display:flex; flex-direction:column; gap:6px; align-items:center; color:var(--ink-soft); background:#fafbfd;
+}
+.hall-empty b{ color:var(--ink); font-size:15px; }
+.hall-empty span{ font-size:13px; max-width:34ch; line-height:1.6; }
+.hall-empty-ico{ font-size:30px; }
+
+/* ==================== ⑤ 手机竖屏提示（v3.2.4） ==================== */
+.rotate-mask{
+  position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center;
+  background:rgba(12,18,28,.72); padding:20px;
+}
+.rotate-mask[hidden]{ display:none; }   /* hidden 必须压过 display:flex */
+.rotate-card{
+  background:var(--panel-bg); border-radius:18px; padding:22px 20px; text-align:center;
+  display:flex; flex-direction:column; gap:10px; align-items:center; max-width:320px;
+  animation:secIn .28s cubic-bezier(.4,0,.2,1);
+}
+.rotate-ico{ font-size:34px; }
+.rotate-card h3{ margin:0; font-size:17px; }
+/* ---- ② 大厅横屏提示（不阻断，可忽略；v3.2.4a） ---- */
+.landscape-tip{
+  display:flex; align-items:center; gap:8px; margin:8px 16px 0; padding:8px 12px;
+  border:1px solid #e8d9a8; border-radius:10px; background:#fffaee; color:#7a5b12; font-size:13px;
+  animation:secIn .24s cubic-bezier(.4,0,.2,1);
+}
+.landscape-tip[hidden]{ display:none; }
+.landscape-tip .lt-ico{ font-size:15px; }
+.landscape-tip .btn{ margin-left:auto; }
+/* ==================== 外壳统一（v3.3.0a）：房间页标题跟登录页一致 + 加入卡/房间卡 ==================== */
+.logo-strip h1{ font-size:clamp(26px,3vw,42px); letter-spacing:2px; margin:0; }
+.logo-strip .logo-ball{ width:64px; height:64px; border-width:4px; }
+.logo-strip .logo-ball::after{ width:22px; height:22px; border-width:5px; }
+.logo-strip .logo-text .sub{ margin-top:4px; }
+#join-card{ display:block; }
+#join-card[hidden], #room-card[hidden]{ display:none; }
+#join-card .join-name{ margin-bottom:8px; }
+/* 房间页标题 = 登录页同款（红金渐变 + 粗体），外套一条时也保持 */
+.logo-strip h1{
+  font-size:clamp(26px,3vw,42px); letter-spacing:2px; margin:0; font-weight:900;
+  background:linear-gradient(92deg,#e3350d 10%,#ff8a00 55%,#ffcb05 95%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.logo-strip h1 .accent{ color:transparent; }
+/* ==================== 布局对照开关（?nav=rail）====================
+   默认：≥1280px 顶部导航（秉心转述濠哥偏好「宽屏顶部、窄屏左栏」）
+   ?nav=rail：任何宽度都用左侧竖栏 —— 与 demo/lobby-plan-a.html 方案 A 一致 */
+.nav-rail-always .nav-wide{ display:none !important; }
+.nav-rail-always .lobby-body > .rail{ display:flex !important; }
+.nav-rail-always .logo-strip .logo-text{ display:none; }   /* 方案 A 里标题在竖栏内，此处避免两份标题 */
+/* ==================== 对齐 demo/lobby-plan-a.html（v3.3.1）
+   原则：结构与数值照搬该文件；生产只做「id/绑定/权限」层面的必要差异（见 差异清单）。
+   ==================================================================== */
+#screen-lobby .shell{ position:fixed; inset:0; overflow:hidden; display:flex; }
+#screen-lobby .rail{
+  position:relative; z-index:1; flex:none; width:clamp(150px,15vw,210px);
+  background:var(--panel-bg); border-right:1px solid var(--line); box-shadow:var(--shadow);
+  display:flex; flex-direction:column; gap:10px; padding:14px 12px; overflow-y:auto;
+}
+#screen-lobby .rail .logo{ text-align:center; }
+#screen-lobby .rail .logo h1{ font-size:clamp(13px,1.5vw,20px); white-space:nowrap; letter-spacing:.5px; margin-bottom:2px; }
+#screen-lobby .rail .logo .logo-ball{ margin-bottom:8px; }
+#screen-lobby .rail .sub{ text-align:center; color:var(--ink-soft); font-size:11px; letter-spacing:1px; }
+#screen-lobby .nav{ display:flex; flex-direction:column; gap:8px; }
+#screen-lobby .nav-btn{
+  display:flex; align-items:center; gap:10px; justify-content:flex-start; width:100%; text-align:left;
+  padding:10px 12px; font-size:14px; position:relative; overflow:hidden;
+}
+/* 只有非主按钮才铺「底色+描边」：主按钮必须保留 .btn.primary 的红渐变
+   （否则这条 id 选择器会把 .btn.primary 压掉 → 白字落在浅底上＝空白框） */
+#screen-lobby .nav-btn:not(.primary){ background:var(--field); border:2px solid var(--line-strong); }
+#screen-lobby .nav-btn.primary{ border-color:var(--red-deep); }
+/* 窄屏（左竖栏档 <1280px）导航按钮**一行放得下**：「开始对局」不许换行。
+   844×390 实测：竖栏 clamp 到下限 150px，减掉 primary 的 36px 精灵球缩进与右内边距后
+   剩不下 4 个汉字 → 换成两行。这里 nowrap + 该档字号/精灵球尺寸微调（竖栏宽度不变）。 */
+#screen-lobby .nav-btn{ white-space:nowrap; }
+@media (max-width:1279px){
+  #screen-lobby .nav-btn{ font-size:13px; padding:10px 10px; gap:8px; }
+  #lobby-nav .nav-btn.primary{ padding-left:30px; }
+  #lobby-nav .nav-btn.primary::before{ left:9px; width:14px; height:14px; }
+}
+#screen-lobby .nav-btn::before{
+  content:''; position:absolute; left:0; top:50%; width:4px; height:16px; border-radius:999px;
+  background:var(--gold); transform:translateY(-50%) scaleY(0);
+  transition:transform .24s cubic-bezier(.4,0,.2,1);
+}
+#screen-lobby .nav-btn.on::before{ transform:translateY(-50%) scaleY(1); }
+/* 选中态：非主按钮红字红边；主按钮金边 + 面板色字（对齐 demo） */
+#screen-lobby .nav-btn:not(.primary).on{ color:var(--red); border-color:var(--red); }
+#screen-lobby .nav-btn.primary.on{ color:var(--panel-bg); border-color:var(--gold); }
+/* 新手教程按钮（tutorial.js 注入）：大厅里隐藏，只留工具条「教程」 */
+#screen-lobby .tut-btn{ display:none; }
+#screen-lobby .rail .foot{ margin-top:auto; font-size:11px; color:var(--ink-faint); text-align:center; }
+#screen-lobby .stage{
+  position:relative; z-index:1; flex:1; min-width:0;
+  display:flex; flex-direction:column; overflow-y:auto; padding:16px 20px; gap:12px;
+}
+#screen-lobby .topbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:0; }
+#screen-lobby .topbar h2{ margin:0; font-size:18px; }
+#screen-lobby .utils{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+#screen-lobby .utils .btn{ white-space:nowrap; }
+#screen-lobby .content{ flex:1; display:flex; justify-content:center; align-items:flex-start; padding:0; }
+#screen-lobby .sec{ width:min(640px,100%); margin-top:0; }
+#screen-lobby .chips{ display:flex; gap:8px; }
+#screen-lobby .chip{
+  border:2px solid var(--line); border-radius:999px; padding:7px 18px;
+  background:var(--field); color:var(--ink-soft); font-weight:800; font-size:13px; cursor:pointer;
+}
+#screen-lobby .chip.on{ color:var(--red); border-color:var(--red); background:rgba(227,53,13,.07); }
+#screen-lobby .sec-desc{ color:var(--ink-soft); font-size:13px; margin:8px 0 14px; line-height:1.6; }
+.pop{
+  position:fixed; top:56px; right:20px; z-index:20; width:280px;
+  background:var(--panel-bg); border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:var(--shadow-lg); padding:16px;
+  opacity:0; transform:translateY(-6px) scale(.97); transform-origin:top right;
+  transition:opacity .22s cubic-bezier(.4,0,.2,1), transform .22s cubic-bezier(.4,0,.2,1);
+}
+.pop.open{ opacity:1; transform:none; }
+.pop[hidden]{ display:none; }
+.pop h3{ font-size:14px; margin-bottom:10px; }
+.pop-note{ font-size:12px; color:var(--ink-soft); margin:10px 0; line-height:1.6; }
+@media (max-height:480px){
+  #screen-lobby .stage{ padding:10px 14px; gap:8px; }
+  #screen-lobby .rail{ padding:10px 8px; }
+  /* 矮屏（如 844×390）把卡片纵向收紧，让两颗按钮回到首屏 —— 数值照搬 demo */
+  #screen-lobby .setup-panel{ padding:16px 18px; }
+  #screen-lobby .setup-panel h2{ font-size:16px; margin-bottom:8px; }
+  #screen-lobby .join-name{ padding:8px 10px; font-size:14px; }
+  #screen-lobby .target-row{ margin:8px 0; gap:8px; }
+  #screen-lobby .setup-actions{ margin-top:12px; gap:8px; }
+  #screen-lobby .footnote{ margin-top:8px; font-size:11px; }
+  #screen-lobby .sec-desc{ margin:4px 0 8px; }
+}
+/* 矮屏二次收紧（2026-09-18 宝可梦元素落地）：B 的属性色条在「房间类型」那一行多占了一行，
+   这里把纵向空间补回来，保证 844×390 两颗按钮仍回到首屏（bottom ≤ 390）。
+   关掉：删掉本块（只是紧凑度差异，不影响功能与文案）。 */
+@media (max-height:480px){
+  #screen-lobby .stage{ padding:8px 12px; gap:6px; }
+  #screen-lobby .setup-panel{ padding:12px 16px; }
+  #screen-lobby .setup-panel h2{ margin-bottom:6px; }
+  #screen-lobby .join-name{ padding:7px 10px; margin-bottom:6px; }
+  #screen-lobby .target-row{ margin:5px 0; gap:6px; }
+  #screen-lobby .target-row label{ padding:5px 10px; font-size:13px; }
+  #screen-lobby .setup-actions{ margin-top:8px; gap:8px; }
+  #screen-lobby .footnote{ margin-top:6px; }
+}
+@media (max-width:900px){
+  #screen-lobby .topbar h2{ font-size:16px; }
+  #screen-lobby .utils .btn{ padding:6px 10px; font-size:12px; }
+}
+/* ==================== E8：内容区构图（濠哥 2026-09-18 要求，偏离 A 原稿）====================
+   档 2（默认 card-lg）：主卡片放大 min(720px,100%) + 输入框/按钮同步放大
+   档 1（?card=center）：仅居中，尺寸照 A
+   只改构图与尺寸；配色 / 圆角 / 动效时长不变 */
+#screen-lobby .content{ align-items:flex-start; }
+@media (min-height:481px){
+  /* 竖直重心略偏上：上方留白约 10vh（矮屏不加，保证 844×390 按钮仍在首屏） */
+  #screen-lobby .content{ padding-top:clamp(8px, 10vh, 88px); }
+}
+#screen-lobby.card-lg .sec{ width:min(720px,100%); }
+#screen-lobby.card-lg .setup-panel h2{ font-size:20px; }
+#screen-lobby.card-lg .nick-label{ font-size:14px; }
+#screen-lobby.card-lg .join-name{ padding:12px 14px; font-size:16px; }
+#screen-lobby.card-lg .target-row label{ padding:7px 12px; }
+#screen-lobby.card-lg .setup-actions .btn.lg{ padding:13px 24px; font-size:16px; }
+#screen-lobby.card-lg .footnote{ font-size:12px; }
+
+/* ==================== 宝可梦元素落地：A v3 氛围层 / B 语义层 / C 动效层 ====================
+   每一块都能「一句话关掉」：删掉对应那几条规则（或去掉元素上的 class）即可，互不牵连。
+   配色零新增：全部复用现有变量（--red/--blue/--green/--gold/--purple）。 */
+
+/* ---- A v3：远景球（近景 9 颗之外再撒 3 颗；同一套 .ball，缩小 .72 + 模糊 + 慢循环）----
+   DOM：<span class="ball deco far"><span class="ball">…</span></span>
+   外层只当「浮动 / 模糊 / 淡出」的容器，球由内层同一套 .ball 画。
+   关掉：删掉本段（.deco.far 与 @keyframes pkfloat 两条规则）。 */
+.deco.far{
+  background:none; border:none; box-shadow:none;      /* 外层不重复画一颗球 */
+  filter:blur(2.5px); opacity:.32;
+  animation-name:pkfloat; animation-duration:9s;
+}
+.deco.far::after{ content:none; }
+.deco.far .ball{ transform:scale(.72); }
+@keyframes pkfloat{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-9px) } }
+@media (prefers-reduced-motion:reduce){ .deco.far{ animation:none } }
+
+/* ---- B：「开始对局」左侧的纯 CSS 精灵球（0 DOM，画在 nav-btn.primary 的 ::before 上）----
+   关掉：删掉本段两条规则（主按钮回到原来的金色指示条）。 */
+#lobby-nav .nav-btn.primary{ padding-left:36px; }
+#lobby-nav .nav-btn.primary::before{
+  content:''; position:absolute; left:12px; top:50%; width:16px; height:16px; border-radius:50%;
+  background:
+    radial-gradient(circle at 50% 50%, #fbfbfd 0 3px, rgba(0,0,0,0) 3.2px),
+    radial-gradient(circle at 50% 50%, rgba(0,0,0,0) 0 2.8px, #24303d 2.8px 4.8px, rgba(0,0,0,0) 5px),
+    linear-gradient(180deg, var(--red) 0 44%, #24303d 44% 56%, #fbfbfd 56% 100%);
+  border:2px solid rgba(34,48,61,.55);
+  box-shadow:inset -2px -2px 3px rgba(0,0,0,.16), 0 1px 3px rgba(34,48,61,.3);
+  transform:translateY(-50%);
+}
+#lobby-nav .nav-btn.primary.on::before{
+  transform:translateY(-50%); box-shadow:0 0 0 2px var(--gold), inset -2px -2px 3px rgba(0,0,0,.16);
+}
+
+/* ---- B：名人堂条目的金徽章（纯 CSS，0 图片）。关掉：删掉本段（或去掉 renderHall 里的 .pk-badge）。 */
+.pk-badge{
+  width:20px; height:20px; border-radius:50%; flex:none; position:relative;
+  background:radial-gradient(circle at 50% 34%, #ffe9a3 0 22%, var(--gold) 40%, var(--gold-deep) 100%);
+  box-shadow:0 1px 3px rgba(240,168,0,.5), inset 0 0 0 2px rgba(255,255,255,.55);
+}
+.pk-badge::after{
+  content:''; position:absolute; left:50%; top:50%; width:7px; height:7px;
+  transform:translate(-50%,-50%) rotate(45deg);
+  background:#fff8dc; box-shadow:0 0 0 1px rgba(240,168,0,.55);
+}
+
+/* ---- C1 切屏转场（球体开合 .30s）：showScreen() 给新显示的屏加一次性 class。
+   关掉：删掉这两条规则（或删掉 showScreen 里那一段）。 */
+.pk-anim-switch{ animation:pkOpen .30s cubic-bezier(.2,.9,.3,1.05) both; }
+@keyframes pkOpen{ from{ clip-path:inset(0 0 46% 0); opacity:.45 } to{ clip-path:inset(0 0 0 0); opacity:1 } }
+
+/* ---- C2 加载等待（摇摆 .9s 循环）：挂在现有「等待 / 读取中」元素上。
+   关掉：删掉本段（或去掉元素上的 .pk-anim-loading）。 */
+.pk-anim-loading::after{
+  content:''; display:inline-block; width:12px; height:12px; margin-left:6px; vertical-align:-1px; border-radius:50%;
+  background:linear-gradient(180deg, var(--red) 0 45%, #24303d 45% 55%, #fbfbfd 55% 100%);
+  border:1px solid rgba(34,48,61,.45);
+  animation:pkWobble .9s ease-in-out infinite;
+}
+@keyframes pkWobble{ 0%,100%{ transform:rotate(0) } 25%{ transform:rotate(-14deg) } 75%{ transform:rotate(14deg) } }
+
+/* ---- C3 悬停微光（.32s）：主按钮 hover 时一道掠光。
+   关掉：删掉本段（或去掉按钮上的 .pk-anim-hover）。 */
+.btn.pk-anim-hover{ position:relative; overflow:hidden; }
+.btn.pk-anim-hover:hover::after{
+  content:''; position:absolute; inset:0; pointer-events:none;
+  /* 静止态必须停在「可视区外」：animation 没写 fill-mode（默认 none），播完会回到这里写的值。
+     原来没写 transform → 回到 translateX(0) → 这块 inset:0 的整幅渐变（50% 处是 rgba(255,255,255,.6)）
+     就正正停在按钮中央，看着像「闪光扫过去后固定死在正中间」。
+     -110% = 带子整体移出按钮框，被上面的 overflow:hidden 裁掉 → 不可见；
+     prefers-reduced-motion 下 animation:none!important 时同样只看到这条静止态，也是不可见。 */
+  transform:translateX(-110%);
+  background:linear-gradient(115deg, transparent 30%, rgba(255,255,255,.6) 50%, transparent 70%);
+  animation:pkShine .32s ease-out;
+}
+@keyframes pkShine{ from{ transform:translateX(-110%) } to{ transform:translateX(110%) } }
+
+/* ---- C4 获胜徽章弹出（.30s）：结算/胜利徽章元素。
+   关掉：删掉这两条规则（或去掉元素上的 .pk-anim-badge）。 */
+.pk-anim-badge{ animation:pkBadge .30s cubic-bezier(.2,.9,.3,1.2) both; }
+@keyframes pkBadge{ from{ transform:scale(.6); opacity:0 } 60%{ transform:scale(1.1); opacity:1 } to{ transform:scale(1) } }
+
+/* 系统「减弱动态效果」：C 层 4 个动效 + A 远景球浮动一并关闭 */
+@media (prefers-reduced-motion:reduce){
+  .pk-anim-switch, .pk-anim-loading::after, .btn.pk-anim-hover:hover::after, .pk-anim-badge{ animation:none !important; }
+}
+
+/* ---- 844×390 验收补丁：去掉窄屏（821~900px）大厅的横向滚动条 ----
+   背景：body 有一条 min-width:1180px（给对局三栏用），而「放开 min-width」的规则只写在
+   @media (max-width:820px) 里 —— 844 宽的横屏手机正好落在缝里（821~900），会多出横向滚动条。
+   这里只在大厅可见时放开，不影响对局屏与其余屏。
+   关掉：删掉本块（回到原来的 821~900 横向溢出）。 */
+@media (min-width:821px) and (max-width:900px){
+  body:has(#screen-lobby:not([hidden])){ min-width:0; }
 }

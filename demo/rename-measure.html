@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>改名后导航量测 · range 行盒数 / offsetHeight / scrollWidth（测试用，可随时删）</title>
+<style>
+  html,body{ margin:0; font:12px/1.6 Consolas,monospace; background:#0f1216; color:#cfe3ff; }
+  #f{ border:0; background:#fff; display:block; }
+  #out{ white-space:pre-wrap; padding:8px 10px; }
+  .ok{ color:#5ee08a; } .bad{ color:#ff8b6b; } .hd{ color:#ffd24a; font-weight:700; }
+</style>
+</head>
+<body>
+<!-- 测试用，可随时删：只做一件事——用 DOM 原始数字量「改名后的导航项」会不会换行/溢出。
+     关键口径：量的是**导航项文本节点本身**（label span 里的文本节点，用 createRange 圈住），
+     不是按钮的"第一个文本节点"（那是图标 span 里的 ▶ / ★ 等，量它会得到假数字）。
+     时机：在 iframe 的 load 事件里**同步**做完（不 sleep）→ 保证 --dump-dom 也能抓到数字。 -->
+<iframe id="f" src="/index.html"></iframe>
+<div id="out">运行中…</div>
+<script>
+const qs = new URLSearchParams(location.search);
+const VW = parseInt(qs.get('vw') || '1280', 10);
+const VH = parseInt(qs.get('vh') || '720', 10);
+const TARGET = qs.get('label') || '挑战阿尔宙斯';
+const f = document.getElementById('f');
+const out = document.getElementById('out');
+f.style.width = VW + 'px';
+f.style.height = VH + 'px';
+
+function measureNow(tag) {
+  const w = f.contentWindow, d = f.contentDocument, dv = d.defaultView;
+  const R = (x) => Math.round(x * 100) / 100;
+  const L = [];
+  L.push('<span class="hd">[' + tag + '] 被测视口(iframe) = ' + VW + '×' + VH + ' ｜ 本页视口 = ' + window.innerWidth + '×' + window.innerHeight + '</span>');
+  const rail = d.querySelector('#screen-lobby .rail');
+  if (rail) {
+    const rr = rail.getBoundingClientRect();
+    L.push('rail：#screen-lobby .rail display=' + dv.getComputedStyle(rail).display
+      + ' rect=' + R(rr.width) + '×' + R(rr.height)
+      + ' offsetWidth=' + rail.offsetWidth + ' scrollWidth=' + rail.scrollWidth + ' clientWidth=' + rail.clientWidth
+      + (rail.scrollWidth > rail.clientWidth ? '  ✗ rail 自身横向溢出' : '  ✓ rail 无横向溢出'));
+  } else { L.push('rail：未找到 ✗'); }
+
+  const btns = Array.prototype.slice.call(d.querySelectorAll('#lobby-nav .nav-btn'));
+  L.push('导航按钮数 = ' + btns.length + '（期望 5）');
+  let found = false;
+  btns.forEach((b) => {
+    const labelSpan = b.querySelector('span:last-child');       // ← label span（不是按钮第一个文本节点）
+    const txt = labelSpan ? labelSpan.textContent : '';
+    const isT = txt === TARGET;
+    if (isT) found = true;
+    const cs = dv.getComputedStyle(b);
+    const lh = parseFloat(cs.lineHeight) || 0;
+    let rects = [];
+    if (labelSpan && labelSpan.firstChild) {
+      const rg = d.createRange();
+      rg.selectNodeContents(labelSpan.firstChild);            // circle 住那 N 个字
+      rects = rg.getClientRects();
+    }
+    const br = b.getBoundingClientRect();
+    L.push((isT ? '<span class="hd">★ </span>' : '  ') + '「' + txt + '」'
+      + ' 行盒数=' + rects.length + (rects.length === 1 ? ' ✓单行' : (rects.length > 1 ? ' ✗换行' : ' ✗量不到'))
+      + ' ｜行盒高=' + R(rects.length ? rects[0].height : 0) + ' vs line-height=' + lh
+      + ' ｜btn offsetHeight=' + b.offsetHeight + ' clientHeight=' + b.clientHeight
+      + ' ｜btn scrollWidth=' + b.scrollWidth + ' clientWidth=' + b.clientWidth
+      + (b.scrollWidth > b.clientWidth ? ' ✗溢出' : ' ✓不溢出')
+      + ' ｜font=' + cs.fontSize + ' white-space=' + cs.whiteSpace
+      + ' ｜btn rect=' + R(br.width) + '×' + R(br.height));
+    for (let i = 0; i < rects.length; i++) {
+      L.push('      行盒#' + (i + 1) + ' x' + R(rects[i].left) + ' y' + R(rects[i].top) + ' ' + R(rects[i].width) + '×' + R(rects[i].height));
+    }
+  });
+  if (!found) L.push('<span class="bad">未找到目标标签「' + TARGET + '」✗</span>');
+
+  const nav = d.getElementById('lobby-nav');
+  if (nav) L.push('#lobby-nav：scrollWidth=' + nav.scrollWidth + ' clientWidth=' + nav.clientWidth
+    + (nav.scrollWidth > nav.clientWidth ? ' ✗溢出' : ' ✓不溢出'));
+  const de = d.documentElement;
+  L.push('页面 documentElement.scrollHeight=' + de.scrollHeight + ' vs 视口高 ' + w.innerHeight
+    + (de.scrollHeight > w.innerHeight ? '  ✗出纵向滚动条' : '  ✓无纵向滚动条'));
+  L.push('页面 documentElement.scrollWidth=' + de.scrollWidth + ' vs 视口宽 ' + w.innerWidth
+    + (de.scrollWidth > w.innerWidth ? '  ✗出横向滚动条' : '  ✓无横向滚动条'));
+  L.push('body.scrollHeight=' + d.body.scrollHeight + ' body.scrollWidth=' + d.body.scrollWidth);
+  return L;
+}
+
+f.onload = () => {
+  const w = f.contentWindow;
+  try {
+    w.eval([
+      "try{",
+      "  myToken='stub'; myName='玩家1'; myNickname='玩家1';",
+      "  try{ localStorage.setItem('update-seen-3.3.0','1'); }catch(e){}",
+      "  if (typeof showScreen==='function') showScreen('lobby');",
+      "  if(typeof renderLobbyNav==='function') renderLobbyNav();",
+      "  if(typeof setLobbyMode==='function') setLobbyMode(false);",
+      "  var ub=document.getElementById('btn-upd-close'); if(ub) ub.click();",
+      "}catch(e){ document.title='STUB_ERR:'+e.message; }",
+    ].join('\n'));
+  } catch (e) { out.textContent = 'EVAL_ERR: ' + e.message; return; }
+  try {
+    out.innerHTML = measureNow('同步·iframe.onload').join('\n');
+    f.contentDocument.title = 'MEASURED';
+  } catch (e) { out.innerHTML = '<span class="bad">MEASURE_ERR: ' + e.message + '</span>'; }
+  // 第二遍：等真实 boot 跑完（与生产同一条路径）后再量一遍，确认数字不因 boot 而变
+  setTimeout(() => {
+    try {
+      out.innerHTML += '\n' + measureNow('延迟1500ms·boot 后').join('\n');
+    } catch (e) { out.innerHTML += '<span class="bad">MEASURE2_ERR: ' + e.message + '</span>'; }
+  }, 1500);
+  // 第三遍：显示文案扫描（旧词归零 + 新名逐处列出）
+  setTimeout(() => {
+    try {
+      const d2 = f.contentDocument, w2 = f.contentWindow;
+      const cnt = (wd) => d2.body.textContent.split(wd).length - 1;
+      const ATTR = (wd) => {
+        let n = 0;
+        Array.prototype.slice.call(d2.querySelectorAll('[title],[aria-label],[placeholder]')).forEach((el) => {
+          ['title', 'aria-label', 'placeholder'].forEach((a) => { const v = el.getAttribute(a) || ''; n += v.split(wd).length - 1; });
+        });
+        return n;
+      };
+      const T = [];
+      const txt = (sel) => { const el = d2.querySelector(sel); return el ? el.textContent.replace(/\s+/g, ' ').trim() : '(元素不存在)'; };
+      T.push('<span class="hd">[显示文案扫描·boot 后]</span>');
+      ['排行榜', '光荣榜', '道馆徽章墙', '难度', '冠军'].forEach((wd) => {
+        T.push('  旧词「' + wd + '」：正文 textContent=' + cnt(wd) + ' 次（期望 0）｜title/aria-label/placeholder=' + ATTR(wd) + ' 次（期望 0）');
+      });
+      T.push('  导航标签 = ' + Array.prototype.slice.call(d2.querySelectorAll('#lobby-nav .nav-btn')).map((b) => b.querySelector('span:last-child').textContent).join(' / '));
+      T.push('  大厅各分区 h2 = ' + Array.prototype.slice.call(d2.querySelectorAll('#screen-lobby .sec h2')).map((h) => h.textContent.replace(/\s+/g, ' ').trim()).join(' | '));
+      T.push('  训练家排行弹窗 h2 = ' + txt('#modal-leaderboard h2'));
+      T.push('  顶部标题 #lobby-sec-title = ' + txt('#lobby-sec-title'));
+      w2.eval([
+        "if(typeof showLobbySection==='function') showLobbySection('rank');",
+      ].join('\n'));
+      T.push('  点「训练家排行」后：#lobby-sec-title = ' + txt('#lobby-sec-title')
+        + '｜分区 h2 = ' + txt('#lobby-sec-rank h2')
+        + '｜按钮 = ' + txt('#lobby-rank-open')
+        + '｜sec-desc = ' + txt('#lobby-sec-rank .sec-desc'));
+      w2.eval([
+        "if(typeof showLobbySection==='function') showLobbySection('champ');",
+      ].join('\n'));
+      T.push('  点「挑战阿尔宙斯」后：#lobby-sec-title = ' + txt('#lobby-sec-title')
+        + '｜分区 h2 = ' + txt('#lobby-sec-champ h2')
+        + '｜sec-desc = ' + txt('#lobby-sec-champ .sec-desc')
+        + '｜按钮 = ' + txt('#champ-start'));
+      w2.eval([
+        "if(typeof showLobbySection==='function') showLobbySection('honor');",
+      ].join('\n'));
+      T.push('  点「名人堂」后：#lobby-sec-title = ' + txt('#lobby-sec-title')
+        + '｜分区 h2 = ' + txt('#lobby-sec-honor h2')
+        + '｜sec-desc = ' + txt('#lobby-sec-honor .sec-desc'));
+      setTimeout(() => {
+        try {
+          T.push('  名人堂列表区文本 = ' + txt('#hall-list').slice(0, 80));
+          T.push('  规则弹窗「其他规则」文本 = ' + txt('#modal-rules .rules-body, #modal-rules').replace(/\s+/g, ' ').slice(0, 160));
+        } catch (e) { T.push('  HALL_SCAN_ERR: ' + e.message); }
+        out.innerHTML += '\n' + T.join('\n');
+      }, 700);
+    } catch (e) { out.innerHTML += '<span class="bad">SCAN_ERR: ' + e.message + '</span>'; }
+  }, 2500);
+};
+</script>
+</body>
+</html>

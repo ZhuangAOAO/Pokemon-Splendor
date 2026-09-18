@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>大厅原型 · 方案 A（左侧竖向导航栏）</title>
+<link rel="stylesheet" href="../style.css">
+<style>
+/* ============================================================
+   大厅 IA 原型 · 方案 A 专属样式（只新建文件，不动 style.css）
+   约束：颜色只用 var()/rgba()（渐变照抄 .btn.primary 已有条目）；
+   动效只动 transform / opacity / box-shadow / filter，且 ≤ 350ms。
+   ============================================================ */
+body{ min-width:0; } /* 覆盖 style.css 的 1180px 下限：844×390 不出现横向滚动 */
+
+.shell{ position:fixed; inset:0; overflow:hidden; display:flex; }
+
+/* ---------- 漂浮精灵球背景（.deco / .ball 复用 style.css） ---------- */
+.deco{ z-index:0; }
+
+/* ---------- 左侧竖向导航栏 ---------- */
+.rail{
+  position:relative; z-index:1; flex:none; width:clamp(150px,15vw,210px);
+  background:var(--panel-bg); border-right:1px solid var(--line);
+  box-shadow:var(--shadow); display:flex; flex-direction:column; gap:10px;
+  padding:14px 12px; overflow-y:auto; /* 入口继续增多时竖栏可滚动 */
+}
+.rail .logo{ text-align:center; }
+.rail .logo h1{ font-size:clamp(14px,1.6vw,20px); white-space:nowrap; letter-spacing:.5px; margin-bottom:2px; } /* 红金渐变文字沿用 style.css .logo h1 的 background-clip:text；字号随竖栏宽度收缩，不折行 */
+.rail .logo .logo-ball{ margin-bottom:8px; }
+.rail .sub{ text-align:center; color:var(--ink-soft); font-size:11px; letter-spacing:1px; }
+.nav{ display:flex; flex-direction:column; gap:8px; }
+.nav-btn{
+  display:flex; align-items:center; gap:10px; justify-content:flex-start;
+  width:100%; text-align:left; padding:10px 12px; font-size:14px;
+  position:relative; overflow:hidden;
+  background:var(--field); border:2px solid var(--line-strong);
+}
+.nav-btn.primary{ border-color:var(--red-deep); } /* 主按钮保留 .btn.primary 渐变，描边压深一档 */
+.nav-ico{ font-size:16px; }
+/* 选中态：金色短竖条自左滑入（只动 transform）+ 红字 */
+.nav-btn::before{
+  content:''; position:absolute; left:0; top:50%; width:4px; height:16px;
+  border-radius:999px; background:var(--gold);
+  transform:translateY(-50%) scaleY(0);
+  transition:transform .24s cubic-bezier(.4,0,.2,1);
+}
+.nav-btn.on::before{ transform:translateY(-50%) scaleY(1); }
+.nav-btn.on{ color:var(--red); border-color:var(--red); }
+.nav-btn.on:hover{ color:var(--red); }
+.nav-btn.primary.on{ color:var(--panel-bg); border-color:var(--gold); } /* 红底主按钮上的选中态：金边+金字 */
+.rail .foot{ margin-top:auto; font-size:11px; color:var(--ink-faint); text-align:center; }
+
+/* ---------- 右侧内容区 ---------- */
+.stage{
+  position:relative; z-index:1; flex:1; min-width:0;
+  display:flex; flex-direction:column; overflow-y:auto; padding:16px 20px; gap:12px;
+}
+.topbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.topbar h2{ margin:0; font-size:18px; }
+.utils{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.utils .btn{ white-space:nowrap; }
+.content{ flex:1; display:flex; justify-content:center; align-items:flex-start; }
+.sec{ width:min(640px,100%); margin-top:0; } /* 复用 .setup-panel 的卡片观感，只改宽度 */
+@keyframes secIn{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
+.sec.on{ animation:secIn .24s cubic-bezier(.4,0,.2,1); }
+
+/* ---------- 内容区通用小件 ---------- */
+.sec-desc{ color:var(--ink-soft); font-size:13px; margin:8px 0 14px; line-height:1.6; }
+.chips{ display:flex; gap:8px; }
+.chip{
+  border:2px solid var(--line); border-radius:999px; padding:7px 18px;
+  background:var(--field); color:var(--ink-soft); font-weight:800; font-size:13px; cursor:pointer;
+}
+.chip.on{ color:var(--red); border-color:var(--red); background:rgba(227,53,13,.07); }
+.empty{ text-align:center; padding:26px 0 18px; color:var(--ink-soft); }
+.empty .big{ font-size:40px; display:block; margin-bottom:10px; }
+.empty p{ font-size:14px; }
+a.btn{ display:inline-block; text-decoration:none; }
+
+/* ---------- 右上角收纳弹层 ---------- */
+.pop{
+  position:fixed; top:56px; right:20px; z-index:20; width:280px;
+  background:var(--panel-bg); border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:var(--shadow-lg); padding:16px;
+  opacity:0; transform:translateY(-6px) scale(.97); transform-origin:top right;
+  transition:opacity .22s cubic-bezier(.4,0,.2,1), transform .22s cubic-bezier(.4,0,.2,1);
+}
+.pop.open{ opacity:1; transform:none; }
+.pop h3{ font-size:14px; margin-bottom:10px; }
+.pop-note{ font-size:12px; color:var(--ink-soft); margin:10px 0; line-height:1.6; }
+.pop-actions{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+.pop-list{ list-style:none; margin:0 0 10px; font-size:13px; color:var(--ink-soft); }
+.pop-list li{ margin:6px 0; padding-left:16px; position:relative; }
+.pop-list li::before{ content:'▸'; position:absolute; left:0; top:0; color:var(--gold-deep); font-weight:800; }
+.pop .join-name{ margin-bottom:8px; }
+
+/* ---------- 矮屏（如 844×390）压缩留白：纵向可滚，横向不溢 ---------- */
+@media (max-height:480px){
+  .stage{ padding:10px 14px; gap:8px; }
+  .setup-panel{ padding:16px 18px; }
+  .setup-panel h2{ font-size:16px; margin-bottom:8px; }
+  .join-name{ padding:8px 10px; font-size:14px; }
+  .target-row{ margin:8px 0; gap:8px; }
+  .setup-actions{ margin-top:12px; gap:8px; }
+  .footnote{ margin-top:8px; font-size:11px; }
+  .sec-desc{ margin:4px 0 8px; }
+  .rail{ padding:10px 8px; }
+}
+@media (max-width:900px){
+  .topbar h2{ font-size:16px; }
+  .utils .btn{ padding:6px 10px; font-size:12px; }
+}
+
+/* ---------- 动效降级 ---------- */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{ transition-duration:0ms !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- 漂浮精灵球装饰（颜色全部用 var()，无字面量） -->
+  <span class="ball deco" style="--bc:var(--gold);--band:var(--ink);width:56px;height:56px;left:52%;top:8%;animation-delay:-1.2s"></span>
+  <span class="ball deco" style="--bc:var(--red);--band:var(--ink);width:64px;height:64px;left:88%;top:58%;animation-delay:-3.4s"></span>
+  <span class="ball deco" style="--bc:var(--blue);--band:var(--ink);width:44px;height:44px;left:66%;top:80%;animation-delay:-2.1s"></span>
+  <span class="ball deco" style="--bc:var(--green);--band:var(--ink);width:48px;height:48px;left:26%;top:74%;animation-delay:-4.6s"></span>
+  <span class="ball deco" style="--bc:var(--purple);--band:var(--ink);width:36px;height:36px;left:94%;top:16%;animation-delay:-.7s"></span>
+
+  <!-- 左侧竖向导航栏 -->
+  <aside class="rail">
+    <div class="logo">
+      <span class="ball lg logo-ball" style="--bc:#e3350d;--band:#24303d"></span>
+      <h1>璀璨宝石 <span class="accent">·</span> 宝可梦</h1>
+      <p class="sub">联机大厅</p>
+    </div>
+    <nav class="nav" id="nav" aria-label="一级导航"><!-- JS 循环渲染，见页尾 NAV 数组 --></nav>
+    <p class="foot">v3.2.2 · IA 原型示意<br>方案 A</p>
+  </aside>
+
+  <!-- 内容区 -->
+  <main class="stage">
+    <header class="topbar">
+      <h2 id="sec-title">开始对局</h2>
+      <div class="utils">
+        <button type="button" class="btn ghost sm" data-util="account">账号</button>
+        <button type="button" class="btn ghost sm" data-util="tutorial">教程</button>
+        <button type="button" class="btn ghost sm" data-util="rules">说明</button>
+        <button type="button" class="btn ghost sm" id="btn-sound" aria-pressed="true">音效：开</button>
+      </div>
+    </header>
+    <div class="content">
+      <section class="setup-panel sec on" id="sec-start">
+        <h2>开始对局</h2>
+        <label class="nick-label" for="nick-a">游戏内昵称（默认是你的姓名）</label>
+        <input id="nick-a" class="join-name" maxlength="12" placeholder="输入昵称（可留空）">
+        <div class="target-row" id="room-visibility">
+          <span class="label">房间类型</span>
+          <label><input type="radio" name="vis" value="private" checked> 私有（凭房间号加入）</label>
+          <label><input type="radio" name="vis" value="public"> 公开（可被搜索）</label>
+        </div>
+        <input id="roomid-a" class="join-name" maxlength="4" placeholder="房间号（留空 = 创建新房间）">
+        <div class="setup-actions">
+          <button type="button" class="btn primary lg" data-note="join">进入游戏</button>
+          <button type="button" class="btn secondary" data-note="roomlist">公开房间列表</button>
+        </div>
+        <p class="footnote">创建房间 = 留空房间号；加入朋友房间 = 输入他告诉你的 4 位房间号</p>
+      </section>
+
+      <section class="setup-panel sec" id="sec-champion" hidden>
+        <h2>挑战阿尔宙斯 <span class="upd-ver">待办③ · 原型占位</span></h2>
+        <p class="sec-desc">与阿尔宙斯 AI 对战。正式版接入 policy-core / ai-policy 的阿尔宙斯座位，本原型只演示入口位置与选人交互。</p>
+        <div class="chips" id="champ-size"><!-- JS 循环渲染 2/3/4 --></div>
+        <div class="setup-actions">
+          <button type="button" class="btn secondary" disabled>开始挑战 · 即将上线</button>
+        </div>
+        <p class="footnote">对应 待办-产品侧.md ③「挑战阿尔宙斯」独立成模式（涉房间/模式/数据字段）</p>
+      </section>
+
+      <section class="setup-panel sec" id="sec-leaderboard" hidden>
+        <h2>训练家排行</h2>
+        <div class="lobby-row"><span class="row-idx">1</span><span class="lobby-name">小智</span><span class="lobby-tag">128 胜</span><span class="lobby-tag">胜率 72%</span></div>
+        <div class="lobby-row"><span class="row-idx">2</span><span class="lobby-name">小霞</span><span class="lobby-tag">96 胜</span><span class="lobby-tag">胜率 65%</span></div>
+        <div class="lobby-row"><span class="row-idx">3</span><span class="lobby-name">小刚</span><span class="lobby-tag">81 胜</span><span class="lobby-tag">胜率 61%</span></div>
+        <div class="lobby-row"><span class="row-idx">4</span><span class="lobby-name">武藏</span><span class="lobby-tag">60 胜</span><span class="lobby-tag">胜率 55%</span></div>
+        <p class="footnote">原型示意数据：正式版数据来自现有训练家排行弹窗（#modal-leaderboard / #link-leaderboard）</p>
+      </section>
+
+      <section class="setup-panel sec" id="sec-replay" hidden>
+        <h2>对局回放</h2>
+        <div class="lobby-row"><span class="lobby-tag">09-17</span><span class="lobby-name">4A2F · 3 人对局</span><span class="lobby-tag">20:14 结束</span></div>
+        <div class="lobby-row"><span class="lobby-tag">09-16</span><span class="lobby-name">7B31 · 4 人对局</span><span class="lobby-tag">19:02 结束</span></div>
+        <div class="setup-actions">
+          <a class="btn secondary" href="/replay">打开回放页（/replay）</a>
+        </div>
+        <p class="footnote">正式版跳转现有独立回放页 /replay（replay.html / replay.js）</p>
+      </section>
+
+      <section class="setup-panel sec" id="sec-hall" hidden>
+        <h2>名人堂 <span class="upd-ver">待办④</span></h2>
+        <div class="empty">
+          <span class="big">⭐</span>
+          <p>榜单正在筹备中，敬请期待</p>
+        </div>
+        <div class="setup-actions">
+          <button type="button" class="btn secondary" disabled>即将上线</button>
+        </div>
+        <p class="footnote">名人堂依赖待办③「挑战阿尔宙斯」的数据（见 待办-产品侧.md ④）</p>
+      </section>
+    </div>
+  </main>
+
+  <!-- 右上角收纳弹层（账号 / 教程 / 说明 / 原型提示 共用） -->
+  <div class="pop" id="pop" hidden><div id="pop-body"></div></div>
+</div>
+
+<script>
+/* ============================================================
+   数据驱动的导航（5 项一级入口）
+   扩展性：要加第 6 个入口（例如「赛季公告」），只需两步——
+   ① 取消下面 NAV 数组里那行注释；
+   ② 在内容区加一个 id="sec-announce" 的 section。
+   导航按钮、选中态、内容切换都由循环生成，页面结构不用改。
+   ============================================================ */
+const NAV = [
+  { id:'start',       label:'开始对局', icon:'▶', cls:'primary' },
+  { id:'champion',    label:'挑战阿尔宙斯', icon:'🏆' },
+  { id:'leaderboard', label:'训练家排行',   icon:'📊' },
+  { id:'replay',      label:'对局回放', icon:'🎞' },
+  { id:'hall',        label:'名人堂',   icon:'⭐' },
+  // —— 扩展：加第 6 项时取消下面这行注释 ——
+  // { id:'announce', label:'赛季公告', icon:'📢' },
+];
+
+const nav = document.getElementById('nav');
+const secTitle = document.getElementById('sec-title');
+
+function show(id){
+  NAV.forEach((it, i)=>{
+    const b = nav.children[i];
+    if(!b) return;
+    b.classList.toggle('on', it.id === id);
+    b.setAttribute('aria-current', it.id === id ? 'true' : 'false');
+  });
+  secTitle.textContent = NAV.find(it => it.id === id).label;
+  document.querySelectorAll('.sec').forEach(s => { s.hidden = s.id !== 'sec-' + id; });
+  const sec = document.getElementById('sec-' + id);
+  sec.classList.remove('on');
+  void sec.offsetWidth;                 /* 重启动画 */
+  sec.classList.add('on');
+}
+
+NAV.forEach(it=>{
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'btn nav-btn' + (it.cls ? ' ' + it.cls : '');
+  b.innerHTML = '<span class="nav-ico">' + it.icon + '</span><span>' + it.label + '</span>';
+  b.addEventListener('click', ()=> show(it.id));
+  nav.appendChild(b);
+});
+
+/* ---------- 挑战冠军：选人数 2/3/4（原型交互占位） ---------- */
+[2,3,4].forEach(n=>{
+  const c = document.createElement('button');
+  c.type = 'button';
+  c.className = 'chip' + (n === 2 ? ' on' : '');
+  c.textContent = n + ' 人';
+  c.addEventListener('click', ()=>{
+    document.querySelectorAll('#champ-size .chip').forEach(x => x.classList.toggle('on', x === c));
+  });
+  document.getElementById('champ-size').appendChild(c);
+});
+
+/* ---------- 右上角收纳：账号 / 教程 / 说明（及原型提示） ---------- */
+const VIEWS = {
+  account:
+    '<h3>账号</h3>' +
+    '<button type="button" class="btn ghost sm" data-pop="pw">修改密码</button> ' +
+    '<button type="button" class="btn ghost sm" data-pop="logout">退出登录</button>' +
+    '<p class="pop-note">管理员入口（仅管理员可见）：<a href="/admin">管理台</a> · <a href="/backdoor.html">后门注册</a></p>' +
+    '<p class="pop-note">正式版：修改密码走现有 #link-password 流程。</p>',
+  pw:
+    '<h3>修改密码（原型示意）</h3>' +
+    '<input class="join-name" type="password" placeholder="原密码">' +
+    '<input class="join-name" type="password" placeholder="新密码（至少 6 位）">' +
+    '<input class="join-name" type="password" placeholder="确认新密码">' +
+    '<div class="pop-actions"><button type="button" class="btn secondary sm" data-pop="pwdone">确认修改</button>' +
+    '<button type="button" class="btn ghost sm" data-pop="account">取消</button></div>',
+  pwdone:
+    '<h3>✓ 修改密码</h3>' +
+    '<p class="pop-note">原型示意：正式版由现有 #link-password 流程处理（index.html / client.js）。</p>' +
+    '<button type="button" class="btn ghost sm" data-pop="close">返回</button>',
+  logout:
+    '<h3>退出登录</h3>' +
+    '<p class="pop-note">原型示意：正式版退出后回到登录页（#screen-login）。</p>' +
+    '<button type="button" class="btn ghost sm" data-pop="close">知道了</button>',
+  tutorial:
+    '<h3>新手教程</h3>' +
+    '<p class="pop-note">正式版点击后启动现有新手引导 <b>tutorial.js</b>（本原型为静态占位）。</p>' +
+    '<button type="button" class="btn secondary sm" data-pop="close">开始教程（原型示意）</button>',
+  rules:
+    '<h3>规则说明（摘要）</h3>' +
+    '<ul class="pop-list">' +
+    '<li>率先达到目标分数（默认 18 分）触发终局，分数最高者获胜</li>' +
+    '<li>平局：先比进化次数，再比宝可梦数量</li>' +
+    '<li>每回合：取资源 / 买卡 / 进化（回合结束免费）</li>' +
+    '</ul>' +
+    '<p class="pop-note">正式版打开现有 .js-rules 规则弹窗（#modal-rules）。</p>' +
+    '<button type="button" class="btn ghost sm" data-pop="close">知道了</button>',
+  join:
+    '<h3>✓ 进入游戏</h3>' +
+    '<p class="pop-note">原型示意：正式版调用 client.js 的 <b>joinGame()</b>（现有 #btn-join 按钮逻辑）。</p>' +
+    '<button type="button" class="btn ghost sm" data-pop="close">知道了</button>',
+  roomlist:
+    '<h3>公开房间列表</h3>' +
+    '<p class="pop-note">原型示意：正式版打开现有 #btn-room-list 的公开房间列表。</p>' +
+    '<button type="button" class="btn ghost sm" data-pop="close">知道了</button>',
+};
+
+const pop = document.getElementById('pop');
+const popBody = document.getElementById('pop-body');
+let closeTimer = null;
+
+function openPop(key){
+  clearTimeout(closeTimer);
+  popBody.innerHTML = VIEWS[key];
+  pop.hidden = false;
+  requestAnimationFrame(()=> pop.classList.add('open'));
+}
+function closePop(){
+  pop.classList.remove('open');
+  clearTimeout(closeTimer);
+  closeTimer = setTimeout(()=>{ pop.hidden = true; }, 230); /* 与过渡时长一致 */
+}
+
+/* 工具按钮 / 弹层内按钮 / 原型提示 统一委托 */
+document.addEventListener('click', e=>{
+  const util = e.target.closest('[data-util]');
+  if(util){ openPop(util.dataset.util); return; }
+  const pbtn = e.target.closest('[data-pop]');
+  if(pbtn){ const key = pbtn.dataset.pop; if(key === 'close') closePop(); else openPop(key); return; }
+  const note = e.target.closest('[data-note]');
+  if(note){ openPop(note.dataset.note); return; }
+  if(!pop.hidden && !pop.contains(e.target)) closePop(); /* 点弹层外关闭 */
+});
+document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && !pop.hidden) closePop(); });
+
+/* ---------- 音效开关（对应现有 #btn-sound） ---------- */
+const sound = document.getElementById('btn-sound');
+sound.addEventListener('click', ()=>{
+  const on = sound.getAttribute('aria-pressed') !== 'true';
+  sound.setAttribute('aria-pressed', String(on));
+  sound.textContent = on ? '音效：开' : '音效：关';
+});
+
+show('start');
+</script>
+</body>
+</html>

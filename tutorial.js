@@ -447,8 +447,8 @@
       </span>`;
     bar.hidden = false;
     const ex = document.getElementById('tut-exit');
-    if (ex) ex.addEventListener('click', () => {
-      if (confirm(ONLINE ? '要结束教程吗？会返回大厅。' : '要结束教程吗？会回到设置页。')) {
+    if (ex) ex.addEventListener('click', async () => {
+      if (await spConfirm({ title: '结束教程', message: ONLINE ? '要结束教程吗？会返回大厅。' : '要结束教程吗？会回到设置页。', confirmText: '结束教程' })) {
         end();
         if (ONLINE) postApi({ type: 'backToLobby', cid: myCid }); // 本人即房主，可随时结束
         else backToSetup();

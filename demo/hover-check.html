@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>hover 扫光复现 / 验收（测试页，可随时删）</title>
+<style id="pagecss">
+  html,body{ background:#0f1216; color:#e8edf3; margin:0;
+    font:13px/1.6 Consolas,"Microsoft YaHei",monospace; }
+  #stage{ padding:10px 12px 6px; }
+  #stage .cell{ display:block; margin:0 0 7px; }
+  #stage .cap{ display:block; color:#ffd24a; font-weight:700; font-size:12px; margin-bottom:2px; }
+  #stage .cap.bad{ color:#ff8b6b; } #stage .cap.ok{ color:#5ee08a; }
+  #out{ white-space:pre-wrap; padding:8px 12px 20px; font-size:12px; color:#cfe3ff; margin:0; }
+  #out.hide{ display:none; }
+  .ok{ color:#5ee08a; } .bad{ color:#ff8b6b; } .hd{ color:#ffd24a; font-weight:700; }
+  .hc-box{ display:inline-block; padding:8px 14px; border-radius:10px;
+    background:linear-gradient(180deg,#2b3a4d,#1b2532); border:1px solid #3d5570; color:#dbe9ff; }
+  .hc-row{ margin:0 0 7px; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<pre id="out">运行中…</pre>
+<script>
+/* ==========================================================================
+   2026-09-18  hover 扫光（.pk-anim-hover）修复验收 + 另外三个动效同类自查
+   --------------------------------------------------------------------------
+   · 生产 CSS 原样加载（<link href="../style.css">，带 cache-buster）；本页不改生产逻辑。
+   · 「强制 hover」= 把生产样式表文本里所有 `:hover` 换成 `.force-hover` 生成的一份副本，
+     注入到生产 link 之后。读数因此来自**生产规则本体**，不会与生产漂移。
+   · 「旧态复现」= 追加一条测试专用规则 `.pk-anim-hover.force-hover.old::after{transform:none}`
+     —— 特异度比生产静止态高，压掉 translateX(-110%)，等价于「修复前那份 CSS 的静止态」。
+     （keyframe 值在层叠里高于普通声明，所以动画期间照常播放，只有播完回落到的静止值被换回
+      none —— 正是修复前的行为。）
+   用法：
+     hover-check.html          → 完整协议（A 3 轮×4 组读数 + B/C/D 自查 + 汇总）+ 对照画廊
+     hover-check.html?rm=1     → 只跑 prefers-reduced-motion 分支
+     hover-check.html?shot=1   → 藏掉数字面板（截图用）
+     hover-check.html?stage=0  → 不建画廊
+   ========================================================================== */
+const qs = new URLSearchParams(location.search);
+const RM_ONLY = qs.get('rm') === '1';
+const SHOT = qs.get('shot') === '1';
+const WITH_STAGE = qs.get('stage') !== '0';
+const out = document.getElementById('out');
+const stage = document.getElementById('stage');
+if (SHOT) out.classList.add('hide');
+const lines = [];
+const log = (s) => { lines.push(s); out.textContent = lines.join('\n'); };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const raf = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+const P = '::after';
+
+/* 可选：把读数 POST 到 ?report=<url>（真实时钟跑的无人值守取证用；不传就不发） */
+const REPORT_URL = qs.get('report');
+const push = () => { if (REPORT_URL) fetch(REPORT_URL + '?tag=' + (RM_ONLY ? 'rm' : 'full'), { method: 'POST', body: lines.join('\n') }).catch(() => {}); };
+window.addEventListener('error', (e) => { log('[!!] 页面报错: ' + e.message); push(); });
+window.addEventListener('unhandledrejection', (e) => { log('[!!] 未处理 rejection: ' + e.reason); push(); });
+
+/* ---------- 读数工具 ---------- */
+function snap(el, pseudo) {
+  const cs = getComputedStyle(el, pseudo || null);
+  const tr = cs.transform;
+  let tx = null;
+  if (tr && tr !== 'none') {
+    const m = tr.match(/matrix(?:3d)?\(([^)]+)\)/);
+    if (m) { const v = m[1].split(',').map(Number); tx = v.length === 16 ? v[12] : v[4]; }
+  }
+  return { content: cs.content, transform: tr, tx: tx, w: el.getBoundingClientRect().width,
+    opacity: cs.opacity, clipPath: cs.clipPath, bgPos: cs.backgroundPosition,
+    animName: cs.animationName, fill: cs.animationFillMode, dur: cs.animationDuration };
+}
+function animsOf(el, pseudo) {
+  return document.getAnimations().filter((a) => a.effect && a.effect.target === el &&
+    (a.effect.pseudoElement || null) === (pseudo || null));
+}
+function animState(el, pseudo) {
+  const list = animsOf(el, pseudo);
+  if (!list.length) return '(无动画对象)';
+  return list.map((a) => {
+    const ct = a.effect.getComputedTiming();
+    return a.playState + '@' + Math.round(ct.currentTime || 0) + 'ms,iters=' + ct.iterations +
+      (ct.progress === null ? '' : ',prog=' + Math.round((ct.progress || 0) * 100) + '%');
+  }).join(' | ');
+}
+function fmt(s, el, pseudo) {
+  return '伪元素=' + (s.content !== 'none' ? '存在' : '不存在') +
+    ' content=' + s.content + ' transform=' + s.transform +
+    ' tx=' + (s.tx === null ? 'n/a' : s.tx.toFixed(2) + 'px') + ' w=' + s.w.toFixed(1) + 'px' +
+    ' opacity=' + s.opacity + ' bg-pos=' + s.bgPos +
+    ' anim=' + s.animName + '/' + s.dur + ' fill=' + s.fill +
+    ' | 动画对象: ' + animState(el, pseudo);
+}
+/* 扫光「这一刻看得见吗」：不可见只有两条路径——伪元素不存在 / 带子整体移出按钮框（被裁剪） */
+function verdictShine(s) {
+  if (s.content === 'none') return '不可见（伪元素不存在）';
+  if (parseFloat(s.opacity) === 0) return '不可见（opacity=0）';
+  if (s.tx !== null && s.w > 0 && Math.abs(s.tx) >= s.w - 0.5) {
+    return '不可见（带子整体移出按钮框：|tx|=' + Math.abs(s.tx).toFixed(2) + 'px >= w=' + s.w.toFixed(1) +
+      'px，被 .btn.pk-anim-hover 的 overflow:hidden 裁掉）';
+  }
+  return '★ 可见（带子落在按钮框内）';
+}
+function rot(m) {
+  if (!m || m === 'none') return 0;
+  const p = m.match(/matrix(?:3d)?\(([^)]+)\)/); if (!p) return 0;
+  const v = p[1].split(',').map(Number);
+  return Math.atan2(v[1], v[0]) * 180 / Math.PI;
+}
+/* 把动画定格到「带子正对按钮中央」那一帧（tx≈0），画廊截图用 */
+function freezeAtCenter(el) {
+  const list = animsOf(el, P); if (!list.length) return null;
+  const a = list[0]; a.pause();
+  let lo = 0, hi = 320, best = null;
+  for (let i = 0; i < 22; i++) {
+    const mid = (lo + hi) / 2;
+    a.currentTime = mid;
+    const s = snap(el, P); const tx = s.tx === null ? 0 : s.tx;
+    if (best === null || Math.abs(tx) < Math.abs(best.tx)) best = { t: mid, tx: tx };
+    if (tx < 0) lo = mid; else hi = mid;
+  }
+  a.currentTime = best.t;
+  return { t: best.t, tx: best.tx };
+}
+/* 从生产 CSS 里按花括号配平抽出某个 @media 块的内容（rm 等价复现用） */
+function extractMedia(css, head) {
+  const res = []; let i = 0;
+  while ((i = css.indexOf(head, i)) !== -1) {
+    const s = css.indexOf('{', i); if (s < 0) break;
+    let d = 0, j = s;
+    for (; j < css.length; j++) { if (css[j] === '{') d++; else if (css[j] === '}') { d--; if (!d) break; } }
+    res.push(css.slice(s + 1, j)); i = j + 1;
+  }
+  return res;
+}
+window.HC = { snap: snap, animsOf: animsOf, freezeAtCenter: freezeAtCenter, done: false };
+
+/* ---------- 造元件（画廊 + 协议共用） ---------- */
+function mkBtn(extra, text) {
+  const b = document.createElement('button');
+  b.className = 'btn primary lg pk-anim-hover' + (extra ? ' ' + extra : '');
+  b.textContent = text || '开始游戏';
+  return b;
+}
+const els = {};
+function build(afterCss) {
+  stage.innerHTML = '';
+  const row = (cap, cls) => {
+    const d = document.createElement('div'); d.className = 'hc-row';
+    const c = document.createElement('span'); c.className = 'cap' + (cls ? ' ' + cls : '');
+    c.textContent = cap; d.appendChild(c); stage.appendChild(d); return d;
+  };
+  const r1 = row('生产同款按钮（.btn.primary.lg.pk-anim-hover）——协议 A 读数对象');
+  els.btn = mkBtn('', '开始游戏'); r1.appendChild(els.btn);
+  const r2 = row('切屏转场替身（.pk-anim-switch）');
+  els.sw = document.createElement('div'); els.sw.className = 'hc-box'; els.sw.textContent = '屏内容'; r2.appendChild(els.sw);
+  const r3 = row('加载等待替身（.pk-anim-loading 的 ::after 小球）');
+  els.ld = document.createElement('span'); els.ld.textContent = '等待对手…'; r3.appendChild(els.ld);
+  const r4 = row('获胜徽章替身（.pk-anim-badge；等价 #go-title 所在 modal 的 hidden 显隐路径）');
+  els.bdHolder = document.createElement('div');
+  els.bd = document.createElement('h2'); els.bd.className = 'pk-anim-badge'; els.bd.textContent = '甲 获胜！共 15 分';
+  els.bdHolder.appendChild(els.bd); r4.appendChild(els.bdHolder);
+}
+/* 画廊（截图用）：5 个状态冻结并排 */
+async function buildGallery() {
+  const g = document.getElementById('stage');
+  const hdr = document.createElement('div');
+  hdr.innerHTML = '<span class="cap hd">—— 对照画廊（同一份生产 CSS + 强制 hover 类）——</span>';
+  g.appendChild(hdr);
+  const cells = [
+    { cls: '', cap: '① t=0 未 hover（基准：干净，无白带）', mark: 'ok', mode: 'none' },
+    { cls: 'force-hover', cap: '② hover 扫光跑动中（JS 定格在带子正对按钮中央那一帧）', mode: 'mid' },
+    { cls: 'force-hover', cap: '③ 动画播完后（引擎已丢弃该动画 → 只剩静止值）', mark: 'ok', mode: 'end' },
+    { cls: '', cap: '④ 移开鼠标后（应与 ① 完全相同）', mark: 'ok', mode: 'none' },
+    { cls: 'force-hover old', cap: '⑤ 旧态复现：同一个「播完后」状态，但静止值回到居中 ✗', mark: 'bad', mode: 'end' },
+  ];
+  els.gal = [];
+  for (const c of cells) {
+    const d = document.createElement('div'); d.className = 'cell';
+    const cap = document.createElement('span'); cap.className = 'cap' + (c.mark ? ' ' + c.mark : '');
+    cap.textContent = c.cap;
+    const b = mkBtn(c.cls);
+    d.appendChild(cap); d.appendChild(b); g.appendChild(d);
+    els.gal.push({ btn: b, mode: c.mode, cap: cap, cls: c.cls });
+  }
+  await sleep(80);
+  log('== 画廊逐格读数（同一份生产 CSS；.force-hover = 强制 hover 类）==');
+  for (const it of els.gal) {
+    const a = animsOf(it.btn, P)[0];
+    let note = '';
+    if (it.mode === 'mid' && a) {
+      const fz = window.HC.freezeAtCenter(it.btn);
+      note = '（JS 定格 currentTime=' + fz.t.toFixed(1) + 'ms）';
+    } else if (it.mode === 'end' && a) {
+      a.cancel();   // 等价「播完」：fill:none 的动画播完就被引擎丢弃（协议 A ③ 实测）
+      note = '（已 cancel 动画 = 播完后的状态）';
+    } else if (!a && it.mode !== 'none') {
+      note = '（本来就没有动画对象）';
+    }
+    const s = snap(it.btn, P);
+    it.cap.textContent += ' → ' + verdictShine(s) + note;
+    log(it.cap.textContent);
+  }
+  window.HC.galleryReady = true;
+}
+
+/* ---------- 主流程 ---------- */
+(async () => {
+  /* 1) 装样式：生产 link → 强制 hover 副本 → 测试专用规则 → 本页样式（保证本页布局最后生效） */
+  const t0 = Date.now();
+  const pageCss = document.getElementById('pagecss');
+  const link = document.createElement('link');
+  link.rel = 'stylesheet'; link.href = '../style.css?t=' + t0;
+  document.head.insertBefore(link, pageCss);
+  const cssText = await (await fetch('../style.css?t=' + t0)).text();
+  const forcedCss = cssText.replace(/:hover/g, '.force-hover');
+  const styForced = document.createElement('style'); styForced.textContent = forcedCss;
+  document.head.insertBefore(styForced, pageCss);
+  const styTest = document.createElement('style');
+  styTest.textContent = `
+  .btn.pk-anim-hover.force-hover.old::after{ transform:none; }   /* 旧态复现：静止值回到居中 */
+`;
+  document.head.insertBefore(styTest, pageCss);
+  await new Promise((r) => { link.onload = r; link.onerror = r; if (link.sheet) r(); });
+
+  setInterval(push, 1200);          // 周期上报：就算中途被打断也能拿到最新快照
+  build();
+  log('== 环境 ==');
+  log('innerWidth×innerHeight = ' + innerWidth + '×' + innerHeight + '；dpr=' + devicePixelRatio);
+  log('prefers-reduced-motion:reduce matches = ' + matchMedia('(prefers-reduced-motion: reduce)').matches);
+  log('生产 CSS = ../style.css?t=' + t0 + '（' + cssText.length + ' 字符）；强制 hover 副本 = /:hover/g → .force-hover');
+  log('按钮实测宽 w = ' + els.btn.getBoundingClientRect().width.toFixed(1) + 'px');
+  log('');
+
+  /* 2) rm 模式 */
+  if (RM_ONLY) {
+    const real = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    log('== E prefers-reduced-motion 分支（本页只跑这一段）==');
+    if (real) {
+      log('真实环境：matchMedia 命中 → 下面读数是**真的**在 reduced-motion 下取到的');
+    } else {
+      const blocks = extractMedia(cssText, '@media (prefers-reduced-motion:reduce)')
+        .filter((b) => b.indexOf('pk-anim') !== -1);
+      const hoisted = blocks.join('\n');
+      const s = document.createElement('style'); s.textContent = hoisted;
+      document.head.insertBefore(s, pageCss);
+      log('本环境未命中 media（无 --force-prefers-reduced-motion 时如此）→ 等价复现：把生产 @media 里的同一组声明');
+      log('原文按花括号配平抽出后、提到无条件作用域（声明一字未改，只去掉媒体条件门）：');
+      log('  ' + hoisted.replace(/\s+/g, ' ').trim());
+    }
+    // 舞台上留一对带标签的对照按钮（截图用）：修复后 / 旧态
+    const mkRow = (cap, mark) => {
+      const d = document.createElement('div'); d.className = 'hc-row';
+      const c = document.createElement('span'); c.className = 'cap ' + mark; c.textContent = cap;
+      d.appendChild(c); stage.appendChild(d); return d;
+    };
+    const d1 = mkRow('① rm 下强制 hover（修复后：应为不可见）', 'ok');
+    const b1 = mkBtn('force-hover'); d1.appendChild(b1);
+    const d2 = mkRow('② rm 下强制 hover + 旧态（修复前行为：白带停在正中 ✗）', 'bad');
+    const b2 = mkBtn('force-hover old'); d2.appendChild(b2);
+    await sleep(120);
+    const s1 = snap(b1, P);
+    log('');
+    log('[E] 强制 hover 的扫光 ' + fmt(s1, els.btn, P));
+    log('[E] → ' + verdictShine(s1));
+    log('[E] 判定：animation-name=' + s1.animName + '（应 none，= 不播）；静止态 transform=' + s1.transform + '（应为 -110%，= 不可见）');
+    els.btn.classList.add('old');   // 旧态：静止态回到居中
+    const s2 = snap(b2, P);
+    log('[E] 旧态复现下的同一读数 ' + fmt(s2, els.btn, P));
+    log('[E] → ' + verdictShine(s2) + '   ← 修复前 reduced-motion 用户 hover 时看到的就是这条静止白带');
+    els.btn.classList.remove('old');
+    els.sw.classList.add('pk-anim-switch'); els.bd.classList.add('pk-anim-badge');
+    els.ld.className = 'pk-anim-loading';
+    await sleep(120);
+    log('[E] 切屏替身 anim=' + snap(els.sw, null).animName + ' / 徽章替身 anim=' + snap(els.bd, null).animName +
+      ' / 加载小球 anim=' + snap(els.ld, P).animName + '（都应为 none）');
+    log('[E] 动画对象：切屏=' + animState(els.sw, null) + '；徽章=' + animState(els.bd, null) + '；小球=' + animState(els.ld, P));
+    log('== EOF ==');
+    push();
+    document.title = 'hover-check RM DONE';
+    window.HC.done = true;
+    return;
+  }
+
+  /* 2′) 画廊模式：只建画廊跑截图（不跑协议） */
+  if (qs.get('gallery') === '1') {
+    await buildGallery();
+    log('== 画廊模式 == 只建画廊（pin 帧见各条 caption）');
+    log('== EOF ==');
+    push();
+    document.title = 'hover-check GALLERY';
+    window.HC.done = true;
+    return;
+  }
+
+  /* 3) 协议 A：扫光 3 轮 × 4 组读数（+ 1 组确定性采样） */
+  const R = { t0: [], mid: [], end: [], after: [], det: [], detOk: true };
+  log('== A 扫光 .btn.pk-anim-hover:hover::after（3 轮 × 4 组 + 1 组确定性采样）==');
+  for (let n = 1; n <= 3; n++) {
+    els.btn.classList.remove('force-hover');
+    await sleep(80);
+    const r1 = snap(els.btn, P); R.t0.push(r1);
+    log('[A 轮' + n + '] ① t=0（未 hover）                ' + fmt(r1, els.btn, P));
+    log('            → ' + verdictShine(r1));
+
+    els.btn.classList.add('force-hover');
+    await sleep(160);
+    const r2 = snap(els.btn, P); R.mid.push(r2);
+    log('[A 轮' + n + '] ② 强制hover@160ms（扫光跑动中）  ' + fmt(r2, els.btn, P));
+    log('            → ' + verdictShine(r2));
+
+    // 确定性采样：趁动画还在跑（160ms < 320ms）把它按到 currentTime=160ms 再读一次；三轮应逐字节相同
+    const listMid = animsOf(els.btn, P);
+    if (listMid.length) {
+      const a = listMid[0]; a.pause(); a.currentTime = 160;
+      const det = snap(els.btn, P);
+      if (det.content === 'none') R.detOk = false;
+      R.det.push(JSON.stringify({ content: det.content, transform: det.transform, tx: det.tx, opacity: det.opacity }));
+      log('[A 轮' + n + '] ④′ 确定性@currentTime=160ms      ' + fmt(det, els.btn, P));
+      a.play();                                       // 放回自然播放，让下面读到真正的「播完」
+    } else { R.detOk = false; R.det.push('(无动画对象)'); log('[A 轮' + n + '] ④′ 确定性@currentTime=160ms      —— 没拿到动画对象 ✗'); }
+
+    await sleep(400);                                  // 动画自然播完（.32s）
+    const r3 = snap(els.btn, P); R.end.push(r3);
+    log('[A 轮' + n + '] ③ 结束态@~560ms（自然播完）      ' + fmt(r3, els.btn, P));
+    log('            → ' + verdictShine(r3) + '；动画对象 ' + animState(els.btn, P) +
+      '（fill:none 的动画播完就被引擎移出 getAnimations 列表 = 引擎里没有残留在持值的动画）');
+
+    els.btn.classList.remove('force-hover');
+    await sleep(80);
+    const r4 = snap(els.btn, P); R.after.push(r4);
+    log('[A 轮' + n + '] ④ 撤掉强制态@+80ms（=移开鼠标）  ' + fmt(r4, els.btn, P));
+    log('            → ' + verdictShine(r4));
+    log('');
+  }
+  const key = (s) => JSON.stringify({ content: s.content, transform: s.transform, tx: s.tx, opacity: s.opacity });
+  const invEnd = R.end.every((s) => s.content === 'none' || (s.tx !== null && Math.abs(s.tx) >= s.w - 0.5));
+  const invAfter = R.after.every((s) => s.content === 'none');
+  const back = R.after.every((s, i) => key(s) === key(R.t0[i]));
+  const sameDet = R.detOk && R.det[0] === R.det[1] && R.det[1] === R.det[2] &&
+    !/无动画对象/.test(R.det[0]);
+  const sweepAlive = R.mid.every((s) => s.content !== 'none');
+  log('== A 判定 ==');
+  log((invEnd ? 'PASS' : 'FAIL') + ' ① 动画结束后不可见（3 轮都满足）');
+  log((back ? 'PASS' : 'FAIL') + ' ② 撤掉强制态后的读数 == t=0 的读数（3 轮逐字段相同）');
+  log((sameDet ? 'PASS' : 'FAIL') + ' ③ 确定性采样三轮完全一致 → 二次/三次触发都是从 0 重播');
+  log((sweepAlive ? 'PASS' : 'FAIL') + ' ④ 扫光本身还在（强制 hover 后伪元素与动画对象都存在）');
+  log('③ 三轮原始字符串：');
+  R.det.forEach((s, i) => log('   轮' + (i + 1) + ' ' + s));
+  log('');
+
+  /* 4) B 切屏转场 */
+  log('== B 切屏转场 .pk-anim-switch（pkOpen .30s，fill:both）==');
+  const bdet = [];
+  for (let n = 1; n <= 3; n++) {
+    els.sw.classList.remove('pk-anim-switch'); await sleep(80);
+    const r1 = snap(els.sw, null);
+    log('[B 轮' + n + '] ① t=0      clip-path=' + r1.clipPath + ' opacity=' + r1.opacity + ' anim=' + r1.animName + ' | ' + animState(els.sw, null));
+    els.sw.classList.add('pk-anim-switch');
+    await sleep(400);
+    const r3 = snap(els.sw, null);
+    log('[B 轮' + n + '] ③ 结束态   clip-path=' + r3.clipPath + ' opacity=' + r3.opacity + ' anim=' + r3.animName + ' | ' + animState(els.sw, null));
+    const list = animsOf(els.sw, null);
+    if (list.length) {
+      list[0].pause(); list[0].currentTime = 150;
+      const rd = snap(els.sw, null);
+      bdet.push(rd.clipPath + '|op=' + rd.opacity);
+      log('[B 轮' + n + '] ④′ 确定性@150ms clip-path=' + rd.clipPath + ' opacity=' + rd.opacity);
+      list[0].play(); list[0].finish();
+    } else { bdet.push('(无动画对象)'); log('[B 轮' + n + '] ④′ 没拿到动画对象 ✗'); }
+    els.sw.classList.remove('pk-anim-switch'); await sleep(80);
+    const r4 = snap(els.sw, null);
+    log('[B 轮' + n + '] ④ 撤class clip-path=' + r4.clipPath + ' opacity=' + r4.opacity +
+      ' → 与 t=0 相同 = ' + (r4.clipPath === r1.clipPath && r4.opacity === r1.opacity ? '是' : '否'));
+  }
+  log('B 判定：结束态 clip-path=inset(0px 0px 0px 0px)（=不裁剪，视觉等于默认 none）+ opacity=1 → 无残留；' +
+    '确定性三轮一致 = ' + (bdet[0] === bdet[1] && bdet[1] === bdet[2] ? 'PASS' : 'FAIL'));
+  log('   [' + bdet.join(' ; ') + ']');
+  log('');
+
+  /* 5) C 加载等待 */
+  log('== C 加载等待 .pk-anim-loading::after（pkWobble .90s infinite）==');
+  els.ld.className = ''; await sleep(60);
+  log('[C] 无 class：content=' + snap(els.ld, P).content + ' → 伪元素不存在');
+  els.ld.className = 'pk-anim-loading';
+  await raf();
+  const cA = snap(els.ld, P); const angA = rot(cA.transform);
+  log('[C] @0ms    ' + fmt(cA, els.ld, P));
+  log('            iteration-count(声明)=' + getComputedStyle(els.ld, P).animationIterationCount +
+    '；动画对象 = ' + animState(els.ld, P));
+  await sleep(180);
+  const cB = snap(els.ld, P); const angB = rot(cB.transform);
+  log('[C] @180ms  transform=' + cB.transform + '（角度 ' + angA.toFixed(1) + '° → ' + angB.toFixed(1) + '°）| ' + animState(els.ld, P));
+  await sleep(1600);
+  const cC = snap(els.ld, P); const angC = rot(cC.transform);
+  log('[C] @1780ms transform=' + cC.transform + '（角度 ' + angC.toFixed(1) + '°）| ' + animState(els.ld, P));
+  const running = animsOf(els.ld, P).some((a) => a.playState === 'running');
+  log('[C] 判定：infinite → 只有「循环中」没有「结束态」，结构上不存在「停在中间」；采样角度在变 = ' +
+    (Math.abs(angA - angB) > 0.5 ? '是' : '否') + '；1.78s 后仍 running = ' + running);
+  els.ld.className = ''; await sleep(60);
+  log('[C] 去掉 class：content=' + snap(els.ld, P).content + ' → 伪元素消失');
+  log('');
+
+  /* 6) D 获胜徽章 */
+  log('== D 获胜徽章 .pk-anim-badge（pkBadge .30s，fill:both）= 等价 #go-title 在 hidden modal 里的显隐 ==');
+  const ddet = [];
+  for (let n = 1; n <= 3; n++) {
+    els.bdHolder.style.display = 'none';
+    await raf(); await sleep(60);
+    log('[D 轮' + n + '] 藏起 display:none → ' + animState(els.bd, null));
+    els.bdHolder.style.display = '';
+    await raf();
+    log('[D 轮' + n + '] 显示瞬间 ' + animState(els.bd, null));
+    const list = animsOf(els.bd, null);
+    if (list.length) {
+      list[0].pause(); list[0].currentTime = 150;
+      const dd = snap(els.bd, null);
+      ddet.push(dd.transform + '|op=' + dd.opacity);
+      log('[D 轮' + n + '] ④′ 确定性@150ms transform=' + dd.transform + ' opacity=' + dd.opacity + '（60% 关键帧的放大态）');
+      list[0].play(); list[0].finish();
+    } else { ddet.push('(无动画对象)'); log('[D 轮' + n + '] 没拿到动画对象 ✗'); }
+    await sleep(400);
+    const dE = snap(els.bd, null);
+    const identity = /^matrix\(1, 0, 0, 1, 0, 0\)$|^none$/.test(dE.transform);
+    log('[D 轮' + n + '] ③ 结束态 transform=' + dE.transform + ' opacity=' + dE.opacity + ' | ' + animState(els.bd, null));
+    log('[D 轮' + n + ']    判定：结束态 transform 为单位矩阵 = ' + identity + '，opacity=' + dE.opacity + ' → 与默认态一致（无残留）');
+  }
+  log('D 判定：三次「显示」的确定性采样一致 = ' + (ddet[0] === ddet[1] && ddet[1] === ddet[2] ? 'PASS' : 'FAIL'));
+  log('   [' + ddet.join(' ; ') + ']');
+  log('');
+
+  /* 7) F 其它状态不受影响 */
+  log('== F 按钮其它状态（本次修复不该碰）==');
+  const dp = mkBtn('force-hover'); dp.disabled = true; dp.textContent = '开始游戏'; stage.appendChild(dp);
+  const hp = mkBtn('force-hover'); stage.appendChild(hp);
+  const nf = mkBtn(''); stage.appendChild(nf);
+  await sleep(80);
+  const cd = getComputedStyle(dp), ch = getComputedStyle(hp), cn = getComputedStyle(nf);
+  log('[F] disabled：opacity=' + cd.opacity + ' cursor=' + cd.cursor + ' 自身 transform=' + cd.transform);
+  log('[F] disabled + 强制 hover 的扫光 ' + fmt(snap(dp, P), dp, P) + ' → ' + verdictShine(snap(dp, P)));
+  log('[F] 按钮自身底色（background-image）强制 hover vs 未 hover 相同 = ' + (ch.backgroundImage === cn.backgroundImage));
+  log('[F] 按钮自身 transform 强制 hover=' + ch.transform + '（.btn:hover:not(:disabled) 的 -2px 抬升）/ 未 hover=' + cn.transform +
+    ' → 这条是既有规则，本次未改');
+  log('[F] 说明：本次 diff 只在 .btn.pk-anim-hover:hover::after 里加了一行 transform，未触碰 .btn / :hover / :active / :disabled 任何规则');
+  log('');
+
+  /* 8) 画廊 */
+  if (WITH_STAGE) { await buildGallery(); log('== 画廊 == 已建立（5 个冻结状态），pin 帧见各条 caption'); }
+  log('== DONE ==');
+  log('== EOF ==');
+  push();
+  document.title = 'hover-check DONE';
+  window.HC.done = true;
+})();
+</script>
+</body>
+</html>

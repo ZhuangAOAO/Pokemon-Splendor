@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>确认框逐处实测装置（同源 iframe，不依赖 CDP）</title>
+<style>
+  html,body{ margin:0; font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif; background:#0f1216; color:#e8edf3; }
+  .wrap{ position:relative; }
+  #f{ width:900px; height:520px; border:0; background:#fff; display:block; }
+  #panel{ padding:8px 12px; }
+  .h{ color:#ffd24a; font-weight:800; }
+  #out{ white-space:pre-wrap; font-family:Consolas,monospace; font-size:12px; color:#cfe3ff; }
+  .ok{ color:#5ee08a; } .bad{ color:#ff8b6b; }
+</style>
+</head>
+<body>
+<div class="wrap"><iframe id="f"></iframe></div>
+<div id="panel">
+  <div class="h" id="title">场景：—</div>
+  <div id="out">运行中…</div>
+</div>
+<script>
+const q = new URLSearchParams(location.search);
+const site = q.get('site') || 'lobby-leave';
+const isAdmin = site.indexOf('admin-') === 0;
+const f = document.getElementById('f');
+const out = document.getElementById('out');
+const lines = [];
+function say(s) { lines.push(s); out.textContent = lines.join('\n'); }
+function setTitle(s) { document.getElementById('title').textContent = '场景：' + s; }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+f.src = isAdmin ? '/admin.html' : '/index.html?card=center';
+
+f.onload = () => setTimeout(() => { run().catch((e) => say('异常：' + e.message)); }, 700);
+
+async function run() {
+  const w = f.contentWindow, d = f.contentDocument;
+  const calls = [];
+  const mask = () => d.querySelector('#spc2-mask') || null;   // 组件注入在 iframe 内
+  const titleEl = () => d.querySelector('#spc2-title');
+  const okBtn = () => d.querySelector('#spc2-ok');
+  const caBtn = () => d.querySelector('#spc2-cancel');
+
+  if (!isAdmin) {
+    // ---- 进大厅（stub：无后端，但外壳与绑定都是真的）----
+    w.eval([
+      "try{",
+      "  myToken='stub'; myName='玩家1'; myNickname='玩家1';",
+      "  try{ localStorage.setItem('update-seen-3.3.0','1'); }catch(e){}",
+      "  document.querySelectorAll('#screen-login,#screen-setup,#screen-game').forEach(function(e){e.hidden=true;});",
+      "  document.getElementById('screen-lobby').hidden=false;",
+      "  var ub=document.getElementById('btn-upd-close'); if(ub) ub.click();",
+      "  if(typeof renderLobbyNav==='function') renderLobbyNav();",
+      "  if(typeof setLobbyMode==='function') setLobbyMode(false);",
+      "}catch(e){ document.title='STUB_ERR:'+e.message; }",
+    ].join('\n'));
+    // 包住 postApi：记录"确认后到底发了什么请求"；教程类请求返回成功，好让教程真开局（顶着才生成 #tut-exit）
+    w.eval([
+      "window.__calls = [];",
+      "window.postApi = function(body){",
+      "  window.__calls.push(body && body.type);",
+      "  if (body && body.type === 'tutorial') return Promise.resolve({ ok:true, cid:'stub', room:{ id:'T000', host:'stub' } });",
+      "  return Promise.resolve({ ok:false, msg:'STUB' });",
+      "};",
+    ].join('\n'));
+    await sleep(400);
+  } else {
+    w.eval("window.__origApi = window.api; window.api = function(body){ window.__calls = window.__calls||[]; window.__calls.push(body && body.type); return Promise.resolve({ok:false,msg:'STUB'}); };");
+    await sleep(300);
+  }
+  const readCalls = () => { try { return w.__calls || []; } catch (e) { return ['<跨域>']; } };
+
+  setTitle(site);
+
+  async function trigger() {
+    if (site === 'lobby-leave') w.eval("document.querySelector('#btn-lobby-leave').click()");
+    else if (site === 'exit-room') w.eval("document.querySelector('#btn-exit').click()");
+    else if (site === 'stop-game') w.eval("document.querySelector('#btn-stop-game').click()");
+    else if (site === 'kick') {
+      w.eval([
+        "try{",
+        "  room = { id:'0000', host:'me', humans:[{ cid:'c1', name:'测试客', connected:true }], ais:[], log:[] };",
+        "  myCid='c1';",
+        "  var box=document.getElementById('lobby-seats'); if(box) box.innerHTML='<button class=\"kick-btn\" data-cid=\"c1\">移出</button>';",
+        "}catch(e){ document.title='KICK_STUB_ERR:'+e.message; }",
+      ].join('\n'));
+      await sleep(120);
+      w.eval("document.querySelector('#lobby-seats .kick-btn').click()");
+    }
+    else if (site === 'tutorial-exit') {
+      // 教程顶栏（含 #tut-exit）只在教程开始后才生成：先点真实的「新手教程」按钮把教程开起来
+      w.eval("var tb=document.querySelector('.tut-btn'); if(tb) tb.click();");
+      await sleep(900);
+      w.eval("var b=document.getElementById('tut-exit'); if(b) b.click(); else document.title='NO_TUT_EXIT';");
+    }
+    else if (site === 'admin-review') {
+      // 审核按钮由渲染函数生成（需已登录+有数据）：这里用 DOM API 往真实的 #panel-0 造一颗同结构按钮
+      // （避开模板字符串转义），命中 admin.html 自己的事件委托，走同一条 spConfirm 路径
+      w.eval([
+        "var p = document.getElementById('panel-0');",
+        "if (p) {",
+        "  var b = document.createElement('button');",
+        "  b.className = 'btn green';",
+        "  b.dataset.name = '测试用户';",
+        "  b.dataset.act = 'approve';",
+        "  b.textContent = '通过';",
+        "  p.appendChild(b);",
+        "} else { document.title = 'NO_PANEL_0'; }",
+      ].join('\n'));
+      await sleep(150);
+      w.eval("var q = document.querySelector('#panel-0 button[data-name]'); if (q) q.click(); else document.title = 'NO_PANEL_BTN';");
+    }
+    else if (site === 'admin-create') {
+      w.eval("document.getElementById('new-admin-name').value='新管理员'; document.getElementById('new-admin-pass').value='abc123456'; window.__calls=[];");
+      w.eval("document.getElementById('new-admin-ok').click()");
+    }
+    await sleep(450);
+  }
+
+  // ---- 1) 先测「取消」：应无任何请求副作用 ----
+  await trigger();
+  const opened = !!mask() && !mask().hidden;
+  const t = titleEl() ? titleEl().textContent : '(无)';
+  const danger = okBtn() ? /spc2-danger/.test(okBtn().className) : null;
+  await sleep(150);
+  if (caBtn()) caBtn().click();
+  await sleep(250);
+  const afterCancel = readCalls().slice();
+  say('① 取消：弹框标题「' + t + '」' + (danger ? '（危险/深红主按钮）' : '（普通主按钮）') + '；点取消后请求记录 = ' + JSON.stringify(afterCancel));
+  say('   取消后弹框已关 = ' + (mask() && mask().hidden ? '是 ✓' : '否 ✗'));
+
+  // ---- 2) 再测「确认」：记录实际发生的请求/状态 ----
+  let tokenBefore = 'n/a';
+  try { tokenBefore = w.localStorage.getItem('spToken'); } catch (e) {}
+  await trigger();
+  await sleep(150);
+  if (okBtn()) okBtn().click();
+  await sleep(400);
+  const afterOk = readCalls().slice();
+  let tokenAfter = 'n/a';
+  try { tokenAfter = w.localStorage.getItem('spToken'); } catch (e) {}
+  say('② 确认：请求记录 = ' + JSON.stringify(afterOk));
+  say('   localStorage.spToken：点击前 ' + JSON.stringify(tokenBefore) + ' → 点击后 ' + JSON.stringify(tokenAfter));
+
+  // ---- 3) 再把弹框打开，供截图辨认场景 ----
+  await trigger();
+  await sleep(400);
+  say('③ 截图态：弹框标题 = 「' + (titleEl() ? titleEl().textContent : '(无)') + '」，可见 = ' + (mask() && !mask().hidden ? '是' : '否'));
+}
+</script>
+</body>
+</html>

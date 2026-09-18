@@ -107,10 +107,22 @@ function toast(msg) {
 
 /* ==================== 屏幕切换 ==================== */
 function showScreen(id) {
-  ['setup', 'login', 'join', 'lobby', 'game'].forEach((s) => {
+  ['setup', 'login', 'lobby', 'game'].forEach((s) => {
     const el = document.getElementById('screen-' + s);
     if (el) el.hidden = (s !== id);
   });
+  // C1 切屏转场（球体开合 .30s）：只给「本次被显示的那一屏」加一次性 class，动画跑完就摘掉。
+  // 关掉：删掉这一段（或删掉 style.css 里的 .pk-anim-switch / @keyframes pkOpen）。
+  const shownEl = document.getElementById('screen-' + id);
+  if (shownEl && !motionReduced()) {
+    shownEl.classList.remove('pk-anim-switch');
+    void shownEl.offsetWidth;                       // 强制重排：连着切同一屏也能重放
+    shownEl.classList.add('pk-anim-switch');
+    setTimeout(() => shownEl.classList.remove('pk-anim-switch'), 420);
+  }
+  // 大厅刚显示出来（此前 display:none、rail 无布局，量不到矩形）——
+  // 这时才能量到 rail 的真实矩形，把压在 rail 上的装饰球挪开（方案 1 的“布局后复测”）
+  if (id === 'lobby' && typeof fixDecoRail === 'function') fixDecoRail();
 }
 
 /* ==================== 最终回合大横幅（屏幕中央登场约 1 秒 → 缩进顶栏小徽章） ==================== */
@@ -331,8 +343,48 @@ function fadeVoteBanner() {
   }, 1500);
 }
 
-// 离场动画：本回合从场上消失的卡（被收服/预约后顶掉）→ 克隆旧卡面播"掀角"动画，播完再移除。
+// 离场动画：本回合从场上消失的卡（被收服/预约后顶掉）→ 克隆旧卡面播"拿起"动画，播完再移除。
+// 视觉口径 = demo ⑥「拿起·翘右上（微变形，520ms）」：
+//   第一段(~40%) 只有角动：绕对角支点 3D 翘起 + 卡面 9 段逐条微弯（轻微变形）+ 接触阴影拉开
+//   第二段(~60%) 角领着整张牌沿掀角方向被带走（缓出）
 // 纯视觉层：新卡照常立即渲染，行动时序不受影响；系统开了"减弱动态效果"则直接跳过。
+const LIFT_MS = 520;   // 与 demo ⑥ 一致
+const LIFT_SEG = 9;    // 卡面切段数（逐条倾斜 → 弯曲）
+
+// 造一个"拿起"幽灵：外层负责被带走，内层嵌套 9 段负责翘起+弯曲
+function buildLiftGhost(el, rect){
+  const img = el.querySelector('.card-img');
+  const src = img ? img.getAttribute('src') : null;
+  const W = rect.width, H = rect.height, segH = H / LIFT_SEG;
+  const wrap = document.createElement('div');
+  wrap.className = 'card-lift';
+  wrap.style.cssText = 'position:fixed;left:' + rect.left + 'px;top:' + rect.top + 'px;width:' + W + 'px;height:' + H + 'px;margin:0;z-index:60;pointer-events:none;';
+  const sh = document.createElement('div');
+  sh.className = 'sh';
+  wrap.appendChild(sh);
+  const holder = document.createElement('div');
+  holder.className = 'lift3d';
+  let parent = holder;
+  for (let i = 0; i < LIFT_SEG; i++) {
+    const s = document.createElement('div');
+    s.className = 'seg';
+    s.style.setProperty('--i', String(i));
+    s.style.top = (i === 0 ? '0' : '100%');
+    s.style.height = segH.toFixed(2) + 'px';
+    // 首尾条跟着卡牌的圆角，不然悬起来的牌是个直角矩形
+    s.style.borderRadius = (i === 0 ? '12px 12px 0 0' : (i === LIFT_SEG - 1 ? '0 0 12px 12px' : '0'));
+    if (src) {
+      s.style.backgroundImage = 'url("' + src + '")';
+      s.style.backgroundSize = W + 'px ' + H + 'px';
+      s.style.backgroundPosition = '0 ' + (-i * segH).toFixed(2) + 'px';
+    }
+    parent.appendChild(s);
+    parent = s;   // 嵌套：让每段的自转累加 = 弯
+  }
+  wrap.appendChild(holder);
+  return { wrap: wrap, hasImage: !!src };
+}
+
 function spawnLeaveGhosts(root) {
   if (motionReduced()) return;
   root.querySelectorAll('.card[data-tier]:not(.empty)').forEach((el) => {
@@ -343,12 +395,19 @@ function spawnLeaveGhosts(root) {
     if (prevIds[idx] == null) return; // 上一帧这个槽位没卡（新登场），不播离场
     if (prevIds[idx] === (cur ? cur.id : null)) return; // 槽位没换卡，不播
     const rect = el.getBoundingClientRect();
-    const ghost = el.cloneNode(true);
-    ghost.classList.remove('new', 'selected', 'affordable');
-    ghost.classList.add('leaving');
-    ghost.style.cssText = 'position:fixed;left:' + rect.left + 'px;top:' + rect.top + 'px;width:' + rect.width + 'px;height:' + rect.height + 'px;margin:0;z-index:60;pointer-events:none;';
-    document.body.appendChild(ghost);
-    setTimeout(() => ghost.remove(), 280); // 动画播完再移除 DOM
+    const built = buildLiftGhost(el, rect);
+    if (!built.hasImage) {
+      // 卡面图没加载出来（加载失败路径）→ 退回原来的单段整体后仰，不留空牌
+      const ghost = el.cloneNode(true);
+      ghost.classList.remove('new', 'selected', 'affordable');
+      ghost.classList.add('leaving');
+      ghost.style.cssText = 'position:fixed;left:' + rect.left + 'px;top:' + rect.top + 'px;width:' + rect.width + 'px;height:' + rect.height + 'px;margin:0;z-index:60;pointer-events:none;';
+      document.body.appendChild(ghost);
+      setTimeout(() => ghost.remove(), 280);
+      return;
+    }
+    document.body.appendChild(built.wrap);
+    setTimeout(() => built.wrap.remove(), LIFT_MS + 40); // 动画播完再移除 DOM
   });
 }
 
@@ -492,7 +551,7 @@ function boardEl(p, pi, isHero) {
   const returning = S.mode === 'returnBalls' && pi === S.current && !p.isAI;
   if (discarding) b.classList.add('discarding');
   const typeLabel = p.isAI
-    ? (p.aiLevel === 'easy' ? '电脑·简单' : (p.aiLevel === 'champion' ? '电脑·冠军' : '电脑·困难'))
+    ? (p.aiLevel === 'easy' ? '电脑·简单' : (p.aiLevel === 'champion' ? '电脑·阿尔宙斯' : '电脑·困难'))
     : ''; // 真人玩家不显示标签
   const offline = ONLINE && !p.isAI && !isConnected(pi);
   const nameLabel = p.name + (offline ? '（离线）' : '') + (ONLINE && pi === mySeat ? '（你）' : '');
@@ -752,7 +811,8 @@ function renderActions() {
     if (actMaster) actMaster.addEventListener('click', () => { S.mode = 'takeMaster'; render(); });
   } else {
     const waiting = p.isAI ? `${p.name} 正在思考…` : `等待 ${p.name} 行动…`;
-    box.innerHTML = `<div class="action-hint">${waiting}</div>`;
+    // C2 加载等待（摇摆 .9s 循环）：坐在现有等待提示上。关掉：去掉 pk-anim-loading 类
+    box.innerHTML = `<div class="action-hint pk-anim-loading">${waiting}</div>`;
   }
 }
 function selCardCard() {
@@ -1057,7 +1117,7 @@ function backToSetup() {
 }
 function buildDeco() {
   // 单机设置页 + 联机三屏（登录 / 加入 / 大厅）都铺一层漂浮精灵球，背景与单机保持一致
-  const hosts = ['screen-setup', 'screen-login', 'screen-join', 'screen-lobby']
+  const hosts = ['screen-setup', 'screen-login', 'screen-lobby']
     .map((id) => document.getElementById(id)).filter(Boolean);
   const cols = ['red', 'blue', 'black', 'pink', 'yellow'];
   // 网格分区：先把屏幕切成 5×4 格，每屏随机取 9 个不同格子，每颗球只在自己格子里浮动。
@@ -1069,24 +1129,154 @@ function buildDeco() {
   // 均衡模板：9 个格子预先排好，保证每行每列都有球（不会出现半边空着）；
   // 每屏再随机做水平/垂直镜像 + 格内抖动，观感才不呆板。
   const TEMPLATE = [[0, 0], [3, 0], [1, 1], [4, 1], [0, 2], [3, 2], [2, 2], [1, 3], [4, 3]];
+  // rail（左侧导航栏）矩形：按**当前布局实时算**——宽度是 clamp(150px,15vw,210px)，会随窗口变，不能写死
+  const railEl = document.querySelector('.rail');
+  const railR = railEl ? railEl.getBoundingClientRect() : null;
+  const PAD = 12; // 给漂浮动画留余量：把 rail 矩形外扩，防浮动时压进去
+  const hitsRail = (x, y, size) => {
+    if (!railR) return false;
+    return !(x + size < railR.left - PAD || x > railR.right + PAD
+      || y + size < railR.top - PAD || y > railR.bottom + PAD);
+  };
+  const cellsShuffled = () => {
+    const a = [];
+    for (let gy = 0; gy < ROWS; gy++) for (let gx = 0; gx < COLS; gx++) a.push([gx, gy]);
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  };
+  // 布点器：**绝不丢球**（每屏近景 9 + 远景 3，恒为 12 颗）。
+  // 先在自己那一格里抖动重试；失败就**换格子**（20 格洗牌逐个试）；再不行落到「rail 右侧」的确定性兜底。
+  // （上一版的坑：只在自己那一格里抖 20 次 —— 格子正好落在 rail 那一列时全失败 → 球被丢掉。）
+  const placeBall = (size, hostRect, spanW0, spanH0, prefCell) => {
+    const spanW = Math.max(spanW0, size), spanH = Math.max(spanH0, size);
+    const inCell = (c, r, jitter) => {
+      const jx = Math.max(0, cellW - size) * 0.25, jy = Math.max(0, cellH - size) * 0.25;
+      const cx = c * cellW + (cellW - size) / 2 + (jitter ? (Math.random() * 2 - 1) * jx : 0);
+      const cy = r * cellH + (cellH - size) / 2 + (jitter ? (Math.random() * 2 - 1) * jy : 0);
+      return { left: cx, top: cy, ok: !hitsRail(hostRect.left + cx, hostRect.top + cy, size) };
+    };
+    if (prefCell) for (let t = 0; t < 20; t++) { const p = inCell(prefCell[0], prefCell[1], true); if (p.ok) return p; }
+    const cells = cellsShuffled();
+    for (let i = 0; i < cells.length; i++) {
+      if (prefCell && cells[i][0] === prefCell[0] && cells[i][1] === prefCell[1]) continue;
+      const p = inCell(cells[i][0], cells[i][1], false);
+      if (p.ok) return p;
+      const q = inCell(cells[i][0], cells[i][1], true);
+      if (q.ok) return q;
+    }
+    // 确定性兜底：rail 在左边 → 贴着它右边放；夹回 host 范围内（宁可贴边，也不丢球）
+    const fx = railR ? Math.min(railR.right + PAD + 4, Math.max(0, spanW - size)) : Math.max(0, (spanW - size) / 2);
+    const fy = Math.random() * Math.max(0, spanH - size);
+    return { left: fx, top: fy, ok: !hitsRail(hostRect.left + fx, hostRect.top + fy, size) };
+  };
   for (const host of hosts) {
+    const hostRect = host.getBoundingClientRect();
     const flipX = Math.random() < 0.5, flipY = Math.random() < 0.5;
+    // 先量一次 host 的可用宽高（远景球要在整个 host 里随机撒点；量不到就用视口兜底）
+    const spanW = Math.max(cellW, hostRect.width || window.innerWidth);
+    const spanH = Math.max(cellH, hostRect.height || window.innerHeight);
     for (let i = 0; i < TEMPLATE.length; i++) {
       const c = flipX ? COLS - 1 - TEMPLATE[i][0] : TEMPLATE[i][0];
       const r = flipY ? ROWS - 1 - TEMPLATE[i][1] : TEMPLATE[i][1];
       const b = BALLS[pick(cols)];
+      // 布点：先在自己那一格里抖动；失败就换格子（20 格洗牌逐个试）→ **绝不丢球**（近景 9 颗恒满）
       const size = maxSize * (0.65 + Math.random() * 0.35);
-      // 只在格内一半的余量里抖动，给漂浮动画留出不碰邻格的余量
-      const jx = (cellW - size) * 0.5 * 0.5;
-      const jy = (cellH - size) * 0.5 * 0.5;
-      const left = c * cellW + (cellW - size) / 2 + (Math.random() * 2 - 1) * jx;
-      const top = r * cellH + (cellH - size) / 2 + (Math.random() * 2 - 1) * jy;
+      const spot = placeBall(size, hostRect, spanW, spanH, [c, r]);
+      const left = spot.left, top = spot.top;
       const d = document.createElement('span');
       d.className = 'ball deco';
       d.style.cssText = `--bc:${b.top};--band:${b.band};width:${size}px;height:${size}px;left:${left}px;top:${top}px;animation-delay:${-Math.random() * 6}s;`;
       host.appendChild(d);
     }
+    // A v3 氛围层：近景 9 颗之后，再撒 3 颗远景球（同一套 .ball / 同色 / 尺寸口径与近景一致）。
+    // 位置铺在**整个 host**（不限制在卡片外），但必须避开 rail：复用上面的 hitsRail()，
+    // 撒不开就换格子找（见 placeBall），**绝不丢球**。
+    for (let i = 0; i < 3; i++) {
+      const b = BALLS[pick(cols)];
+      // 远景球先在整个 host 里随机撒点；撒不开就换格子找 —— 同样**绝不丢球**（远景 3 颗恒满）
+      const size = maxSize * (0.65 + Math.random() * 0.35);
+      let spot = null;
+      for (let t = 0; t < 20 && !spot; t++) {
+        const lx = Math.random() * Math.max(0, spanW - size);
+        const ly = Math.random() * Math.max(0, spanH - size);
+        if (!hitsRail(hostRect.left + lx, hostRect.top + ly, size)) spot = { left: lx, top: ly };
+      }
+      if (!spot) spot = placeBall(size, hostRect, spanW, spanH, null);
+      const left = spot.left, top = spot.top;
+      // 外层是「浮动 + 模糊 + 淡出」的容器（className 按约定 = ball deco far，尺寸与近景同口径），
+      // 球由内层同一套 .ball 画（style.css 里 .deco.far .ball{ transform:scale(.72) }）。
+      const d = document.createElement('span');
+      d.className = 'ball deco far';
+      d.style.cssText = `--bc:${b.top};--band:${b.band};width:${size}px;height:${size}px;left:${left}px;top:${top}px;animation-delay:${-Math.random() * 9}s;`;
+      const inner = document.createElement('span');
+      inner.className = 'ball';
+      inner.style.cssText = `--bc:${b.top};--band:${b.band};width:100%;height:100%;`;
+      d.appendChild(inner);
+      host.appendChild(d);
+    }
   }
+}
+
+/* 布局后复测/避让：`buildDeco()` 在页面加载时跑，那时大厅/rail 还是 display:none（矩形量到 0×0），
+   排除判断等于空转。这里在**大厅刚显示**时用真实矩形复测一次，把压在**左侧导航栏 rail**
+   上的装饰球（近景 + 远景）重新布点：20 个格子洗牌逐个试，全不行再随机 20 次，
+   最后才移除（球数守恒优先：近景 9 + 远景 3 = 12 颗，不循环等待，量不到就不动）。*/
+/* 注：卡片内文字**不再是**禁区 —— 球层已压到卡面下层（见 style.css 的 .deco{z-index:0}）。*/
+function decorForbidden() {
+  const list = [];
+  const rail = document.querySelector('.rail');
+  if (rail) {
+    const r = rail.getBoundingClientRect();
+    if (r.width) list.push({ l: r.left - 16, t: r.top - 16, r: r.right + 16, b: r.bottom + 16 });   // rail：外扩 16px
+  }
+  // **只避 rail**（2026-09-18 第二轮修复）：卡片内文字/控件不再是禁区。
+  // 理由：球已由 style.css 的 .deco{z-index:0} + #screen-lobby .shell/.sec{z-index:1} 压到卡面**下层**，
+  // 就算压在文字上也看不见，不需要把球挪走。上一版把「卡片内文字」也列为禁区，
+  // 结果球被大量移除（实测只剩 4~7 颗，最少一次只剩 1 颗），还把球数守恒搞坏了。
+  return list;
+}
+
+function fixDecoRail() {
+  const rail = document.querySelector('.rail');
+  const rr = rail ? rail.getBoundingClientRect() : null;
+  if (!rr || !rr.width) return;                      // rail 仍无布局 → 本次不动（防死循环）
+  const bad = decorForbidden();                      // 只剩 rail 一类禁区
+  const overlaps = (x, y, w, h) => bad.some((z) => !(x + w <= z.l || x >= z.r || y + h <= z.t || y >= z.b));
+  const gw = window.innerWidth / 5, gh = window.innerHeight / 4;
+  document.querySelectorAll('#screen-lobby .deco').forEach((el) => {
+    const host = el.parentElement;
+    const hr = host.getBoundingClientRect();
+    // 用 offset* 而不是 getBoundingClientRect：offset 量的是**未加 transform 的布局位置**，
+    // 不会被浮动动画的当前相位带偏（否则同一颗球会时对时错）。
+    const w = el.offsetWidth, h = el.offsetHeight;
+    if (!overlaps(hr.left + el.offsetLeft, hr.top + el.offsetTop, w, h)) return;
+    const spanW = Math.max(hr.width, w, gw), spanH = Math.max(hr.height, h, gh);
+    // 候选点 = 5×4=20 个格子**洗牌后逐个试**（球数守恒优先，见下）。
+    const cells = [];
+    for (let gy = 0; gy < 4; gy++) for (let gx = 0; gx < 5; gx++) cells.push([gx, gy]);
+    for (let i = cells.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1)); const t = cells[i]; cells[i] = cells[j]; cells[j] = t;
+    }
+    let nx = null, ny = null;
+    for (let i = 0; i < cells.length && nx === null; i++) {
+      const cx = Math.min(Math.max(0, cells[i][0] * gw + (gw - w) / 2), Math.max(0, spanW - w));
+      const cy = Math.min(Math.max(0, cells[i][1] * gh + (gh - h) / 2), Math.max(0, spanH - h));
+      if (!overlaps(hr.left + cx, hr.top + cy, w, h)) { nx = cx; ny = cy; }
+    }
+    // 20 格全不行（理论上不会发生）：再随机 20 次；仍不行才移除这颗。
+    // 上一版是在**自己所在的那一个格子**里抖 20 次 —— 格子正好落在 rail 那一列时 20 次全失败 →
+    // 球被 remove() 丢掉（实测球掉到 4~7 颗，最少只剩 1 颗）。换成「换格子」后 12 颗恒满。
+    for (let t = 0; t < 20 && nx === null; t++) {
+      const cx = Math.random() * Math.max(0, spanW - w);
+      const cy = Math.random() * Math.max(0, spanH - h);
+      if (!overlaps(hr.left + cx, hr.top + cy, w, h)) { nx = cx; ny = cy; }
+    }
+    if (nx === null) { el.remove(); return; }        // 兜底：宁少一颗，也不让球压在导航栏上
+    el.style.left = nx + 'px';
+    el.style.top = ny + 'px';
+  });
 }
 
 /* ==================== 联机模式 ==================== */
@@ -1157,75 +1347,278 @@ function handleServerMsg(m) {
     setTimeout(() => location.reload(), 1200);
   }
 }
-function renderLobby() {
-  if (!room) return;
-  const isHost = !!(room.you && room.you.isHost);
-  const humans = room.humans || [];
-  const ais = room.ais || [];
-  const total = humans.filter((h) => h.connected).length + ais.length;
-
-  $('#lobby-room-info').innerHTML = `房间号 <b>${room.id}</b> · ${room.isPublic ? '公开（可被搜索）' : '私有（仅凭房间号加入）'}`;
-
-  $('#lobby-roster').innerHTML = humans.map((h) => `
-    <div class="lobby-row">
-      <span class="lobby-dot ${h.connected ? 'on' : 'off'}"></span>
-      <span class="lobby-name">${h.name}${h.isHost ? '（房主）' : ''}${h.name === myName ? '（你）' : ''}</span>
-      ${h.connected ? '' : '<span class="lobby-tag off">已断线</span>'}
-      ${isHost && h.name !== myName ? `<button class="btn ghost sm kick-btn" data-cid="${h.cid}">踢出</button>` : ''}
-    </div>`).join('') +
-    ais.map((a) => `
-    <div class="lobby-row">
-      <span class="lobby-dot on"></span>
-      <span class="lobby-name">${a.name}</span>
-      <span class="lobby-tag">电脑·${a.level === 'easy' ? '简单' : (a.level === 'champion' ? '冠军' : '困难')}</span>
-    </div>`).join('');
-
-  // 房主控制区
-  $('#lobby-host').hidden = !isHost;
-  if (isHost) {
-    renderAiRows();
-    renderLobbyTarget();
-    $('#btn-lobby-start').disabled = !(total >= 2 && total <= 4);
-  }
-  $('#lobby-hint').textContent = isHost
-    ? `当前 ${total} 名玩家（2~4 人可开始），把本页地址发给朋友，大家一起加入`
-    : '等待房主开始游戏…';
+// 阿尔宙斯 RL 的口径标签：只标「训练人数档」，不标胜率（胜率留给榜单/说明页）
+function lobbyAiLabel(level, total) {
+  if (level === 'easy') return '电脑·简单';
+  if (level === 'hard') return '电脑·困难';
+  if (level === 'champion') return `阿尔宙斯（${total} 人局）`;
+  return '电脑';
 }
-function renderAiRows() {
-  const box = $('#lobby-ais');
-  box.innerHTML = '';
-  (room.ais || []).forEach((a, i) => {
-    const row = document.createElement('div');
-    row.className = 'player-row';
-    row.innerHTML = `
-      <span class="row-idx">AI</span>
-      <input class="ai-name" maxlength="8" value="${a.name}">
-      <select class="ai-level">
-        <option value="easy" ${a.level === 'easy' ? 'selected' : ''}>电脑·简单</option>
-        <option value="hard" ${a.level === 'hard' ? 'selected' : ''}>电脑·困难</option>
-        <option value="champion" ${a.level === 'champion' ? 'selected' : ''} ${room.championReady ? '' : 'disabled'}
-          title="${room.championReady ? '' : '服务器未加载到冠军权重，暂时不可选'}">电脑·冠军（RL）</option>
-      </select>
-      <button class="btn ghost sm ai-del">×</button>`;
-    const send = () => {
-      const ais = [];
-      [...box.querySelectorAll('.player-row')].forEach((r) => {
-        ais.push({
-          name: r.querySelector('.ai-name').value.trim() || '电脑',
-          level: r.querySelector('.ai-level').value,
-        });
+
+// ---- 大厅一级导航（方案 A：宽屏顶部导航 / 窄屏左竖栏；两处容器渲染同一份按钮）----
+const LOBBY_NAV = [
+  { id: 'start',  icon: '▶', label: '开始对局', cls: 'primary' },   // 对齐 demo：首项是红色主按钮
+  { id: 'champ',  icon: '★', label: '挑战阿尔宙斯' },
+  { id: 'rank',   icon: '≡', label: '训练家排行' },
+  { id: 'replay', icon: '⟲', label: '对局回放' },
+  { id: 'honor',  icon: '♛', label: '名人堂' },
+];
+
+function showLobbySection(id) {
+  document.querySelectorAll('#screen-lobby .sec').forEach((s) => { s.hidden = s.id !== 'lobby-sec-' + id; });
+  const it = LOBBY_NAV.find((x) => x.id === id);
+  const t = $('#lobby-sec-title');
+  if (t && it) t.textContent = it.label;
+  document.querySelectorAll('#lobby-nav .nav-btn').forEach((b) => {
+    b.classList.toggle('on', b.dataset.sec === id);
+  });
+  // 挑战阿尔宙斯的人数档（2/3/4 人局 → 建 mode=challenge 专用房）
+  const champ = $('#champ-size');
+  if (champ && !champ.dataset.done) {
+    champ.dataset.done = '1';
+    [2, 3, 4].forEach((n) => {
+      const c = document.createElement('button');
+      c.type = 'button';
+      // 默认档 = 3 人局：与 #champ-start 的 `|| '3'` 和 server 端 `size 不合法时取 3` 保持一致
+      // （旧写法把默认高亮画在 2 人局上，但真正建出来的是 3 人局 → 高亮和实际不一致）
+      c.className = 'chip' + (n === 3 ? ' on' : '');
+      c.textContent = n + ' 人局';
+      c.addEventListener('click', () => {
+        champ.querySelectorAll('.chip').forEach((x) => x.classList.toggle('on', x === c));
       });
-      postApi({ type: 'setAIs', cid: myCid, ais });
-    };
-    row.querySelector('.ai-name').addEventListener('change', send);
-    row.querySelector('.ai-level').addEventListener('change', send);
-    row.querySelector('.ai-del').addEventListener('click', () => { row.remove(); send(); });
-    box.appendChild(row);
+      champ.appendChild(c);
+    });
+    champ.dataset.size = '3';   // 初始默认档写进 dataset，别让「高亮」和「真建出来的人数」两套说法
+  }
+  // ④ 名人堂：进到这个分区才拉数据
+  if (id === 'honor') loadHall(false);
+}
+
+function renderLobbyNav() {
+  const box = $('#lobby-nav');
+  if (!box || box.dataset.done) return;
+  box.dataset.done = '1';
+  LOBBY_NAV.forEach((it) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn nav-btn' + (it.cls ? ' ' + it.cls : '');
+    b.dataset.sec = it.id;
+    b.innerHTML = '<span class="nav-ico">' + it.icon + '</span><span>' + it.label + '</span>';
+    b.addEventListener('click', () => showLobbySection(it.id));
+    box.appendChild(b);
   });
 }
+
+// ==================== ④ 名人堂：殿堂（永久）/ 本赛季（按模型版本分季） ====================
+let hallCache = null;
+let hallScope = 'hall';
+let hallSize = 2;
+let hallView = 'card';
+
+async function loadHall(force) {
+  const box = $('#hall-list');
+  if (!box) return;
+  if (!hallCache || force) {
+    // C2 加载等待（摇摆 .9s 循环）：套在现有等待元素上。关掉：去掉这里的 pk-anim-loading 类
+    box.innerHTML = '<div class="hall-empty"><b>正在读取名人堂…</b></div>';
+    box.firstChild.classList.add('pk-anim-loading');
+    const j = await postApi({ type: 'hallOfFame', token: myToken });
+    hallCache = (j && j.ok) ? j : { ok: false, entries: [], seasons: [] };
+  }
+  renderHall();
+}
+
+function renderHall() {
+  const box = $('#hall-list');
+  if (!box || !hallCache) return;
+  const all = hallCache.entries || [];
+  const seasons = hallCache.seasons || [];
+  const seasonKey = seasons.length ? seasons[0].key : null;
+  const scoped = (hallScope === 'season' && seasonKey)
+    ? all.filter((e) => ((e.aiVer || 'unknown') + '|' + (e.aiName || '')) === seasonKey)
+    : all;
+  const rows = scoped.filter((e) => e.size === hallSize);
+  const sizeLabel = (n) => n + ' 人局';
+  if (!rows.length) {
+    // 空榜也要好看：群体小，常常只有几条
+    box.innerHTML = `<div class="hall-empty">`
+      + `<div class="hall-empty-ico">🏅</div>`
+      + `<b>${sizeLabel(hallSize)}还没人上榜</b>`
+      + `<span>${hallScope === 'season' ? '本赛季' : '殿堂'}还没有 ${sizeLabel(hallSize)} 的挑战记录 —— 去「挑战阿尔宙斯」打一局，赢了就留名。</span>`
+      + '</div>';
+    return;
+  }
+  // 挑战回放对全站登录用户开放（canView）；普通回放仍只给参与者
+  const openBtn = (e) => (e.canView || e.mine)
+    ? `<button class="btn ghost sm hall-open" data-id="${e.id}">看回放</button>`
+    : '<span class="hall-tag dim">仅参与者可看</span>';
+  if (hallView === 'row') {
+    box.innerHTML = '<div class="hall-rows">' + rows.map((e, i) => `
+      <div class="hall-row">
+        <span class="hall-rank">${i + 1}</span>
+        <span class="pk-badge" aria-hidden="true"></span>
+        <span class="hall-who">${(e.humans || []).map((h) => h.name).join('、') || '—'}</span>
+        <span class="hall-tag">${sizeLabel(e.size)}</span>
+        <span class="hall-tag dim">阿尔宙斯</span>
+        <span class="hall-date">${(e.createdAt || '').slice(5, 16)}</span>
+        ${openBtn(e)}
+      </div>`).join('') + '</div>';
+    return;
+  }
+  box.innerHTML = '<div class="hall-cards">' + rows.map((e, i) => `
+    <div class="hall-card">
+      <div class="hall-card-top">
+        <span class="hall-rank">${i + 1}</span>
+        <span class="pk-badge" aria-hidden="true"></span>
+        <span class="hall-tag">${sizeLabel(e.size)}</span>
+      </div>
+      <div class="hall-who">${(e.humans || []).map((h) => h.name).join('、') || '—'}</div>
+      <div class="hall-meta">${(e.winners || []).length ? '胜者：' + e.winners.join('、') : '未产生胜者'}</div>
+      <div class="hall-meta dim">阿尔宙斯 · ${(e.createdAt || '').slice(0, 16)}</div>
+      ${openBtn(e)}
+    </div>`).join('') + '</div>';
+}
+
+// ==================== ⑤ 手机横屏：竖屏进对局时弹遮罩（不做 transform 强制旋转） ====================
+const portraitMQ = window.matchMedia('(orientation: portrait) and (max-width: 900px)');
+function updateRotateMask() {
+  const mask = $('#rotate-mask');
+  if (!mask) return;
+  const g = $('#screen-game');
+  mask.hidden = !(portraitMQ.matches && g && !g.hidden);
+}
+// ② 大厅专用：不阻断的横屏提示（可忽略；忽略后本次会话不再出）
+// 显示判定条件（2026-09-18 写死口径）：**窗口宽 > 高（横屏）时一律不显示**；
+// 只有「竖屏（高 ≥ 宽）且宽 ≤ 900px」且未被忽略时才出。
+// 理由：844×390 是横屏手机，本来就该满屏看，弹这条提示是错的。
+function updateLandscapeTip() {
+  const tip = $('#landscape-tip');
+  if (!tip) return;
+  const dismissed = sessionStorage.getItem('spLandscapeTip') === '1';
+  const lb = $('#screen-lobby');
+  const landscape = window.innerWidth > window.innerHeight;   // 宽 > 高 = 横屏 → 不显示
+  tip.hidden = !(portraitMQ.matches && !landscape && lb && !lb.hidden && !dismissed);
+}
+function updateOrientationUI() {
+  updateRotateMask();
+  updateLandscapeTip();
+}
+function initRotateMask() {
+  const btn = $('#btn-rotate-go');
+  const hint = $('#rotate-hint');
+  const canLock = !!(document.documentElement.requestFullscreen && window.screen && screen.orientation && screen.orientation.lock);
+  if (hint && !canLock) hint.hidden = false;   // iOS/Safari：不支持就如实写出来，不假装支持
+  if (btn) btn.addEventListener('click', async () => {
+    try {
+      if (document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen();
+      if (window.screen && screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
+    } catch (e) { toast('此设备不支持自动横屏，请手动旋转设备'); }
+    setTimeout(updateOrientationUI, 300);
+  });
+  const ltClose = $('#lt-close');
+  if (ltClose) ltClose.addEventListener('click', () => {
+    sessionStorage.setItem('spLandscapeTip', '1');
+    updateLandscapeTip();
+  });
+  if (portraitMQ.addEventListener) portraitMQ.addEventListener('change', updateOrientationUI);
+  else if (portraitMQ.addListener) portraitMQ.addListener(updateOrientationUI);
+  window.addEventListener('orientationchange', () => setTimeout(updateOrientationUI, 200));
+  window.addEventListener('resize', updateOrientationUI);
+  setInterval(updateOrientationUI, 1000);   // 轻量兜底：进/出屏幕时不用逐处挂钩
+  updateOrientationUI();
+}
+
+// 同一套外壳，只换中间那张卡：未进房 = #join-card，已进房 = #room-card
+function setLobbyMode(hasRoom) {
+  const jc = $('#join-card'), rc = $('#room-card');
+  if (jc) jc.hidden = !!hasRoom;
+  if (rc) rc.hidden = !hasRoom;
+  const logsBtn = $('#lobby-logs');
+  if (logsBtn) logsBtn.hidden = !hasRoom;   // 「记录」要看房间日志，没房时藏掉
+  const title = $('#lobby-sec-title');
+  if (title) title.textContent = '开始对局';   // 对齐 demo：加入态也叫「开始对局」
+}
+
+function renderLobby() {
+  if (!room) return;
+  renderLobbyNav();
+  setLobbyMode(true);
+  const isHost = !!(room.you && room.you.isHost);
+  const humans = (room.humans || []).filter((h) => h.connected);
+  const ais = room.ais || [];
+  const total = humans.length + ais.length;
+
+  // ---- 区 1 · 房间身份（只读）----
+  $('#lobby-room-info').innerHTML = `<div class="lobby-roomid">房间号 <b>${room.id}</b>`
+    + ` <button class="btn ghost sm" id="lobby-copy-room">复制</button></div>`
+    + `<div class="lobby-vis">${room.isPublic ? '公开（可被搜索）' : '私有（仅凭房间号加入）'}</div>`;
+  $('#lobby-target-ro').innerHTML = `目标分数 <b>${room.target}</b> 分`;
+  $('#lobby-target-ro').hidden = isHost;   // 房主看得到下面的可改控件，这里不重复（非房主必须看得到 ✓）
+  $('#lobby-hint').textContent = isHost
+    ? (total >= 2 ? `已就座 ${total} 人，可以开始了` : `还差 ${2 - total} 人就座才能开始（2~4 人）`)
+    : `等待房主开始游戏…（已就座 ${total} 人）`;
+
+  // ---- 区 2 · 座位（固定 4 槽；房主可在座位上直接操作）----
+  const seats = humans.map((h) => ({ kind: 'human', h })).concat(ais.map((a, i) => ({ kind: 'ai', a, aiIdx: i })));
+  let html = '';
+  for (let i = 0; i < 4; i++) {
+    const s = seats[i];
+    if (!s) {
+      html += `<div class="lobby-seat empty"><span class="seat-no">${i + 1}</span><span class="seat-empty">空位</span></div>`;
+      continue;
+    }
+    if (s.kind === 'human') {
+      const h = s.h;
+      html += `<div class="lobby-seat${h.name === myName ? ' self' : ''}">`
+        + `<span class="seat-no">${i + 1}</span><span class="lobby-dot on"></span>`
+        + `<span class="lobby-name">${h.name}${h.isHost ? '（房主）' : ''}${h.name === myName ? '（你）' : ''}</span>`
+        + (isHost && h.name !== myName ? `<button class="btn ghost sm kick-btn" data-cid="${h.cid}">踢出</button>` : '')
+        + '</div>';
+      continue;
+    }
+    const a = s.a;
+    html += '<div class="lobby-seat ai">'
+      + `<span class="seat-no">${i + 1}</span><span class="lobby-dot on"></span>`
+      + `<span class="lobby-tag${a.level === 'champion' ? ' champ' : ''}">${lobbyAiLabel(a.level, total)}</span>`
+      + (isHost
+        ? `<input class="seat-ai-name" data-ai="${s.aiIdx}" maxlength="8" value="${a.name}">`
+          + (room.mode === 'challenge'
+            ? '<span class="lobby-tag champ">挑战房 · 固定阿尔宙斯级</span>'
+            : `<select class="seat-ai-level" data-ai="${s.aiIdx}">`
+              + `<option value="easy" ${a.level === 'easy' ? 'selected' : ''}>电脑·简单</option>`
+              + `<option value="hard" ${a.level === 'hard' ? 'selected' : ''}>电脑·困难</option>`
+              + '</select>')
+          + '<button class="btn ghost sm seat-ai-del" data-ai="' + s.aiIdx + '" title="移除该电脑玩家" aria-label="移除该电脑玩家">×</button>'
+        : '')
+      + '</div>';
+  }
+  $('#lobby-seats').innerHTML = html;
+  $('#lobby-add-ai-box').hidden = !isHost || total >= 4;
+
+  // ---- 区 3 · 房主设置（仅房主）----
+  $('#lobby-host').hidden = !isHost;
+  if (isHost) renderLobbyTarget();
+  const startBtn = $('#btn-lobby-start');
+  startBtn.textContent = isHost ? '开始游戏' : '等待房主开始';
+  startBtn.disabled = isHost ? !(total >= 2 && total <= 4) : true;
+
+  // ---- 区 4 · 次级入口（弱化；音效标签跟随状态）----
+  $('#lobby-sound').textContent = soundOn ? '音效：开' : '音效：关';
+
+  // 复制房间号（每次渲染重建，绑一次）
+  const cp = $('#lobby-copy-room');
+  if (cp) cp.addEventListener('click', () => {
+    try {
+      navigator.clipboard.writeText(room.id);
+      cp.textContent = '已复制';
+      setTimeout(() => { cp.textContent = '复制'; }, 1200);
+    } catch (e) { /* 不支持剪贴板时不影响 */ }
+  });
+}
+// （原 renderAiRows 已废弃：AI 的改名/训练家等级/移除现在都在区 2 的座位上直接操作，见 renderLobby 与 #lobby-seats 委托）
 function renderLobbyTarget() {
   const row = $('#lobby-target');
-  row.innerHTML = '<span class="label">目标分数</span>' +
+  row.innerHTML = '<span class="label">调整目标分数</span><span class="lobby-chip">房主可改</span>' +
     RULES.targets.map((t) => `
       <label><input type="radio" name="lobby-target" value="${t}" ${t === room.target ? 'checked' : ''}> ${t} 分</label>`).join('');
   row.querySelectorAll('input').forEach((inp) =>
@@ -1244,9 +1637,12 @@ function openEvents(cid) {
   };
   esConn.onerror = () => { connOk = false; updateConnDot(); }; // EventSource 会自动重连
 }
-async function joinGame() {
-  const roomId = $('#join-roomid').value.trim();
-  const isPublic = (document.querySelector('input[name="visibility"]:checked') || {}).value === 'public';
+async function joinGame(mode, size) {
+  // mode='challenge' → 不填房间号，直接新建专用房（对手固定阿尔宙斯级）
+  const roomId = mode ? '' : $('#join-roomid').value.trim();
+  const isPublic = mode === 'challenge'
+    ? false
+    : ((document.querySelector('input[name="visibility"]:checked') || {}).value === 'public');
   // 昵称有改动时先保存，再以新昵称加入
   const nickname = $('#nickname-input').value.trim();
   if (!nickname) { toast('请填写游戏内昵称'); return; }
@@ -1256,7 +1652,7 @@ async function joinGame() {
     myNickname = r.nickname;
     myName = r.nickname;
   }
-  const j = await postApi({ type: 'join', token: myToken, roomId: roomId || undefined, isPublic });
+  const j = await postApi({ type: 'join', token: myToken, roomId: roomId || undefined, isPublic, mode: mode || undefined, size: size || undefined });
   if (j.ok) {
     myCid = j.cid;
     openEvents(j.cid);
@@ -1286,7 +1682,9 @@ async function showRoomList() {
 function enterJoinScreen() {
   $('#nickname-input').value = myNickname || myName; // 默认昵称 = 真实姓名（或账号名）
   $('#admin-links').hidden = myRole !== 'admin'; // 管理入口只对管理员显示
-  showScreen('join');
+  showScreen('lobby');   // 与大厅共用同一套外壳（不再单独一屏）
+  renderLobbyNav();      // 加入态也把导航渲出来（与进房后同一套）
+  setLobbyMode(false);   // 未进房 → 显示「加入卡」
 }
 async function doLogin() {
   const name = $('#login-name').value.trim();
@@ -1314,7 +1712,7 @@ async function doRegister() {
 }
 function initOnline() {
   updateConnDot();
-  $('#btn-join').addEventListener('click', joinGame);
+  $('#btn-join').addEventListener('click', () => joinGame());
   $('#btn-room-list').addEventListener('click', showRoomList);
   $('#join-roomid').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinGame(); });
   // 登录 / 注册
@@ -1328,31 +1726,160 @@ function initOnline() {
   const saved = localStorage.getItem('spToken');
   if (saved) {
     postApi({ type: 'whoami', token: saved }).then((j) => {
-      if (j.ok) { myToken = saved; myName = j.name; myRole = j.role || ''; myNickname = j.nickname || j.name; enterJoinScreen(); }
-      else showScreen('login');
+      if (j.ok) {
+        myToken = saved; myName = j.name; myRole = j.role || ''; myNickname = j.nickname || j.name;
+        enterJoinScreen();
+        tryStartPendingChallenge();   // 登录态 + 加入界面都就绪了，这时候才能真正建挑战房
+      } else {
+        sessionStorage.removeItem('spChallenge');   // 拿不到登录态：这次挑战请求兑现不了，丢弃，别留到下次登录
+        showScreen('login');
+      }
     });
   } else {
+    sessionStorage.removeItem('spChallenge');   // 同上：没登录态就丢弃，避免「隔夜」标记在下次登录时突然建房
     showScreen('login');
   }
-  // 房主踢人
-  $('#lobby-roster').addEventListener('click', (e) => {
+  // 座位区：踢人 / AI 改名改训练家等级 / 移除 / 加电脑（委托处理，座位重排后不用重绑）
+  const postAIs = (ais) => postApi({ type: 'setAIs', cid: myCid, ais });
+  const readAIs = () => (room.ais || []).map((a) => ({ name: a.name, level: a.level }));
+  function addLobbyAI() {
+    const used = (room.ais || []).length + (room.humans || []).filter((h) => h.connected).length;
+    if (used >= 4) return;
+    postAIs((room.ais || []).concat([{ name: AI_NAMES[(room.ais || []).length % 4], level: 'easy' }]));
+  }
+  $('#lobby-seats').addEventListener('click', async (e) => {
     const b = e.target.closest('.kick-btn');
-    if (!b) return;
-    const target = (room.humans || []).find((h) => h.cid === b.dataset.cid);
-    if (!target) return;
-    if (confirm('确定把 ' + target.name + ' 移出房间吗？')) {
-      postApi({ type: 'kick', cid: myCid, targetCid: b.dataset.cid });
+    if (b) {
+      const t = (room.humans || []).find((h) => h.cid === b.dataset.cid);
+      // 危险操作：await 自定义确认框，避免同步改异步后跳步
+      if (t && await spConfirm({ title: '移出房间', message: '确定把 ' + t.name + ' 移出房间吗？', confirmText: '移出', danger: true })) {
+        postApi({ type: 'kick', cid: myCid, targetCid: b.dataset.cid });
+      }
+      return;
+    }
+    const del = e.target.closest('.seat-ai-del');
+    if (del) { postAIs(readAIs().filter((_, i) => i !== +del.dataset.ai)); return; }
+  });
+  $('#lobby-seats').addEventListener('change', (e) => {
+    const sel = e.target.closest('.seat-ai-level');
+    if (sel) {
+      const i = +sel.dataset.ai;
+      postAIs(readAIs().map((a, k) => (k === i ? { name: a.name, level: sel.value } : a)));
+      return;
+    }
+    const nm = e.target.closest('.seat-ai-name');
+    if (nm) {
+      const i = +nm.dataset.ai;
+      postAIs(readAIs().map((a, k) => (k === i ? { name: nm.value.trim() || '电脑', level: a.level } : a)));
     }
   });
-  $('#btn-add-ai').addEventListener('click', () => {
-    if ((room.ais || []).length + (room.humans || []).filter((h) => h.connected).length >= 4) return;
-    const ais = (room.ais || []).concat([{ name: AI_NAMES[(room.ais || []).length % 4], level: 'easy' }]);
-    postApi({ type: 'setAIs', cid: myCid, ais });
+  $('#btn-add-ai').addEventListener('click', addLobbyAI);
+  // 工具条（照搬 demo 方案 A：账号 / 教程 / 说明 / 音效）—— 弹层内容接生产真实入口
+  const LOBBY_POP = {
+    account: '<h3>账号</h3>'
+      + '<button type="button" class="btn ghost sm" data-lpop="pw">修改密码</button> '
+      + '<button type="button" class="btn ghost sm" data-lpop="logout">退出登录</button>',
+    tutorial: '<h3>新手教程</h3>'
+      + '<button type="button" class="btn secondary sm" data-lpop="tutgo">开始教程</button>',
+    rules: '<h3>规则说明</h3>'
+      + '<button type="button" class="btn secondary sm" data-lpop="rulesgo">打开规则</button>',
+  };
+  const popBox = $('#lobby-pop'), popBody = $('#lobby-pop-body');
+  function openLobbyPop(key) {
+    if (!popBox || !popBody) return;
+    popBody.innerHTML = LOBBY_POP[key] || '';
+    popBox.hidden = false;
+    requestAnimationFrame(() => popBox.classList.add('open'));
+  }
+  function closeLobbyPop() {
+    if (!popBox) return;
+    popBox.classList.remove('open');
+    setTimeout(() => { popBox.hidden = true; }, 230);
+  }
+  if (popBox) {
+    document.addEventListener('click', (e) => {
+      const util = e.target.closest('[data-util]');
+      if (util && $('#screen-lobby') && !$('#screen-lobby').hidden) { openLobbyPop(util.dataset.util); return; }
+      const b = e.target.closest('[data-lpop]');
+      if (b) {
+        const k = b.dataset.lpop;
+        if (k === 'pw') { closeLobbyPop(); $('#link-password').click(); }
+        else if (k === 'logout') { localStorage.removeItem('spToken'); location.reload(); }
+        else if (k === 'tutgo') { closeLobbyPop(); if (typeof startTutorial === 'function') startTutorial(); else toast('教程入口待接入'); }
+        else if (k === 'rulesgo') { closeLobbyPop(); $('#btn-rules').click(); }
+        return;
+      }
+      if (!popBox.hidden && !popBox.contains(e.target)) closeLobbyPop();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !popBox.hidden) closeLobbyPop(); });
+  }
+  $('#lobby-logs').addEventListener('click', () => $('#btn-logs').click());
+  $('#lobby-sound').addEventListener('click', () => $('#btn-sound').click());
+  // 导航分区里的入口按钮
+  $('#lobby-rank-open').addEventListener('click', () => $('#link-leaderboard').click());
+  $('#lobby-replay-open').addEventListener('click', () => $('#btn-logs').click());
+  // ③ 挑战阿尔宙斯：选人数（2/3/4）→ 建专用房 mode=challenge（对手固定阿尔宙斯级）
+  const champBox = $('#champ-size');
+  if (champBox) {
+    champBox.addEventListener('click', (e) => {
+      const c = e.target.closest('.chip');
+      if (c) champBox.dataset.size = (c.textContent.match(/[0-9]/) || ['3'])[0];
+    });
+  }
+  const champStart = $('#champ-start');
+  // 跨刷新发起挑战房时**必须等登录态就绪**：重载之后 myToken 要等异步 whoami 才恢复，
+  // 同步检查只会读到空值 → 挑战房永远建不起来（旧写法就丢在这里，玩家再点「进入游戏」就落普通房）
+  function tryStartPendingChallenge() {
+    const size = sessionStorage.getItem('spChallenge');
+    if (!size) return false;
+    if (!myToken) return false;                 // 登录态没好：标记先留着，等 whoami 成功那次调用
+    sessionStorage.removeItem('spChallenge');   // 先清标记再建房，避免重复发起
+    joinGame('challenge', +size);               // 此刻昵称输入框已由 enterJoinScreen 填好
+    return true;
+  }
+  if (champStart) champStart.addEventListener('click', () => {
+    const size = (champBox && champBox.dataset.size) || '3';
+    sessionStorage.setItem('spChallenge', size);   // 跨刷新传递（建房会换房，直接重载最干净）
+    location.reload();
   });
+  tryStartPendingChallenge();   // 重载后先试一次（通常此时还没登录态 → 标记留着，等 whoami 成功那次）
+  // ④ 名人堂：殿堂/本赛季、人数分栏、版式切换、打开回放
+  const hallScopeBar = $('#hall-scope');
+  if (hallScopeBar) hallScopeBar.addEventListener('click', (e) => {
+    const c = e.target.closest('.chip'); if (!c) return;
+    hallScope = c.dataset.scope;
+    hallScopeBar.querySelectorAll('.chip').forEach((x) => x.classList.toggle('on', x === c));
+    renderHall();
+  });
+  const hallSizeBar = $('#hall-size');
+  if (hallSizeBar) hallSizeBar.addEventListener('click', (e) => {
+    const c = e.target.closest('.chip'); if (!c) return;
+    hallSize = +c.dataset.size;
+    hallSizeBar.querySelectorAll('.chip').forEach((x) => x.classList.toggle('on', x === c));
+    renderHall();
+  });
+  const hallViewBar = $('#hall-view');
+  if (hallViewBar) hallViewBar.addEventListener('click', (e) => {
+    const c = e.target.closest('.chip'); if (!c) return;
+    hallView = c.dataset.view;
+    hallViewBar.querySelectorAll('.chip').forEach((x) => x.classList.toggle('on', x === c));
+    renderHall();
+  });
+  const hallList = $('#hall-list');
+  if (hallList) hallList.addEventListener('click', (e) => {
+    const b = e.target.closest('.hall-open');
+    if (b) window.open('/replay?id=' + b.dataset.id, '_blank');
+  });
+  initRotateMask();   // ⑤ 手机横屏提示
+  // E8：内容区构图档位 —— 默认档 2（居中 + 放大）；?card=center 回到档 1（仅居中）
+  if (new URLSearchParams(location.search).get('card') !== 'center') {
+    const lbCard = $('#screen-lobby');
+    if (lbCard) lbCard.classList.add('card-lg');
+  }
   $('#btn-lobby-start').addEventListener('click', () => postApi({ type: 'start', cid: myCid }));
   // 退出大厅回到主页面（加入界面）
-  $('#btn-lobby-leave').addEventListener('click', () => {
-    if (confirm('确定退出大厅吗？')) location.reload();
+  $('#btn-lobby-leave').addEventListener('click', async () => {
+    if (await spConfirm({ title: '退出大厅', message: '确定退出大厅吗？' })) location.reload();
   });
   // SSE 看门狗：服务器每 20 秒发一次心跳，若 45 秒毫无动静说明连接半死（TCP 假活），
   // 强制重建连接（新连接会顶掉服务器上的旧连接，随后补发全量状态）
@@ -1384,9 +1911,9 @@ function init() {
   $('#btn-start').addEventListener('click', startGameLocal);
   document.querySelectorAll('.js-rules').forEach((b) =>
     b.addEventListener('click', () => showModal('#modal-rules')));
-  $('#btn-exit').addEventListener('click', () => {
+  $('#btn-exit').addEventListener('click', async () => {
     if (ONLINE) {
-      if (confirm('确定退出房间吗？对局会在服务器上继续。')) {
+      if (await spConfirm({ title: '退出房间', message: '确定退出房间吗？对局会在服务器上继续。' })) {
         postApi({ type: 'logout', token: myToken });
         localStorage.removeItem('spToken');
         location.reload();
@@ -1394,12 +1921,12 @@ function init() {
       return;
     }
     if (!S || S.over) { backToSetup(); return; }
-    if (confirm('确定退出当前对局？进度将丢失。')) backToSetup();
+    if (await spConfirm({ title: '退出对局', message: '确定退出当前对局？进度将丢失。', confirmText: '退出对局', danger: true })) backToSetup();
   });
   // 结束对局：任何人发起投票，需要所有在线玩家同意
-  $('#btn-stop-game').addEventListener('click', () => {
+  $('#btn-stop-game').addEventListener('click', async () => {
     if (!ONLINE) return;
-    if (confirm('发起结束对局投票？需要所有在线玩家同意才能结束。')) {
+    if (await spConfirm({ title: '结束对局投票', message: '发起结束对局投票？需要所有在线玩家同意才能结束。', confirmText: '发起投票', danger: true })) {
       postApi({ type: 'voteEnd', cid: myCid });
     }
   });
@@ -1430,7 +1957,7 @@ function init() {
       $('#pw-old').value = ''; $('#pw-new').value = ''; $('#pw-new2').value = '';
     }
   });
-  // 排行榜
+  // 训练家排行
   $('#link-leaderboard').addEventListener('click', async (e) => {
     e.preventDefault();
     const j = await postApi({ type: 'leaderboard', token: myToken });

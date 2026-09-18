@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>deco/rail 相交 · 连续刷新 10 次实测（方案 1 验收）· 测试用，可随时删</title>
+<style>
+  html,body{ margin:0; font:13px/1.65 system-ui,"Microsoft YaHei",sans-serif; background:#0f1216; color:#e8edf3; }
+  #f{ width:900px; height:470px; border:0; background:#fff; display:block; }
+  #panel{ padding:8px 14px 16px; }
+  #hd{ color:#ffd24a; font-weight:800; }
+  #out{ white-space:pre-wrap; font-family:Consolas,monospace; font-size:12.5px; color:#cfe3ff; }
+  .ok{ color:#5ee08a; } .bad{ color:#ff8b6b; }
+</style>
+</head>
+<body>
+<div><iframe id="f"></iframe></div>
+<div id="panel">
+  <div id="hd">deco/rail 相交 · 连续刷新 10 次（生产 client.js 已含方案 1）</div>
+  <div id="out">运行中…</div>
+</div>
+<script>
+const f = document.getElementById('f');
+const out = document.getElementById('out');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const rows = [];
+
+function render(final) {
+  const nums = rows.map((r) => r.hits);
+  const pass = rows.length === 10 && nums.every((n) => n === 0);
+  let s = '每次「与 rail 相交的球数」：' + nums.join('  ') + '\n';
+  s += rows.map((r) => '  第' + r.i + '次：相交 = ' + r.hits + ' 颗 ｜ 球总数 = ' + r.total + ' ｜ rail rect = ' + r.rail).join('\n') + '\n';
+  s += '结果：' + (rows.length === 10 ? (pass ? '10/10 全为 0 ✓' : '存在非 0 ✗') : ('已跑 ' + rows.length + '/10…')) + '\n';
+  s += '判定口径：rail rect 每次按当前布局实测（宽度是 CSS 的 clamp(150px,15vw,210px)，非写死）';
+  out.innerHTML = (final && pass) ? '<span class="ok">' + s + '</span>' : s;
+}
+
+async function once(i) {
+  // 真刷新：换 src（带随机查询）→ 触发一次完整加载 → buildDeco 重新随机布点
+  f.src = '/index.html?card=lg&r=' + i + '_' + Date.now();
+  await new Promise((r) => { f.onload = r; if (f.contentDocument && f.contentDocument.readyState === 'complete') r(); });
+  await sleep(900);
+  const w = f.contentWindow, d = f.contentDocument;
+  // 显示大厅（rail 才有真实布局）
+  w.eval([
+    "try{",
+    "  myToken='stub'; myName='玩家1'; myNickname='玩家1';",
+    "  try{ localStorage.setItem('update-seen-3.3.0','1'); }catch(e){}",
+    // 关键：走**真实的** showScreen('lobby')（与生产同一条路径）——里面有 fixDecoRail() 复测钩子；
+    // 早先直接改 hidden 会绕过钩子，测出来的是假失败
+    "  if (typeof showScreen==='function') showScreen('lobby'); else document.getElementById('screen-lobby').hidden=false;",
+    "  var ub=document.getElementById('btn-upd-close'); if(ub) ub.click();",
+    "  if(typeof renderLobbyNav==='function') renderLobbyNav();",
+    "  if(typeof setLobbyMode==='function') setLobbyMode(false);",
+    "}catch(e){ document.title='STUB_ERR:'+e.message; }",
+  ].join('\n'));
+  await sleep(450);
+  const doc = f.contentDocument;                    // 现取，避免拿到旧文档
+  const rail = doc.querySelector('#screen-lobby .rail');
+  const rr = rail ? rail.getBoundingClientRect() : null;
+  const balls = Array.prototype.slice.call(doc.querySelectorAll('#screen-lobby .deco'));
+  let hits = 0;
+  balls.forEach((el) => {
+    const r = el.getBoundingClientRect();
+    if (!(r.right < rr.left || r.left > rr.right || r.bottom < rr.top || r.top > rr.bottom)) hits++;
+  });
+  rows.push({ i: i, total: balls.length, hits: hits,
+    rail: 'x' + Math.round(rr.left) + ' y' + Math.round(rr.top) + ' ' + Math.round(rr.width) + 'x' + Math.round(rr.height) });
+  render(false);
+}
+
+(async function () {
+  for (let i = 1; i <= 10; i++) { await once(i); }
+  render(true);
+})();
+</script>
+</body>
+</html>

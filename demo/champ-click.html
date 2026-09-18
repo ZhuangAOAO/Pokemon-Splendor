@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>挑战房点击路径取证 harness（champ-click）</title>
+<style>
+  html,body{margin:0;background:#141414;color:#e8e8e8;font:13px/1.45 Consolas,"Courier New",monospace}
+  #wrap{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:8px}
+  iframe{width:1240px;height:820px;border:1px solid #444;background:#fff;flex:0 0 auto}
+  #side{width:1240px;box-sizing:border-box;max-height:640px;overflow:auto;background:#0d0d0d;border:1px solid #333;padding:8px}
+  h3{margin:10px 0 4px;color:#ffd479;font-size:13px}
+  pre{white-space:pre-wrap;word-break:break-all;margin:0;font-size:12px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <iframe id="app"></iframe>
+  <div id="side">
+    <h3 id="phase">phase: boot</h3>
+    <h3>事件日志</h3><pre id="log"></pre>
+    <h3>抓到的 /api 调用（真实 bytes；token 已脱敏显示）</h3><pre id="rec"></pre>
+    <h3>RAW READINGS</h3><pre id="raw"></pre>
+  </div>
+</div>
+<script>
+'use strict';
+/* ==========================================================================
+   挑战房「点击路径」取证 harness
+   用法： /demo/champ-click.html?case=<名字>&u=<账号>&p=<密码>
+   规矩：被测路径（导航 → 创建挑战房 → 进入游戏）一律真 .click()，不直接调函数。
+   跨 reload：iframe 重载时 WindowProxy 身份不变（实测），所以靠 **Document 对象换掉**
+   来发现 reload 提交，并在那一刻、client.js 执行之前就把 fetch 包上。
+   读数落盘：POST → http://127.0.0.1:3210/report （本机临时收集器）
+   ========================================================================== */
+const q = new URLSearchParams(location.search);
+const U = q.get('u') || '';
+const P = q.get('p') || '';
+const CASE = q.get('case') || 'run';
+const f = document.getElementById('app');
+const REC = [], RAW = {}, ROWS = [], LOGL = [];
+let loadNo = 0, pendLoad = null;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const TAG = 'probe-' + Math.random().toString(36).slice(2, 8);
+
+function log(s) { LOGL.push('[' + new Date().toISOString().slice(11, 23) + '] ' + s); render(); }
+function raw(k, v) {
+  RAW[k] = v;
+  const i = ROWS.findIndex((r) => r[0] === k);
+  if (i < 0) ROWS.push([k, v]); else ROWS[i][1] = v;
+  render();
+}
+function redact(o) {
+  if (o && typeof o === 'object' && 'token' in o) { const c = Object.assign({}, o); c.token = '<token len=' + String(o.token).length + '>'; return c; }
+  return o;
+}
+function redactBody(b) { return typeof b === 'string' ? b.replace(/"token":"[^"]*"/g, '"token":"<redacted>"') : String(b); }
+function render() {
+  document.getElementById('rec').textContent = REC.map((r, i) => {
+    if (r.via === 'postApi') {
+      return '#' + i + ' [postApi load=' + r.load + '] ' + JSON.stringify(redact(r.obj))
+        + '\n        hasOwnProperty("mode")=' + r.hasMode + '  ("mode" 值=' + JSON.stringify(r.obj && r.obj.mode) + ')';
+    }
+    return '#' + i + ' [fetch load=' + r.load + '] ' + r.url
+      + '\n        body=' + (r.body === null || r.body === undefined ? '(no string body)' : redactBody(r.body))
+      + '\n        resp=' + JSON.stringify(r.res || r.netErr || null);
+  }).join('\n');
+  document.getElementById('raw').textContent = ROWS.map(([k, v]) => k + ' = ' + (typeof v === 'string' ? v : JSON.stringify(v))).join('\n');
+  document.getElementById('log').textContent = LOGL.join('\n');
+}
+window.__RAW = RAW; window.__REC = REC; window.__LOGL = LOGL;
+
+function reportCheckpoint(tag) {
+  const payload = {
+    case: CASE, checkpoint: tag, ts: new Date().toISOString(), raw: RAW,
+    rec: REC.map((r) => r.via === 'postApi'
+      ? { load: r.load, via: r.via, obj: redact(r.obj), hasMode: r.hasMode }
+      : { load: r.load, via: r.via, url: r.url, body: typeof r.body === 'string' ? redactBody(r.body) : r.body, res: r.res || null }),
+    log: LOGL,
+  };
+  return fetch('http://127.0.0.1:3210/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    .then(() => log('REPORT sent: ' + tag)).catch((e) => log('REPORT failed(' + tag + '): ' + e.message));
+}
+
+/* ---- 探针：fetch（真实 bytes）+ postApi（可看出 mode 键在不在）---- */
+function probe(w, label) {
+  try {
+    if (!w) return false;
+    if (w.__probeTag !== TAG) {
+      const of = w.fetch;
+      if (typeof of !== 'function') return false;
+      w.__probeTag = TAG;
+      w.fetch = async function (input, init) {
+        const rec = { load: label, via: 'fetch', url: String(input), body: null, res: null, at: Date.now() };
+        try { if (init && typeof init.body === 'string') { rec.body = init.body; rec.bodyParse = JSON.parse(init.body); } } catch (e) { rec.bodyErr = String(e); }
+        REC.push(rec); render();
+        const r = await of.call(w, input, init);
+        try { rec.res = await r.clone().json(); } catch (e) { rec.resErr = String(e); }
+        render();
+        return r;
+      };
+      log('PROBE(fetch) armed: ' + label);
+    }
+    if (w.__postProbeTag !== TAG && typeof w.postApi === 'function') {
+      w.__postProbeTag = TAG;
+      const op = w.postApi;
+      w.postApi = function (obj, t) {
+        REC.push({ load: label, via: 'postApi', obj, hasMode: !!(obj && Object.prototype.hasOwnProperty.call(obj, 'mode')), at: Date.now() });
+        render();
+        return op.call(w, obj, t);
+      };
+      log('PROBE(postApi) armed: ' + label);
+    }
+    return true;
+  } catch (e) { log('probe err: ' + e.message); return false; }
+}
+/* reload 提交瞬间（Document 换掉 = client.js 还没跑）立刻包 fetch */
+function watchCommit(prevDoc, ms) {
+  const t0 = Date.now();
+  return (async () => {
+    while (Date.now() - t0 < ms) {
+      let d = null, w = null;
+      try { w = f.contentWindow; d = w.document; } catch (e) { d = null; }
+      if (d && d !== prevDoc) { probe(w, 'commit' + loadNo); return w; }
+      await sleep(2);
+    }
+    return null;
+  })();
+}
+
+/* ---- DOM 读取助手 ---- */
+function elOf(root, sel) {
+  try {
+    if (!root) return null;
+    if (root.nodeType === 9) return root.querySelector(sel);      // Document
+    if (root.document) return root.document.querySelector(sel);  // Window
+    return root.querySelector(sel);                              // Element（座位行内部查找）
+  } catch (e) { return null; }
+}
+function qs(w, sel) { return elOf(w, sel); }
+function tsel(root, sel) { const e = elOf(root, sel); return e ? e.textContent.replace(/\s+/g, ' ').trim() : null; }
+function hdn(root, sel) { const e = elOf(root, sel); return e ? e.hidden : null; }
+function seats(w) {
+  const box = qs(w, '#lobby-seats');
+  if (!box) return [];
+  return [...box.querySelectorAll('.lobby-seat')].map((s) => {
+    const inp = s.querySelector('.seat-ai-name');
+    return {
+      cls: s.className.replace(/lobby-seat ?/, ''),
+      tag: tsel(s, '.lobby-tag'),
+      text: s.textContent.replace(/\s+/g, ' ').trim(),
+      aiInput: inp ? inp.value : null,
+    };
+  });
+}
+function joinCalls() {
+  return REC.filter((r) => r.via === 'fetch' && r.bodyParse && r.bodyParse.type === 'join').map((r) => ({
+    load: r.load,
+    body: redact(r.bodyParse),
+    rawBodyHasModeKey: typeof r.body === 'string' ? r.body.indexOf('"mode"') >= 0 : null,
+    rawBodyHasChallenge: typeof r.body === 'string' ? r.body.indexOf('"mode":"challenge"') >= 0 : null,
+    hasSize: typeof r.body === 'string' ? r.body.indexOf('"size"') >= 0 : null,
+    respOk: !!(r.res && r.res.ok),
+    roomId: r.res && r.res.roomId,
+  }));
+}
+async function waitFor(fn, ms, label) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    let v = false; try { v = fn(); } catch (e) { v = false; }
+    if (v) return true;
+    await sleep(30);
+  }
+  log('TIMEOUT waiting: ' + label);
+  return false;
+}
+async function dismissUpdate(w) {
+  let clicked = false;
+  await waitFor(() => {
+    const ov = qs(w, '#modal-overlay'), cl = qs(w, '#btn-upd-close');
+    if (ov && !ov.hidden && cl) { cl.click(); clicked = true; return true; }
+    return false;
+  }, 3000, 'update modal');
+  if (clicked) log('关闭「版本更新」弹窗（app 自带启动弹窗，非被测路径，只为界面可见）');
+  return clicked;
+}
+f.addEventListener('load', () => {
+  loadNo++;
+  const w = f.contentWindow;
+  try { log('IFRAME LOAD #' + loadNo + '  href=' + w.location.href + '  readyState=' + w.document.readyState); } catch (e) { log('IFRAME LOAD #' + loadNo); }
+  probe(w, 'load' + loadNo);
+  if (pendLoad) { const r = pendLoad; pendLoad = null; r(); }
+});
+async function nextLoad(ms) {
+  if (!pendLoad) await new Promise((res) => {
+    let done = false;
+    pendLoad = () => { done = true; res(); };
+    setTimeout(() => { if (!done) { pendLoad = null; res(); } }, ms || 15000);
+  });
+  return f.contentWindow;
+}
+
+/* ==================== 主流程 ==================== */
+(async function main() {
+  document.getElementById('phase').textContent = 'phase: ' + CASE + ' · 启动';
+  raw('case', CASE);
+  raw('harness.说明', 'let/const 顶层声明不挂 window，父页读不到 myToken/room/myCid → 一律用 DOM + 请求体取证');
+  f.src = '/index.html';
+  let w = await nextLoad(15000);
+  raw('step0.href', w.location.href);
+  await waitFor(() => hdn(w, '#screen-login') === false || hdn(w, '#screen-lobby') === false, 12000, 'boot screen');
+  await dismissUpdate(w);
+  raw('step0.screenLogin.hidden(boot 后)', hdn(w, '#screen-login'));
+  raw('step0.screenLobby.hidden(boot 后)', hdn(w, '#screen-lobby'));
+
+  /* 登录（真·点 #btn-login；只把凭据写进输入框） */
+  const needLogin = hdn(w, '#screen-login') === false;
+  raw('step0.登录表单是否出现', needLogin);
+  if (needLogin) {
+    qs(w, '#login-name').value = U;
+    qs(w, '#login-pass').value = P;
+    log('填写登录表单 → 点 #btn-login');
+    qs(w, '#btn-login').click();
+    await waitFor(() => hdn(w, '#screen-lobby') === false, 8000, 'lobby after login');
+    await dismissUpdate(w);
+  }
+  raw('step0.screenLobby.hidden(登录后)', hdn(w, '#screen-lobby'));
+  raw('step0.nickname-input.value', (qs(w, '#nickname-input') || {}).value);
+  await waitFor(() => w.document.querySelectorAll('#lobby-nav .nav-btn').length > 0, 8000, 'nav buttons');
+  const navs = [...w.document.querySelectorAll('#lobby-nav .nav-btn')];
+  raw('step0.navBtns', navs.map((b) => b.textContent.replace(/\s+/g, ' ').trim()));
+  raw('step0.lobby-sec-start.hidden', hdn(w, '#lobby-sec-start'));
+
+  /* nopath 模式：完全不走挑战流程，直接点「进入游戏」（回归对照：证明修复不影响普通加入）*/
+  const NOPATH = !!q.get('nopath');
+  let w3 = w;
+  if (!NOPATH) {
+  /* ---- 步骤 1：点导航「挑战阿尔宙斯」---- */
+  const nav = navs.find((b) => b.textContent.indexOf('挑战阿尔宙斯') >= 0);
+  if (!nav) { raw('1.ERROR', 'nav not found'); await reportCheckpoint('nav-not-found'); return; }
+  log('步骤1：点导航「挑战阿尔宙斯」（dataset.sec=' + nav.dataset.sec + '）');
+  nav.click();                                  // 真·点击
+  await sleep(200);
+  raw('1.点击的按钮文字', nav.textContent.replace(/\s+/g, ' ').trim());
+  raw('1.lobby-sec-champ.hidden', hdn(w, '#lobby-sec-champ'));
+  raw('1.lobby-sec-start.hidden', hdn(w, '#lobby-sec-start'));
+  raw('1.lobby-sec-rank.hidden', hdn(w, '#lobby-sec-rank'));
+  raw('1.lobby-sec-title', tsel(w, '#lobby-sec-title'));
+  raw('1.navBtn.on', [...w.document.querySelectorAll('#lobby-nav .nav-btn')].filter((b) => b.classList.contains('on')).map((b) => b.dataset.sec));
+  const chips = [...qs(w, '#champ-size').querySelectorAll('.chip')];
+  raw('1.champ-size.chips', chips.map((c) => c.textContent.trim() + (c.classList.contains('on') ? '[on]' : '')));
+  raw('1.champ-size.dataset.size(未点人数档时的原始值)', String(qs(w, '#champ-size').dataset.size));
+  raw('1.champ-start.text', tsel(w, '#champ-start'));
+  await reportCheckpoint('after-step1-nav');
+
+  /* ---- 步骤 2：点 #champ-start（客户端会 location.reload）---- */
+  document.getElementById('phase').textContent = 'phase: 点创建挑战房 → 等 reload';
+  const prevDoc = w.document;
+  const armed = watchCommit(prevDoc, 15000);
+  raw('2.sessionStorage.spChallenge(点击前)', sessionStorage.getItem('spChallenge'));
+  log('步骤2：点 #champ-start（真·点击）');
+  qs(w, '#champ-start').click();
+  raw('2.sessionStorage.spChallenge(点击后立刻)', sessionStorage.getItem('spChallenge'));
+  const wc = await armed;                        // 重载提交那一刻
+  raw('2.reload 已提交(Document 换掉)', !!wc);
+  await waitFor(() => { const ww = f.contentWindow; return ww.document !== prevDoc && ww.document.readyState !== 'loading'; }, 15000, 'reload 文档解析完');
+  w3 = f.contentWindow;
+  probe(w3, 'after-reload');                     // 补包 postApi（fetch 已在 commit 时包好）
+  raw('2.load#2.href', w3.location.href);
+  await waitFor(() => hdn(w3, '#screen-login') === false || hdn(w3, '#screen-lobby') === false, 10000, 'boot#2 screen');
+  await sleep(2500);                             // 等 boot/whoami/自动 join 全部落定
+  await dismissUpdate(w3);
+  raw('3.load#2.sessionStorage.spChallenge(还在吗)', sessionStorage.getItem('spChallenge'));
+  raw('3.load#2.join 调用', joinCalls());
+  raw('3.load#2.room-card.hidden(有房=false)', hdn(w3, '#room-card'));
+  raw('3.load#2.join-card.hidden(有房=true)', hdn(w3, '#join-card'));
+  raw('3.load#2.nickname-input.value', (qs(w3, '#nickname-input') || {}).value);
+  raw('3.load#2.toast.hidden', hdn(w3, '#toast'));
+  raw('3.load#2.toast.text', tsel(w3, '#toast'));
+  raw('3.load#2.座位(服务端下发)', seats(w3));
+  await reportCheckpoint('after-reload');
+  } else {
+    raw('6.nopath 模式', '跳过导航「挑战阿尔宙斯」/「创建挑战房」，直接点「进入游戏」');
+    raw('6.sessionStorage.spChallenge', sessionStorage.getItem('spChallenge'));
+  }
+
+  /* ---- 步骤 3：没自动进房 → 玩家自己点「进入游戏」（线上就是这样落普通房）---- */
+  const entered = hdn(w3, '#room-card') === false;
+  raw('4.重载后是否已进房', entered);
+  if (!entered) {
+    document.getElementById('phase').textContent = 'phase: 未进房 → 点「进入游戏」';
+    const n2 = [...w3.document.querySelectorAll('#lobby-nav .nav-btn')].find((b) => b.dataset.sec === 'start');
+    if (n2) { n2.click(); await sleep(150); }
+    raw('4.进入游戏前 lobby-sec-start.hidden', hdn(w3, '#lobby-sec-start'));
+    log('步骤3：点 #btn-join（真·点击）');
+    qs(w3, '#btn-join').click();
+    await sleep(1500);
+    raw('4.点后 join 调用', joinCalls());
+    raw('4.点后 room-card.hidden', hdn(w3, '#room-card'));
+    raw('4.点后 座位(服务端下发)', seats(w3));
+  } else {
+    log('已自动进房，跳过「进入游戏」');
+  }
+
+  /* ---- 步骤 4：正对照 · API 直连（证明服务端 mode=challenge 这条链本身是通的）---- */
+  const tok = localStorage.getItem('spToken');
+  raw('5.API直连.有 token', !!tok);
+  if (tok) {
+    try {
+      const r = await fetch('/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'join', token: tok, isPublic: false, mode: 'challenge', size: 3 }) });
+      const j = await r.json();
+      raw('5.API直连.join resp', { ok: j.ok, roomId: j.roomId, cidLen: j.cid ? String(j.cid).length : null, msg: j.msg });
+      if (j.ok && j.cid) {
+        const got = await new Promise((res) => {
+          let es = null;
+          const t = setTimeout(() => { try { es && es.close(); } catch (e) { /* */ } res(null); }, 4000);
+          try {
+            es = new EventSource('/events?cid=' + encodeURIComponent(j.cid));
+            es.onmessage = (e) => {
+              let m = null; try { m = JSON.parse(e.data); } catch (err) { return; }
+              if (m.type === 'state' && m.room) {
+                clearTimeout(t);
+                try { es.close(); } catch (err) { /* */ }
+                res({ mode: m.room.mode, ais: (m.room.ais || []).map((a) => a.name + '/' + a.level), humans: (m.room.humans || []).map((h) => h.name) });
+              }
+            };
+          } catch (e) { clearTimeout(t); res(null); }
+        });
+        raw('5.API直连.SSE 首帧 room(mode/ais)', got || '(没拿到)');
+      }
+    } catch (e) { raw('5.API直连.异常', String(e)); }
+  }
+
+  /* ---- 判定 ---- */
+  const jc = joinCalls();
+  raw('判定.join 调用总数', jc.length);
+  raw('判定.是否有 mode:"challenge" 的 join', jc.some((c) => c.rawBodyHasChallenge));
+  raw('判定.是否有带 size 的 join', jc.some((c) => c.hasSize));
+  raw('判定.重载后自动进房', entered);
+  const st = seats(w3);
+  raw('判定.座位里含「阿尔宙斯」的标签', st.map((s) => s.tag).filter((t) => t && t.indexOf('阿尔宙斯') >= 0));
+  raw('判定.座位里含「挑战房 · 固定阿尔宙斯级」', st.some((s) => s.text.indexOf('固定阿尔宙斯级') >= 0));
+  await reportCheckpoint('final');
+  window.__DONE = true;
+  document.getElementById('phase').textContent = 'phase: DONE (' + CASE + ')';
+  log('DONE');
+})().catch(async (e) => {
+  log('FATAL ' + (e && e.stack || e));
+  await reportCheckpoint('fatal');
+  window.__DONE = 'error';
+});
+</script>
+</body>
+</html>

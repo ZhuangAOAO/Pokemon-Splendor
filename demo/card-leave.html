@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>卡牌离场动画 · demo（仅本地，不进项目根）</title>
+<!-- 复用游戏真实样式：桌垫底色 / 卡片尺寸 / 球色变量 / 卡面图 -->
+<link rel="stylesheet" href="/style.css">
+<style>
+  /* ---- demo 专属样式（不改游戏样式文件）---- */
+  body{ margin:0; padding:18px 22px 40px; background:var(--bg,#eef2f6); font-family:system-ui,"Microsoft YaHei",sans-serif; }
+  .demo-head{ max-width:1180px; margin:0 auto 14px; }
+  .demo-head h1{ font-size:20px; margin:0 0 6px; color:#24303d; }
+  .demo-head p{ margin:0; font-size:13px; color:#5b6b7c; line-height:1.6; }
+  .panel{ max-width:1180px; margin:0 auto 16px; background:#fff; border:1px solid rgba(34,48,61,.1);
+          border-radius:14px; padding:12px 14px; box-shadow:0 6px 18px rgba(34,48,61,.06); }
+  .row{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:6px 0; }
+  .row > b{ font-size:12px; color:#5b6b7c; min-width:52px; }
+  button{ font:inherit; font-size:13px; padding:7px 12px; border-radius:10px; cursor:pointer;
+          border:1px solid rgba(34,48,61,.18); background:#fff; color:#24303d; }
+  button:hover{ background:#f6f8fb; }
+  button.on{ background:#e3350d; border-color:#e3350d; color:#fff; font-weight:700; }
+  button.ghost.on{ background:#2f6fce; border-color:#2f6fce; }
+  input[type=range]{ flex:1; min-width:180px; }
+  .stage{ max-width:1180px; margin:0 auto; background:
+          radial-gradient(1200px 420px at 50% -10%, rgba(255,255,255,.75), rgba(255,255,255,0)),
+          linear-gradient(160deg,#e7ecf2,#dfe6ee);
+          border:1px solid rgba(34,48,61,.08); border-radius:18px; padding:26px 20px 34px; }
+  .market{ display:flex; gap:26px; justify-content:center; perspective:900px; }
+  .slot{ width:140px; height:216px; position:relative; }
+  /* 卡面本体：直接复用游戏 .card 的样式（140px / 1335:2063 / 圆角 / 球色变量） */
+  .slot .card{ position:absolute; inset:0; width:140px; height:auto; }
+  /* 折角层：默认裁出「角」的三角形，折起时露出卡背 */
+  .flap{ position:absolute; inset:0; border-radius:12px; pointer-events:none; z-index:3;
+         background:linear-gradient(160deg,#2b3a4c 0%, #16202b 55%, #0d141c 100%);
+         box-shadow:inset 0 0 0 2px rgba(255,203,5,.55), inset 0 0 22px rgba(0,0,0,.55);
+         backface-visibility:visible; }
+  .flap::after{ /* 卡背中央的小精灵球意象（游戏里没有卡背资产，这里用视觉语言合成）
+        —— 定位到“被折起的那个角”，否则折起后图案被裁掉看不见 */
+         content:''; position:absolute; left:var(--fx,72%); top:var(--fy,72%); width:38%; aspect-ratio:1;
+         transform:translate(-50%,-50%); border-radius:50%; opacity:.85;
+         background:linear-gradient(#e3350d 0 46%, #f4f7fa 46% 54%, #ffffff 54% 100%);
+         box-shadow:0 0 0 2px rgba(255,203,5,.8), 0 4px 10px rgba(0,0,0,.45); }
+  .flap{ box-shadow:inset 0 0 0 2px rgba(255,203,5,.5), inset 0 0 18px rgba(0,0,0,.5), 0 8px 18px rgba(9,14,20,.35); }
+  .foldshade{ position:absolute; inset:0; border-radius:12px; pointer-events:none; z-index:2; opacity:0;
+              background:linear-gradient(to bottom right, rgba(9,14,20,0) 62%, rgba(9,14,20,.32) 88%, rgba(9,14,20,.45) 100%); }
+  .cardwrap{ position:absolute; inset:0; will-change:transform,opacity; }
+  /* ==== “从桌上拿起”：条带弯曲层（真卡面切 N 条，逐条倾斜 → 卡面轻微变形）+ 接触阴影 ==== */
+  .lift3d{ position:absolute; inset:0; transform-style:preserve-3d; display:none; z-index:2; }
+  .lift3d .strip{ position:absolute; left:0; width:140px; background-repeat:no-repeat; background-size:140px 216px; backface-visibility:visible; }
+  .lift-sh{ position:absolute; left:8px; right:8px; bottom:-10px; height:18px; border-radius:50%;
+            background:radial-gradient(ellipse at 50% 50%, rgba(9,14,20,.5), rgba(9,14,20,0) 72%);
+            filter:blur(3px); opacity:.75; z-index:0; display:none; }
+  .meta{ max-width:1180px; margin:12px auto 0; font-size:12px; color:#5b6b7c; }
+  .meta code{ background:#fff; padding:1px 5px; border-radius:5px; border:1px solid rgba(34,48,61,.12); }
+  .fmt{ max-width:1180px; margin:8px auto 0; font-size:12px; color:#7b8794; }
+  .film{ display:none; grid-template-columns:repeat(6,1fr); gap:10px; margin-top:10px; }
+  .film.on{ display:grid; }
+  .film .cell{ background:#f7f9fc; border:1px solid rgba(34,48,61,.1); border-radius:10px; padding:8px 6px; text-align:center; }
+  .film .slot{ position:relative; width:140px; height:216px; margin:0 auto; perspective:900px; }
+  .film .cell-lab{ margin-top:6px; font-size:11px; color:#5b6b7c; }
+</style>
+</head>
+<body>
+
+<!-- SVG 卷曲版的共享 defs：必须放在“常驻、不 display:none”的 SVG 里，
+     否则 Chromium 里其它 SVG 引用不到渐变（实测会退化成只剩描边细线） -->
+<svg id="curlDefs" width="0" height="0" style="position:absolute;left:-9999px;top:0" aria-hidden="true">
+  <defs>
+    <linearGradient id="curlBack" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a4c60"/><stop offset=".55" stop-color="#1b2733"/><stop offset="1" stop-color="#0c1219"/>
+    </linearGradient>
+    <linearGradient id="curlLit" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="rgba(255,255,255,.6)"/><stop offset="1" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+    <!-- ⑨ 卡背质感版：浅色卡背（不用纯黑平涂）+ 折痕受光高光 -->
+    <linearGradient id="curlBackLight" x1="1" y1="0" x2="0.15" y2="1">
+      <stop offset="0" stop-color="#fdfaf4"/><stop offset=".45" stop-color="#f1e9da"/><stop offset="1" stop-color="#d6c9b1"/>
+    </linearGradient>
+    <linearGradient id="curlLitStrong" x1="0" y1="0" x2="0.55" y2="1">
+      <stop offset="0" stop-color="rgba(255,255,255,.95)"/><stop offset=".55" stop-color="rgba(255,255,255,.35)"/><stop offset="1" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+    <filter id="curlShadow" x="-40%" y="-40%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+  </defs>
+</svg>
+
+<div class="demo-head">  <h1>卡牌离场动画 · 方案对比 demo</h1>
+  <p>两段式编排：<b>第一段（~40%）只有角动</b>（掀起的角离开桌面 + 卡面轻微变形 + 接触阴影拉开）→ <b>第二段（~60%）角领着整张牌被带走</b>（缓出、顺着掀角方向）。
+     慢放/拖帧看清编排；<code>prefers-reduced-motion</code> 下自动只做淡出。</p>
+</div>
+
+<div class="panel">
+  <div class="row">
+    <b>变体</b>
+    <button id="v6" class="ghost">⑥ 拿起·翘右上（微变形，520ms）</button>
+    <button id="v7" class="ghost">⑦ 拿起·翘右上（变形明显，620ms）</button>
+    <button id="v8" class="ghost">⑧ 拿起·翘右下（微变形，520ms）</button>
+  </div>
+  <div class="row">
+    <b>对照</b>
+    <button id="v1" class="ghost">① 硬折·右下（上一版理解·已否）</button>
+    <button id="v2" class="ghost">② 硬折·右上（已否）</button>
+    <button id="v3" class="ghost">③ 硬折·右上·更深更慢（已否）</button>
+    <button id="v4" class="ghost">④ SVG 卷曲（真卷角，520ms）</button>
+    <button id="v9" class="ghost">⑨ 卷曲·卡背质感版（卡背花纹+折痕高光，560ms）</button>
+    <button id="v5" class="ghost">⑤ 现版对照（单段整体后仰，260ms）</button>
+  </div>
+  <div class="row">
+    <b>播放</b>
+    <button id="replay">重播</button>
+    <button id="loop" class="on">循环</button>
+    <button id="sp1" class="on">1x</button>
+    <button id="sp025" class="ghost">0.25x</button>
+    <button id="sp01" class="ghost">0.1x</button>
+    <button id="pause" class="ghost">暂停</button>
+    <button id="stepb" class="ghost">◀ 帧</button>
+    <button id="stepf" class="ghost">帧 ▶</button>
+    <span id="tlabel" style="font-size:12px;color:#5b6b7c;min-width:132px;"></span>
+  </div>
+  <div class="row">
+    <b>拖帧</b>
+    <input type="range" id="scrub" min="0" max="1000" value="0">
+  </div>
+  <div class="row">
+    <b>拼图</b>
+    <button id="filmBtn">出当前变体的关键帧拼图（0 / 20 / 35 / 50 / 70 / 100%）</button>
+    <span style="font-size:12px;color:#5b6b7c">（截图取证用：一屏看完两段编排）</span>
+  </div>
+  <div class="film" id="film"></div>
+</div>
+
+<div class="stage">
+  <div class="market" id="market"></div>
+</div>
+
+<div class="meta" id="meta"></div>
+<div class="fmt">真实卡面：<code>pictures/&lt;名&gt;.jpg</code>｜真实卡样式：复用项目 <code>style.css</code> 的 <code>.card</code>（140px / 1335:2063）｜本文件只放在 <code>demo/</code>，不进项目根</div>
+
+<script>
+/* ===================== 数据：真实卡（名字 → pictures/名字.jpg） ===================== */
+const BALLS = {
+  red:{top:'#e3350d',light:'#fde9e4',band:'#24303d'},
+  blue:{top:'#2f6fdb',light:'#e4edfd',band:'#24303d'},
+  black:{top:'#2e2e36',light:'#e9e9ee',band:'#ffcb05'},
+};
+const TIER_NAMES = {1:'一阶',2:'二阶',3:'三阶'};
+const CARDS = [
+  { name:'伊布',   tier:1, vp:1, bonus:'red',   cost:{red:2} },
+  { name:'凯西',   tier:2, vp:2, bonus:'blue',  cost:{blue:3, red:1} },
+  { name:'卡比兽', tier:3, vp:3, bonus:'black', cost:{black:4, blue:2, red:2} },
+];
+
+/* 与游戏一致的卡面 DOM（card-head / card-ball / card-name / card-cost + card-img 封面） */
+function ballMini(color, n){
+  const b = BALLS[color] || { top:'#8e44c7' };
+  return `<span class="mini-ball" style="background:${b.top}">${n}</span>`;
+}
+function cardHTML(cd, t){
+  const b = BALLS[cd.bonus];
+  const cost = Object.keys(cd.cost).map((c) => ballMini(c, cd.cost[c])).join('');
+  return `
+    <div class="card t${t}" data-tier="${t}">
+      <div class="card-head"><span class="tier-badge">${TIER_NAMES[t]}</span><span class="vp-badge">${cd.vp}</span></div>
+      <div class="card-ball"></div>
+      <div class="card-name">${cd.name}</div>
+      <div class="card-cost">${cost}</div>
+      <img class="card-img" alt="${cd.name}" src="/pictures/${encodeURIComponent(cd.name)}.jpg">
+    </div>`;
+}
+
+/* ===================== 结构：三个槽位（真实样式 + 真卡图） ===================== */
+const market = document.getElementById('market');
+const slots = CARDS.map((cd, i) => {
+  const slot = document.createElement('div');
+  slot.className = 'slot';
+  slot.innerHTML = `<div class="cardwrap" data-i="${i}">${cardHTML(cd, t = cd.tier)}</div>`;
+  market.appendChild(slot);
+  return slot.querySelector('.cardwrap');
+});
+var t; // 上面模板里用到的阶数
+
+/* 折角层：角三角形（clip-path）+ 卡背样式，折起时可见 */
+function makeFlap(variant, wrap){
+  const el = document.createElement('div');
+  el.className = 'flap';
+  const big = (variant === 'v3');            // ③ 更深的折角（三角形更大）
+  const cut = big ? 0.5 : 0.38;
+  if (variant === 'v1') {                    // 右下角
+    el.style.clipPath = `polygon(${cut*100}% 100%, 100% ${cut*100}%, 100% 100%)`;
+    el.dataset.origin = '75% 75%'; el.dataset.axis = '1,-1,0'; el.dataset.dir = '1,1';
+    el.style.setProperty('--fx', '78%'); el.style.setProperty('--fy', '78%');
+  } else {                                   // 右上角（②③）
+    el.style.clipPath = `polygon(${cut*100}% 0, 100% 0, 100% ${cut*100}%)`;
+    el.dataset.origin = '75% 25%'; el.dataset.axis = '1,1,0'; el.dataset.dir = '1,-1';
+    el.style.setProperty('--fx', '78%'); el.style.setProperty('--fy', '22%');
+  }
+  el.style.display = 'none';
+  wrap.appendChild(el);
+  // 折角处投在卡面上的阴影（折角越大越明显）
+  const shade = document.createElement('div');
+  shade.className = 'foldshade';
+  if (variant === 'v1') shade.style.background = 'linear-gradient(to bottom right, rgba(9,14,20,0) 60%, rgba(9,14,20,.34) 86%, rgba(9,14,20,.5) 100%)';
+  wrap.appendChild(shade);
+  return el;
+}
+
+/* SVG 卷曲层（④ / ⑨）：真卷角 —— 曲边 + 背面 + 卷边高光 + 卡面投影
+   ⑨ = 卡背质感版：浅色卡背 + 红白球花纹 + 沿折痕的受光高光（不用纯黑平涂），分层阴影
+   每个实例用唯一 id（uid）—— 多实例共用同一 id 会被第一个实例抢走（已踩过的坑）*/
+let curlSeq = 0;
+function makeCurl(wrap, variant){
+  const NS = 'http://www.w3.org/2000/svg';
+  const uid = 'cu' + (++curlSeq);
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 140 216');
+  svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:none;overflow:visible;z-index:3';
+  svg.dataset.uid = uid;
+  const premium = (variant === 'v9');
+  svg.innerHTML = premium ? `
+    <defs><clipPath id="${uid}-clip"><path id="${uid}-clipShape" d=""/></clipPath></defs>
+    <path id="${uid}-shadow" fill="rgba(9,14,20,.38)" filter="url(#curlShadow)" d=""/>
+    <path id="${uid}-back" fill="url(#curlBackLight)" d=""/>
+    <g clip-path="url(#${uid}-clip)">
+      <g id="${uid}-ball" opacity="0">
+        <circle cx="0" cy="0" r="12" fill="#f8f4ec" stroke="rgba(120,104,80,.35)" stroke-width="1"/>
+        <path d="M -12 0 A 12 12 0 0 1 12 0 Z" fill="#e3350d"/>
+        <rect x="-12" y="-1.7" width="24" height="3.4" fill="#2b3138"/>
+        <circle cx="0" cy="0" r="3.6" fill="#fff" stroke="#2b3138" stroke-width="1.5"/>
+      </g>
+    </g>
+    <path id="${uid}-edge" fill="none" stroke="rgba(126,110,86,.45)" stroke-width="1.4" d=""/>
+    <path id="${uid}-lit" fill="url(#curlLitStrong)" d=""/>` : `
+    <path id="${uid}-shadow" fill="rgba(9,14,20,.45)" filter="url(#curlShadow)" d=""/>
+    <path id="${uid}-back" fill="url(#curlBack)" stroke="rgba(255,203,5,.6)" stroke-width="1.2" d=""/>
+    <path id="${uid}-lit" fill="url(#curlLit)" d=""/>`;
+  wrap.appendChild(svg);
+  return svg;
+}
+
+/* ===================== 「从桌上拿起」（⑥⑦⑧）：条带弯曲 + 3D 翘起 ===================== */
+const LIFT = {
+  // 旋转轴 = 垂直于「支点→翘起角」的对角线（否则不是翘角而是翻面）；支点=对角
+  v6:{ tiltMax:26, bendMax:9,  pivot:'0% 100%', axis:'216,140,0',  dir:[1,-1], dur:520 },
+  v7:{ tiltMax:34, bendMax:20, pivot:'0% 100%', axis:'216,140,0',  dir:[1,-1], dur:620 },
+  v8:{ tiltMax:26, bendMax:9,  pivot:'0% 0%',   axis:'-216,140,0', dir:[1,1],  dur:520 },
+};
+const STRIP_N = 9, STRIP_H = 216 / STRIP_N;
+
+// 把真卡面切成 STRIP_N 条（同图不同背景偏移），供逐条弯曲 → 卡面轻微变形
+function buildLift(wrap){
+  const img = wrap.querySelector('.card-img');
+  const src = img ? img.getAttribute('src') : `/pictures/${encodeURIComponent(CARDS[1].name)}.jpg`;
+  const sh = document.createElement('div');
+  sh.className = 'lift-sh';
+  const holder = document.createElement('div');
+  holder.className = 'lift3d';
+  for (let j = 0; j < STRIP_N; j++) {
+    const s = document.createElement('div');
+    s.className = 'strip';
+    s.style.height = STRIP_H + 'px';
+    s.style.backgroundImage = `url("${src}")`;
+    s.style.backgroundPosition = `0 ${(-j * STRIP_H).toFixed(2)}px`;
+    holder.appendChild(s);
+  }
+  wrap.appendChild(sh);
+  wrap.appendChild(holder);
+  return holder;
+}
+
+// 逐条摆放：从底边锚点起，每段沿当前法向走 STRIP_H，角度递增（= 弧）
+function poseStrips(holder, bendDeg, brightK){
+  const step = (bendDeg * Math.PI / 180) / STRIP_N;
+  let y = STRIP_N * STRIP_H, z = 0;
+  for (let j = 0; j < STRIP_N; j++) {
+    const a = j * step;
+    const dy = -Math.cos(a) * STRIP_H, dz = Math.sin(a) * STRIP_H;
+    const cy = y + dy / 2, cz = z + dz / 2;
+    const mid = (a + step / 2) * 180 / Math.PI;
+    const el = holder.children[j];
+    const top = cy - STRIP_H / 2;
+    el.style.top = top.toFixed(2) + 'px';
+    // 卡面偏移跟着这一条的"平铺位置"走，条怎么弯、画面都对得上（不会上下颠倒）
+    el.style.backgroundPosition = `0 ${(-top).toFixed(2)}px`;
+    el.style.transform = `translateZ(${cz.toFixed(2)}px) rotateX(${(-mid).toFixed(2)}deg)`;
+    el.style.filter = `brightness(${(1 - Math.abs(mid) / 90 * brightK).toFixed(3)})`;
+    y += dy; z += dz;
+  }
+}
+
+/* ===================== 缓动 ===================== */
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+const easeInCubic = (x) => x*x*x;                       // 第一段：起手慢
+const easeOutCubic = (x) => 1 - Math.pow(1-x, 3);       // 第二段：被带走后减速
+const SPLIT = 0.4;                                      // 两段分界（40% / 60%）
+
+/* ===================== 时间参数 t ∈ [0,1] 驱动（便于慢放/拖帧） ===================== */
+// 单张卡在时刻 t 的状态（舞台与「关键帧拼图」共用同一份数学）
+function applyState(wrap, variant, t){
+  const card = wrap.querySelector('.card');
+  const flap = wrap.querySelector('.flap');
+  const svg  = wrap.querySelector('svg');
+  const shade= wrap.querySelector('.foldshade');
+  const holder = wrap.querySelector('.lift3d');
+  const shEl   = wrap.querySelector('.lift-sh');
+  if (holder) holder.style.display = 'none';
+  if (shEl)   shEl.style.display = 'none';
+  if (card) card.style.visibility = 'visible';
+  if (flap) flap.style.display = 'none';
+  if (svg)  svg.style.display  = 'none';
+  if (shade) shade.style.opacity = '0';
+  card.style.transform = '';
+  card.style.filter = '';
+  card.style.opacity = '1';
+  wrap.style.transform = '';
+  wrap.style.opacity = '1';
+
+  const tt = clamp01(t);
+  if (tt <= 0) return;
+
+  const p1 = clamp01(tt / SPLIT);          // 第一段进度
+  const p2 = clamp01((tt - SPLIT) / (1 - SPLIT)); // 第二段进度
+
+  if (variant === 'v5') {                  // ⑤ 现版对照：单段整体后仰飞走
+    const e = easeOutCubic(tt);
+    card.style.transform = `rotateX(${(38*e).toFixed(2)}deg) translateY(${(-30*e).toFixed(2)}px) scale(${(1-0.15*e).toFixed(3)})`;
+    card.style.filter = `brightness(${(1 + 0.6*e).toFixed(2)})`;
+    card.style.opacity = String(1 - Math.max(0, (tt-0.6)/0.4));
+    return;
+  }
+
+  if (variant === 'v6' || variant === 'v7' || variant === 'v8') {   // ⑥⑦⑧ 从桌上拿起（先翘角）
+    const C = LIFT[variant];
+    const e1 = easeInCubic(p1);
+    const e2 = easeOutCubic(p2);
+    const tilt = C.tiltMax * e1 + 6 * e2;
+    const bend = C.bendMax * e1 * (1 - 0.35 * e2);
+    if (card) card.style.visibility = 'hidden';     // 卡面改由条带层呈现（可变形）
+    if (holder) { holder.style.display = 'block'; poseStrips(holder, bend, 0.35); }
+    if (holder) {
+      holder.style.transformOrigin = C.pivot;
+      holder.style.transform = `translateZ(${(14 * e1 + 10 * e2).toFixed(2)}px) rotate3d(${C.axis}, ${tilt.toFixed(2)}deg)`;
+    }
+    if (shEl) {                                     // 接触阴影：越翘越淡、越散
+      shEl.style.display = 'block';
+      shEl.style.opacity = (0.75 * (1 - 0.6 * e1)).toFixed(3);
+      shEl.style.transform = `translate(${(C.dir[0] * 8 * e1).toFixed(1)}px, ${(6 * e1).toFixed(1)}px) scale(${(1 + 0.5 * e1).toFixed(3)})`;
+    }
+    const rot = (C.dir[0] > 0 ? 1 : -1) * 6 * e2;
+    wrap.style.transform = `translate(${(C.dir[0] * 74 * e2).toFixed(2)}px, ${(C.dir[1] * 74 * e2).toFixed(2)}px) rotate(${rot.toFixed(2)}deg) scale(${(1 - 0.16 * e2).toFixed(3)})`;
+    wrap.style.opacity = String(1 - Math.max(0, (p2 - 0.6) / 0.4));
+    return;
+  }
+
+  if (variant === 'v4' || variant === 'v9') {   // ④ SVG 卷曲 ／ ⑨ 卡背质感版（浅色卡背+球花纹+折痕高光）
+    if (svg) svg.style.display = 'block';
+    const uid = svg ? svg.dataset.uid : '';
+    const premium = (variant === 'v9');
+    const q = (id) => svg.querySelector('#' + uid + '-' + id);
+    const lift = easeInCubic(p1) * (1 - 0.15*easeOutCubic(p2));
+    const r = (premium ? 104 : 96) * (0.25 + 0.75 * lift);   // 卷角尺寸（随卷起进度长大）
+    const bx = 140, by = 0;                     // 卡片右上角
+    const A = [bx - r, by];                     // 折线起点（上边）
+    const B = [bx, by + r];                     // 折线终点（右边）
+    const C = [bx - r*0.55, by + r*0.42];       // 折线控制点（向卡内鼓出 = 曲面）
+    const rim = [bx - r*(premium ? 0.30 : 0.2), by + r*(premium ? 0.22 : 0.14)];
+    const f = (n) => n.toFixed(1);
+    // 背面：折线与卡片两条边围成的曲面三角
+    const backD = `M ${f(A[0])} ${f(A[1])} Q ${f(C[0])} ${f(C[1])} ${f(B[0])} ${f(B[1])} L ${bx} ${by} Z`;
+    q('back').setAttribute('d', backD);
+    if (premium) q('clipShape').setAttribute('d', backD);
+    // 卷边/折痕高光：沿折线内侧的一条窄带
+    q('lit').setAttribute('d',
+      `M ${f(A[0])} ${f(A[1])} Q ${f(C[0])} ${f(C[1])} ${f(B[0])} ${f(B[1])} Q ${f(rim[0])} ${f(rim[1])} ${f(A[0])} ${f(A[1])} Z`);
+    // 卡面投影：折线向卡内偏移一点、模糊
+    q('shadow').setAttribute('d',
+      `M ${f(A[0] - r*0.10)} ${f(A[1] + r*0.16)} Q ${f(C[0] - r*0.06)} ${f(C[1] + r*0.10)} ${f(B[0] - r*0.02)} ${f(B[1] - r*0.04)} Q ${f(C[0] + r*0.10)} ${f(C[1] + r*0.22)} ${f(A[0] - r*0.10)} ${f(A[1] + r*0.16)} Z`);
+    if (premium) {
+      // 纸厚边（外侧暗边）
+      q('edge').setAttribute('d', backD);
+      // 卡背花纹：红白球跟着卷角长大、居中在折起的曲面里
+      const ball = q('ball');
+      const k = (r / 104) * 0.72;
+      // 摆在里折角足够深的位置（太靠外会被卷角三角裁掉）
+      ball.setAttribute('transform', `translate(${f(bx - r*0.30)} ${f(by + r*0.28)}) scale(${k.toFixed(3)})`);
+      ball.setAttribute('opacity', String(Math.max(0, Math.min(0.92, (r - 30) / 38)).toFixed(2)));
+    }
+    const e2 = easeOutCubic(p2);
+    wrap.style.transform = `translate(${((premium ? 74 : 70)*e2).toFixed(2)}px, ${(-64*e2).toFixed(2)}px) rotate(${(6*e2).toFixed(2)}deg) scale(${(1-0.22*e2).toFixed(3)})`;
+    wrap.style.opacity = String(1 - Math.max(0, (p2-0.55)/0.45));
+    return;
+  }
+
+  /* ①②③ 硬折角：第一段折角、第二段带走 */
+  if (flap) {
+    flap.style.display = 'block';
+    const [ox, oy] = flap.dataset.origin.split(' ');
+    flap.style.transformOrigin = `${ox} ${oy}`;
+    const deep = (variant === 'v3') ? 1.12 : 1;
+    const deg = 150 * deep * easeInCubic(p1);
+    if (shade) shade.style.opacity = String(0.85 * easeInCubic(p1));
+    const carry = easeOutCubic(p2);
+    const [dx, dy] = flap.dataset.dir.split(',').map(Number);
+    const axis = flap.dataset.axis;
+    flap.style.transform = `rotate3d(${axis}, ${deg.toFixed(2)}deg) translate3d(${(dx*10*carry).toFixed(2)}px, ${(dy*10*carry).toFixed(2)}px, 0)`;
+    const sh = 4 + 10 * lift0(p1);
+    flap.style.filter = `drop-shadow(0 ${sh.toFixed(1)}px ${(sh*1.2).toFixed(1)}px rgba(9,14,20,.45))`;
+    const e2 = easeOutCubic(p2);
+    const rot = (dx > 0 ? -1 : 1) * 5 * e2;
+    wrap.style.transform = `translate(${(dx*84*e2).toFixed(2)}px, ${(dy*84*e2).toFixed(2)}px) rotate(${rot.toFixed(2)}deg) scale(${(1-0.2*e2).toFixed(3)})`;
+    wrap.style.opacity = String(1 - Math.max(0, (p2 - 0.55) / 0.45));
+  }
+}
+
+// 舞台：三张牌错开（骨牌感）依次被拿走
+function render(variant, t){
+  slots.forEach((wrap, i) => {
+    const delay = i * 0.12;
+    applyState(wrap, variant, clamp01((t - delay) / (1 - delay)));
+  });
+}
+const lift0 = (x) => x * x; // 折角阴影强度随折角增大
+
+/* ===================== 交互：变体 / 速度 / 暂停 / 拖帧 ===================== */
+const DUR = { v1:420, v2:460, v3:560, v4:520, v5:260, v6:520, v7:620, v8:520, v9:560 };
+let variant = 'v1', speed = 1, paused = false, tNow = 0, last = 0, holdUntil = 0, loop = true;
+
+function prepare(v){
+  variant = v;
+  // 清掉上一版的所有覆盖层，按当前变体重建
+  slots.forEach((wrap) => {
+    wrap.querySelectorAll('.flap').forEach((n) => n.remove());
+    wrap.querySelectorAll('svg').forEach((n) => n.remove());
+    wrap.querySelectorAll('.lift3d').forEach((n) => n.remove());
+    wrap.querySelectorAll('.lift-sh').forEach((n) => n.remove());
+    wrap.querySelectorAll('.foldshade').forEach((n) => n.remove());
+    if (v === 'v4' || v === 'v9') makeCurl(wrap, v);
+    else if (v === 'v6' || v === 'v7' || v === 'v8') buildLift(wrap);
+    else if (v !== 'v5') makeFlap(v, wrap);
+  });
+  tNow = 0; render(variant, 0); syncUI();
+}
+function frame(now){
+  if (!last) last = now;
+  const dt = (now - last) / 1000; last = now;
+  if (!paused) {
+    if (tNow < 1) {
+      tNow += dt * 1000 * speed / DUR[variant];
+      if (tNow >= 1) { tNow = 1; holdUntil = now + 900; }   // 末帧停 900ms 让人看清“已离场”
+      render(variant, tNow); syncUI();
+    } else if (loop && now >= holdUntil) {
+      tNow = 0; render(variant, 0); syncUI();                  // 循环播放，舞台上始终有牌
+    }
+  }
+  requestAnimationFrame(frame);
+}
+function syncUI(){
+  scrub.value = String(Math.round(tNow * 1000));
+  const ms = Math.round(tNow * DUR[variant]);
+  const stage = tNow < SPLIT ? '第一段·折角' : (tNow < 1 ? '第二段·带走' : '已离场');
+  tlabel.textContent = `${ms} / ${DUR[variant]} ms · ${stage}`;
+  meta.textContent = `当前变体：${labelOf(variant)}｜总时长 ${DUR[variant]}ms（第一段 ${Math.round(DUR[variant]*SPLIT)}ms / 第二段 ${Math.round(DUR[variant]*(1-SPLIT))}ms）｜速度 ${speed}x`;
+}
+function labelOf(v){ return {v1:'① 硬折·右下（已否）',v2:'② 硬折·右上（已否）',v3:'③ 硬折·右上·更深更慢（已否）',v4:'④ SVG 卷曲',v9:'⑨ 卷曲·卡背质感版',v5:'⑤ 现版对照（单段）',v6:'⑥ 拿起·翘右上（微变形）',v7:'⑦ 拿起·翘右上（变形明显）',v8:'⑧ 拿起·翘右下（微变形）'}[v]; }
+
+/* 关键帧拼图：一个变体、六个时刻，供一屏截图取证 */
+const FRAME_TS = [0, 0.2, 0.35, 0.5, 0.7, 1.0];
+function buildFilmstrip(v){
+  const host = document.getElementById('film');
+  host.innerHTML = '';
+  FRAME_TS.forEach((tt) => {
+    const cell = document.createElement('div'); cell.className = 'cell';
+    const slot = document.createElement('div'); slot.className = 'slot';
+    const wrap = document.createElement('div'); wrap.className = 'cardwrap';
+    wrap.innerHTML = cardHTML(CARDS[1], CARDS[1].tier);
+    slot.appendChild(wrap); cell.appendChild(slot);
+    const lab = document.createElement('div'); lab.className = 'cell-lab';
+    lab.textContent = `${Math.round(tt * DUR[v])}ms · ${tt < SPLIT ? '段一·折角' : (tt < 1 ? '段二·带走' : '已离场')}`;
+    cell.appendChild(lab); host.appendChild(cell);
+    if (v === 'v4' || v === 'v9') makeCurl(wrap, v); else if (v === 'v6' || v === 'v7' || v === 'v8') buildLift(wrap); else if (v !== 'v5') makeFlap(v, wrap);
+    applyState(wrap, v, tt);
+  });
+  host.className = 'film on';
+}
+document.getElementById('filmBtn').addEventListener('click', () => buildFilmstrip(variant));
+
+const scrub = document.getElementById('scrub'), tlabel = document.getElementById('tlabel'), meta = document.getElementById('meta');
+const btns = ['v6','v7','v8','v1','v2','v3','v4','v9','v5'];
+btns.forEach((id) => {
+  document.getElementById(id).addEventListener('click', () => {
+    btns.forEach((x) => { document.getElementById(x).className = (x === id ? 'on' : 'ghost'); });
+    prepare(id);
+  });
+});
+['sp1','sp025','sp01'].forEach((id) => document.getElementById(id).addEventListener('click', () => {
+  ['sp1','sp025','sp01'].forEach((x) => { document.getElementById(x).className = (x === id ? 'on' : 'ghost'); });
+  speed = id === 'sp1' ? 1 : (id === 'sp025' ? 0.25 : 0.1); syncUI();
+}));
+document.getElementById('pause').addEventListener('click', (e) => {
+  paused = !paused; e.target.className = paused ? 'on' : 'ghost'; e.target.textContent = paused ? '继续' : '暂停';
+});
+document.getElementById('replay').addEventListener('click', () => { tNow = 0; holdUntil = 0; render(variant, 0); syncUI(); });
+document.getElementById('loop').addEventListener('click', (e) => { loop = !loop; e.target.className = loop ? 'on' : 'ghost'; });
+document.getElementById('stepf').addEventListener('click', () => { paused = true; loop = false; document.getElementById('pause').className='on'; document.getElementById('loop').className='ghost'; tNow = clamp01(tNow + 1/60 / (DUR[variant]/1000)); render(variant,tNow); syncUI(); });
+document.getElementById('stepb').addEventListener('click', () => { paused = true; loop = false; document.getElementById('pause').className='on'; document.getElementById('loop').className='ghost'; tNow = clamp01(tNow - 1/60 / (DUR[variant]/1000)); render(variant,tNow); syncUI(); });
+scrub.addEventListener('input', () => { paused = true; loop = false; document.getElementById('pause').className='on'; document.getElementById('loop').className='ghost'; tNow = +scrub.value/1000; render(variant, tNow); syncUI(); });
+
+/* 尊重系统"减弱动态效果"：只做淡出 */
+if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  document.querySelector('.demo-head p').insertAdjacentHTML('afterend',
+    '<p style="color:#e3350d"><b>检测到系统“减弱动态效果”：</b>正式集成时此模式下只做 120ms 淡出，不做折角/卷曲。</p>');
+}
+
+prepare('v6');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

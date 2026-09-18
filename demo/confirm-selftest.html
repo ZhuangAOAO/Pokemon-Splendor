@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>确认框组件自测（不依赖 CDP）</title>
+<link rel="stylesheet" href="../style.css">
+<style>
+  body{ font:14px/1.7 system-ui,"Microsoft YaHei",sans-serif; background:#eef2f7; color:#22303d; padding:18px; }
+  h1{ font-size:18px; margin:0 0 10px; }
+  #out{ background:#fff; border-radius:14px; padding:14px 16px; box-shadow:0 8px 24px rgba(20,30,60,.08); max-width:760px; }
+  .pass{ color:#0a7b3d; font-weight:800; }
+  .fail{ color:#b5260a; font-weight:800; }
+  code{ background:#f2f5fa; padding:1px 5px; border-radius:5px; }
+  .note{ color:#5b6b7c; font-size:12px; margin-top:8px; }
+</style>
+</head>
+<body>
+<h1>确认框组件自测（spConfirm）</h1>
+<div id="out">正在跑断言…</div>
+<p class="note">页面自己派发键盘/鼠标事件并收集 Promise 结果，因此不依赖浏览器调试通道；截图即为证据。</p>
+
+<script src="../confirm-dialog.js"></script>
+<script>
+(async function () {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const mask = () => document.querySelector('#spc2-mask');
+  const okB = () => document.querySelector('#spc2-ok');
+  const caB = () => document.querySelector('#spc2-cancel');
+  const rows = [];
+  const add = (name, got, want) => {
+    const ok = JSON.stringify(got) === JSON.stringify(want);
+    rows.push({ name, got, want, ok });
+    return ok;
+  };
+
+  // A) 危险操作 + Enter（焦点默认在「取消」→ 按"当前焦点按钮"走 = 取消，防误触）
+  const pA = spConfirm({ title: '退出对局', message: '确定退出当前对局？进度将丢失。', confirmText: '退出对局', danger: true });
+  await sleep(140);
+  add('A1 危险框已显示', mask() && !mask().hidden, true);
+  add('A2 标题渲染', document.querySelector('#spc2-title').textContent, '退出对局');
+  add('A3 主按钮危险样式', /spc2-danger/.test(okB().className), true);
+  add('A4 焦点在「取消」', document.activeElement === caB(), true);
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await sleep(120);
+  add('A5 危险框按 Enter = 取消(防误触)', await pA, false);
+  add('A6 关闭后遮罩隐藏', mask().hidden, true);
+
+  // B) Esc = 取消
+  const pB = spConfirm({ title: 'Esc 测试', message: '按 Esc 应取消' });
+  await sleep(120);
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  await sleep(120);
+  add('B1 Esc = 取消', await pB, false);
+
+  // C) 点遮罩 = 取消
+  const pC = spConfirm({ title: '遮罩测试', message: '点遮罩应取消' });
+  await sleep(120);
+  mask().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  await sleep(120);
+  add('C1 点遮罩 = 取消', await pC, false);
+
+  // D) 普通操作（焦点在「确定」）→ Enter = 确认
+  const pD = spConfirm({ title: '普通测试', message: '普通操作' });
+  await sleep(140);
+  add('D1 普通框焦点在「确定」', document.activeElement === okB(), true);
+  add('D2 普通框无危险样式', /spc2-danger/.test(okB().className), false);
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await sleep(120);
+  add('D3 普通框按 Enter = 确认', await pD, true);
+
+  // E) 点「取消」按钮 = 取消
+  const pE = spConfirm({ title: '按钮测试', message: '点取消按钮' });
+  await sleep(120);
+  caB().click();
+  await sleep(120);
+  add('E1 点「取消」按钮 = 取消', await pE, false);
+
+  // F) 点「确定」按钮 = 确认
+  const pF = spConfirm({ title: '按钮测试2', message: '点确定按钮' });
+  await sleep(120);
+  okB().click();
+  await sleep(120);
+  add('F1 点「确定」按钮 = 确认', await pF, true);
+
+  const pass = rows.filter((r) => r.ok).length;
+  document.getElementById('out').innerHTML =
+    '<div style="font-size:15px;font-weight:900;margin-bottom:8px">结果：' + pass + '/' + rows.length + ' 通过 '
+    + (pass === rows.length ? '<span class="pass">（全部通过 ✓）</span>' : '<span class="fail">（有失败 ✗）</span>') + '</div>'
+    + rows.map((r) => '<div>' + (r.ok ? '<span class="pass">✓</span>' : '<span class="fail">✗</span>') + ' '
+        + r.name + ' → 实得 <code>' + JSON.stringify(r.got) + '</code>，期望 <code>' + JSON.stringify(r.want) + '</code></div>').join('');
+
+  // 截图用：按 ?v= 打开一个真实弹框（danger / normal）
+  const v = new URLSearchParams(location.search).get('v') || 'danger';
+  spConfirm({
+    title: v === 'danger' ? '退出对局' : '退出大厅',
+    message: v === 'danger' ? '确定退出当前对局？进度将丢失。' : '确定退出大厅吗？',
+    confirmText: v === 'danger' ? '退出对局' : '确定',
+    danger: v === 'danger',
+  });
+})();
+</script>
+</body>
+</html>

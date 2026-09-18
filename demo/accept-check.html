@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>大厅验收：球数恒 12 / 球与 rail 相交 0 / 844 按钮进首屏 / 底部元素探针（测试用，可随时删）</title>
+<style>
+  html,body{ margin:0; overflow:hidden; background:#0f1216; }
+  #f{ position:fixed; left:0; top:0; border:0; background:#fff; display:block; }
+  #panel{
+    position:fixed; left:0; top:0; z-index:10; max-height:100vh; overflow:auto; pointer-events:none;
+    background:rgba(15,18,22,.90); color:#cfe3ff; padding:6px 10px;
+    font:11.5px/1.5 Consolas,monospace; white-space:pre-wrap; box-sizing:border-box; width:100%;
+  }
+  #panel.hide{ display:none; }
+  .ok{ color:#5ee08a; } .bad{ color:#ff8b6b; } .hd{ color:#ffd24a; font-weight:700; }
+</style>
+</head>
+<body>
+<iframe id="f"></iframe>
+<div id="panel">运行中…</div>
+<script>
+/* ==========================================================================
+   验收探针（2026-09-18 第二轮：球压卡片下层 / 球数恒 12 / 844 走样 / 底部元素）
+   口径：iframe 尺寸 = 本页视口尺寸 → 内层布局视口与「真实窗口同尺寸」一致；
+        走**真实的** showScreen('lobby')（含 fixDecoRail 复测钩子），不直接改 hidden；
+        进大厅前先把「版本更新弹窗」置为已读（localStorage 同源共享），
+        另用点击兜底，保证截图里不会压着弹窗。
+   用法：
+     accept-check.html                 → 默认连刷 10 次，面板显示全部数字
+     accept-check.html?n=1             → 只刷 1 次
+     accept-check.html?nav=rail        → 强制左竖栏版（?nav=rail）额外验证
+     accept-check.html?shot=1          → 隐藏面板，iframe 占满视口 → 干净的真实大厅截图
+   ========================================================================== */
+const qs = new URLSearchParams(location.search);
+const N = Math.max(1, parseInt(qs.get('n') || '10', 10));
+const NAV = qs.get('nav') === 'rail';
+const SHOT = qs.get('shot') === '1';
+// vw/vh：显式指定 iframe（＝被测页面）的视口尺寸。缺省 = 本页视口尺寸
+// （headless 下 --window-size 与真实视口不等价，写清楚口径才不会被“截断的假数字”骗到）
+const VW = qs.get('vw') ? parseInt(qs.get('vw'), 10) : 0;
+const VH = qs.get('vh') ? parseInt(qs.get('vh'), 10) : 0;
+const f = document.getElementById('f');
+const panel = document.getElementById('panel');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const rows = [];
+const probes = [];
+if (SHOT) panel.classList.add('hide');
+
+// 尺子：窗口里画一个 200×100 的色块，用像素量它 → 判断截图有无缩放/偏差
+const ruler = document.createElement('div');
+ruler.style.cssText = 'position:fixed;left:50px;top:50px;width:200px;height:100px;background:#e3350d;z-index:5;pointer-events:none;opacity:.85';
+if (qs.get('ruler') === '1') document.body.appendChild(ruler);
+
+function sizeFrame() {
+  f.style.width = (VW || window.innerWidth) + 'px';
+  f.style.height = (VH || window.innerHeight) + 'px';
+}
+sizeFrame();
+window.addEventListener('resize', sizeFrame);
+
+function render(final) {
+  const tot = rows.map((r) => r.total), hit = rows.map((r) => r.hits);
+  const pass = rows.length === N && tot.every((n) => n === 12) && hit.every((n) => n === 0);
+  let s = '';
+  s += '<span class="hd">验收探针 · 被测视口(iframe) ' + (VW || window.innerWidth) + '×' + (VH || window.innerHeight) +
+       ' | 本页视口 ' + window.innerWidth + '×' + window.innerHeight +
+       ' | 窗口 ' + window.outerWidth + '×' + window.outerHeight + ' dpr=' + window.devicePixelRatio +
+       ' | 连刷 ' + rows.length + '/' + N + (NAV ? ' | ?nav=rail' : '') + '</span>\n';
+  rows.forEach((r) => {
+    s += '#' + r.i + ' 球=' + r.total + ' 与rail相交=' + r.hits + ' rail=' + r.railVis +
+         ' | scrollH=' + r.sh + '/' + r.ih + ' scrollW=' + r.sw + '/' + r.iw +
+         ' | 进入游戏#' + r.b1id + ' bottom=' + r.b1 + ' 公开房间列表#' + r.b2id + ' bottom=' + r.b2 +
+         ' | 导航行数=' + r.navLines + ' | 横屏提示=' + r.tip + '\n';
+  });
+  if (rows.length) {
+    const r0 = rows[rows.length - 1];
+    s += '最后一次（#' + r0.i + '）：球总数=' + r0.total + '（近景9+远景3 应为 12）｜与 rail 相交=' + r0.hits +
+         '｜scrollHeight=' + r0.sh + '（视口 ' + r0.ih + '）｜scrollWidth=' + r0.sw + '（视口 ' + r0.iw + '）\n';
+  }
+  s += '判定：' + (rows.length === N ? (pass ? '球数 12/12 全部守恒 ✓ 相交全部为 0 ✓' : '存在不达标 ✗') : '已跑 ' + rows.length + '/' + N + '…') + '\n';
+  if (probes.length) s += '\n<span class="hd">底部元素探针（y = 视口底 −2）</span>\n' + probes.join('\n') + '\n';
+  panel.innerHTML = (final && pass) ? '<span class="ok">' + s + '</span>' : s;
+}
+
+function describe(d, el) {
+  if (!el) return 'null';
+  const cs = d.defaultView.getComputedStyle(el);
+  const txt = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 18);
+  return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') +
+    (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).join('.') : '') +
+    ' bg=' + cs.backgroundColor + ' z=' + cs.zIndex + ' h=' + Math.round(el.getBoundingClientRect().height) +
+    (txt ? ' 文案="' + txt + '"' : '');
+}
+
+async function once(i) {
+  // 真刷新：换 src（带随机查询）→ 触发一次完整加载 → buildDeco 重新随机布点
+  f.src = '/index.html?card=lg' + (NAV ? '&nav=rail' : '') + '&r=' + i + '_' + Date.now();
+  await new Promise((r) => { f.onload = r; if (f.contentDocument && f.contentDocument.readyState === 'complete') r(); });
+  await sleep(700);
+  const w = f.contentWindow;
+  w.eval([
+    "try{",
+    "  myToken='stub'; myName='玩家1'; myNickname='玩家1';",
+    "  try{ localStorage.setItem('update-seen-3.3.0','1'); }catch(e){}",
+    // 关键：走**真实的** showScreen('lobby')（与生产同一条路径）——里面有 fixDecoRail() 复测钩子；
+    // 早先直接改 hidden 会绕过钩子，测出来的是假失败
+    "  if (typeof showScreen==='function') showScreen('lobby'); else document.getElementById('screen-lobby').hidden=false;",
+    "  var ub=document.getElementById('btn-upd-close'); if(ub) ub.click();",
+    "  if(typeof renderLobbyNav==='function') renderLobbyNav();",
+    "  if(typeof showLobbySection==='function') showLobbySection('start');",
+    "  if(typeof setLobbyMode==='function') setLobbyMode(false);",
+    // 调试用尺子：在被测页里画一个 100×100 纯红方块在 (0,0) → 用像素量它，判定「CSS px ↔ 截图 px」的映射
+    (qs.get('inject') === '1'
+      ? "  (function(){ var s1=document.createElement('div'); s1.style.cssText='position:fixed;left:0;top:0;width:100px;height:100px;background:#ff0000;z-index:99999'; document.body.appendChild(s1); var s2=document.createElement('div'); s2.style.cssText='position:fixed;left:0;bottom:0;width:100px;height:100px;background:#00ff00;z-index:99999'; document.body.appendChild(s2); })();"
+      : ''),
+    "}catch(e){ document.title='STUB_ERR:'+e.message; }",
+  ].join('\n'));
+  await sleep(450);
+  const d = f.contentDocument;                       // 现取，避免拿到旧文档
+  const de = d.documentElement;
+  const rail = d.querySelector('#screen-lobby .rail');
+  const rr = rail ? rail.getBoundingClientRect() : null;
+  const railVis = (rr && rr.width > 0) ? 'x' + Math.round(rr.left) + ' y' + Math.round(rr.top) + ' ' + Math.round(rr.width) + 'x' + Math.round(rr.height) : 'hidden';
+  const balls = Array.prototype.slice.call(d.querySelectorAll('#screen-lobby .deco'));
+  let hits = 0;
+  balls.forEach((el) => {
+    const r = el.getBoundingClientRect();
+    if (rr && rr.width > 0 && !(r.right < rr.left || r.left > rr.right || r.bottom < rr.top || r.top > rr.bottom)) hits++;
+  });
+  const b1 = d.getElementById('btn-join'), b2 = d.getElementById('btn-room-list');
+  const bottom = (el) => el ? Math.round(el.getBoundingClientRect().bottom * 10) / 10 : 'n/a';
+  const navBtn = d.querySelector('#lobby-nav .nav-btn.primary');
+  const navLabel = navBtn ? navBtn.querySelector('span:last-child') : null;
+  let navLines = 'n/a';
+  if (navLabel) { const rg = d.createRange(); rg.selectNodeContents(navLabel); navLines = rg.getClientRects().length; }
+  const tip = d.getElementById('landscape-tip');
+  rows.push({
+    i: i, total: balls.length, hits: hits, railVis: railVis,
+    sh: de.scrollHeight, sw: de.scrollWidth, ih: w.innerHeight, iw: w.innerWidth,
+    b1: bottom(b1), b1id: b1 ? b1.id : 'null', b2: bottom(b2), b2id: b2 ? b2.id : 'null',
+    navLines: navLines, tip: tip ? (tip.hidden ? 'hidden' : 'SHOWN') : 'no-el',
+  });
+  if (i === 1) {
+    [0.15, 0.5, 0.85].forEach((fx) => {
+      const x = Math.round(w.innerWidth * fx), y = w.innerHeight - 2;
+      const els = d.elementsFromPoint(x, y).slice(0, 4).map((e) => describe(d, e));
+      probes.push('(' + x + ',' + y + '): ' + els.join('  <  '));
+    });
+    probes.push('属性色条已永久移除（v3.3.0）：本页不再做色条探针（相关元素与样式已从 index.html / style.css 删干净）');
+    probes.push('旋转遮罩 #rotate-mask = ' + ((d.getElementById('rotate-mask') || {}).hidden ? 'hidden' : 'SHOWN') +
+                '｜横屏提示 #landscape-tip = ' + (rows[0].tip) +
+                '｜shell z-index = ' + d.defaultView.getComputedStyle(d.querySelector('#screen-lobby .shell')).zIndex +
+                '｜.deco z-index = ' + d.defaultView.getComputedStyle(balls[0] || d.createElement('span')).zIndex);
+  }
+  render(false);
+}
+
+(async function () {
+  // 进大厅前把「版本更新弹窗」置为已读：同源共享 localStorage，iframe 加载时就已读到，弹窗不会出
+  try {
+    const r = await fetch('/更新日志.json', { cache: 'no-store' });
+    const log = await r.json();
+    const latest = Object.keys(log)[0];
+    if (latest) localStorage.setItem('update-seen-' + latest, '1');
+  } catch (e) { /* 拉不到就靠点击兜底 */ }
+  for (let i = 1; i <= N; i++) { await once(i); }
+  render(true);
+  document.title = 'DONE ' + rows.map((r) => r.total + '/' + r.hits).join(' ');
+})();
+</script>
+</body>
+</html>

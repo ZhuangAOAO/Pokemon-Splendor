@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>最终取景器 · 只驱动到大厅（测试用，可随时删）</title>
+<style>
+  html,body{ margin:0; padding:0; overflow:hidden; background:#fff; }
+  iframe{ display:block; width:100vw; height:100vh; border:0; }
+</style>
+</head>
+<body>
+<!-- 测试用，可随时删：本页只做一件事——把 iframe 里的真实大厅显示出来，供截图取证。
+     画面内**不放任何面板/说明**（图例在画面外 = 天然满足），尺寸由外层窗口决定。 -->
+<iframe id="f" src="/index.html"></iframe>
+<script>
+const f = document.getElementById('f');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => {
+  await sleep(900);                       // 等客户端 boot（否则登录屏会盖回来）
+  const w = f.contentWindow, d = f.contentDocument;
+  w.eval([
+    "try{",
+    "  myToken='stub'; myName='玩家1'; myNickname='玩家1';",
+    "  try{ localStorage.setItem('update-seen-3.3.0','1'); }catch(e){}",
+    "  var ub=document.getElementById('btn-upd-close'); if(ub) ub.click();",   // 关版本更新弹窗
+    // 走真实路径（含 fixDecoRail 复测钩子）
+    "  if (typeof showScreen==='function') showScreen('lobby');",
+    "  if(typeof renderLobbyNav==='function') renderLobbyNav();",
+    "  if(typeof setLobbyMode==='function') setLobbyMode(false);",
+    "  var ub2=document.getElementById('btn-upd-close'); if(ub2) ub2.click();",
+    "}catch(e){ document.title='STUB_ERR:'+e.message; }",
+  ].join('\n'));
+  await sleep(600);
+  // 兜底：再关一次更新弹窗（异步出现的），并确认停在大厅
+  const d2 = f.contentDocument;
+  const ub = d2.getElementById('btn-upd-close'); if (ub) ub.click();
+  d2.title = 'READY:' + (d2.getElementById('screen-lobby') && !d2.getElementById('screen-lobby').hidden ? 'lobby' : 'NOT_lobby');
+};
+</script>
+</body>
+</html>

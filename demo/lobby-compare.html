@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>大厅方案 A 对照（demo ↔ 生产）</title>
+<style>
+  html,body{ margin:0; background:#0f1216; color:#e8edf3; font:13px/1.5 system-ui,sans-serif; }
+  .row{ padding:8px; }
+  .lab{ font-weight:700; padding:4px 2px; color:#ffd24a; }
+  .lab span{ color:#9fb0c4; font-weight:400; }
+  .frame{ position:relative; background:#fff; overflow:hidden; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.4); }
+  iframe{ position:absolute; left:0; top:0; border:0; transform-origin:top left; background:#fff; }
+</style>
+</head>
+<body>
+<div class="row">
+  <div class="lab">方案 A · demo<span id="l1"></span></div>
+  <div class="frame" id="f1"><iframe id="i1" src="/demo/lobby-plan-a.html"></iframe></div>
+</div>
+<div class="row">
+  <div class="lab">生产 · index.html<span id="l2"></span></div>
+  <div class="frame" id="f2"><iframe id="i2" src="/index.html"></iframe></div>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const W = +(q.get('w') || 1280), H = +(q.get('h') || 720);
+  const avail = document.documentElement.clientWidth - 16;
+  const scale = Math.min(avail / W, 0.62);
+  document.getElementById('l1').textContent = ` （${W}×${H}，缩放 ${scale.toFixed(2)}）`;
+  document.getElementById('l2').textContent = ` （同视口 ${W}×${H}，缩放 ${scale.toFixed(2)}）`;
+  ['f1', 'f2'].forEach((id) => {
+    const f = document.getElementById(id);
+    f.style.width = (W * scale) + 'px';
+    f.style.height = (H * scale) + 'px';
+  });
+  ['i1', 'i2'].forEach((id) => {
+    const f = document.getElementById(id);
+    f.style.width = W + 'px';
+    f.style.height = H + 'px';
+    f.style.transform = 'scale(' + scale + ')';
+  });
+  // 生产页在静态服务下没有联机后端：注入等价桩，让它停在「大厅外壳 + 加入卡」这个对照面
+  const i2 = document.getElementById('i2');
+  const cardMode = q.get('card') || 'lg';   // E8：档 2（默认）／center = 档 1
+  i2.src = '/index.html?card=' + cardMode;
+  const boot = () => {
+    try {
+      i2.contentWindow.eval([
+        "try{",
+        "  myToken='stub'; myName='玩家1'; myNickname='玩家1';",
+        "  try{ localStorage.setItem('update-seen-3.3.0','1'); }catch(e){}",
+        "  document.querySelectorAll('#screen-login,#screen-setup,#screen-game').forEach(function(e){e.hidden=true;});",
+        "  document.getElementById('screen-lobby').hidden=false;",
+        "  var ub=document.getElementById('btn-upd-close'); if(ub) ub.click();",   // ⑥ 版本弹窗：取证前先关掉，别挡住布局
+        "  if(typeof renderLobbyNav==='function') renderLobbyNav();",
+        "  if(typeof setLobbyMode==='function') setLobbyMode(false);",
+        "}catch(e){ document.title='STUB_ERR:'+e.message; }",
+      ].join('\n'));
+      // 自动量测，写进标签行（截图自带证据）
+      const d = i2.contentDocument;
+      const st = d.querySelector('.stage');
+      const over = st ? (st.scrollHeight - st.clientHeight) : -1;
+      const b2 = d.querySelector('#btn-room-list');
+      const btnIn = b2 ? (b2.getBoundingClientRect().bottom <= H + 1) : null;
+      const secW = (() => { const s = d.querySelector('.sec'); return s ? Math.round(s.getBoundingClientRect().width) : null; })();
+      const mode = d.getElementById('screen-lobby').classList.contains('card-lg') ? '档2 居中+放大' : '档1 仅居中';
+      document.getElementById('l2').textContent = ` （同视口 ${W}×${H}，缩放 ${scale.toFixed(2)}）【${mode}】卡宽 ${secW}px｜竖向溢出 ${over}px${over <= 0 ? '（无滚动条 ✓）' : '（有滚动 ✗）'}｜按钮在首屏 ${btnIn === null ? '—' : (btnIn ? '是 ✓' : '否 ✗')}`;
+    } catch (e) { /* 同源，不应发生 */ }
+  };
+  i2.addEventListener('load', () => {
+    setTimeout(boot, 500);
+    setTimeout(boot, 1400);   // 双保险：弹窗晚于首次注入出现时再关一次
+    setTimeout(boot, 2300);   // 三保险：客户端自己的异步 init 会把登录屏再显示一次，最后再压下去
+    setTimeout(boot, 3200);
+  });
+</script>
+</body>
+</html>

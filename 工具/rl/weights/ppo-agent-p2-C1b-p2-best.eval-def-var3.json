@@ -1,0 +1,4844 @@
+{
+  "name": "ppo-agent-p2-C1b-p2-best.eval-def-var3",
+  "evalFile": "ppo-agent-p2-C1b-p2-best.json",
+  "evalFileSha256": "f6b1a4ea0cb38e0ac81ae937d034c5de7cf72ae2f6ff8959c24afdad12ab4b5e",
+  "strWeightsFile": null,
+  "strWeightsSha256": null,
+  "players": 2,
+  "target": 18,
+  "seats": [
+    "def",
+    "var3"
+  ],
+  "evalGames": 300,
+  "evalSeed": 21160917,
+  "winRate": null,
+  "wins": 0,
+  "primarySeat": -1,
+  "finished": 299,
+  "leaks": 0,
+  "seatRates": [
+    0.4682274247491639,
+    0.5317725752508361
+  ],
+  "seatWins": [
+    140,
+    159
+  ],
+  "avgPoints": [
+    16.45,
+    16.953333333333333
+  ],
+  "avgEvolutions": [
+    3.9066666666666667,
+    4.17
+  ],
+  "avgTurns": 56.39,
+  "fileBest": {
+    "rate": 0.8264,
+    "ep": 230000
+  },
+  "games": [
+    {
+      "i": 0,
+      "seed": 21160917,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        10
+      ],
+      "evo": [
+        7,
+        1
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 1,
+      "seed": 21160918,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        17
+      ],
+      "evo": [
+        2,
+        3
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 2,
+      "seed": 21160919,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        16
+      ],
+      "evo": [
+        1,
+        2
+      ],
+      "turns": 63,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 3,
+      "seed": 21160920,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        14
+      ],
+      "evo": [
+        8,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 4,
+      "seed": 21160921,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        17
+      ],
+      "evo": [
+        4,
+        4
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 5,
+      "seed": 21160922,
+      "winnerSeat": 1,
+      "pts": [
+        11,
+        18
+      ],
+      "evo": [
+        2,
+        7
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 6,
+      "seed": 21160923,
+      "winnerSeat": 1,
+      "pts": [
+        5,
+        21
+      ],
+      "evo": [
+        1,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 7,
+      "seed": 21160924,
+      "winnerSeat": 1,
+      "pts": [
+        11,
+        18
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 8,
+      "seed": 21160925,
+      "winnerSeat": 1,
+      "pts": [
+        10,
+        18
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 9,
+      "seed": 21160926,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        17
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 10,
+      "seed": 21160927,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        18
+      ],
+      "evo": [
+        4,
+        3
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 11,
+      "seed": 21160928,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        19
+      ],
+      "evo": [
+        4,
+        2
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 12,
+      "seed": 21160929,
+      "winnerSeat": 1,
+      "pts": [
+        9,
+        19
+      ],
+      "evo": [
+        1,
+        5
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 13,
+      "seed": 21160930,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        18
+      ],
+      "evo": [
+        4,
+        3
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 14,
+      "seed": 21160931,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        18
+      ],
+      "evo": [
+        2,
+        6
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 15,
+      "seed": 21160932,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        18
+      ],
+      "evo": [
+        6,
+        4
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 16,
+      "seed": 21160933,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        18
+      ],
+      "evo": [
+        3,
+        6
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 17,
+      "seed": 21160934,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        19
+      ],
+      "evo": [
+        3,
+        6
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 18,
+      "seed": 21160935,
+      "winnerSeat": 0,
+      "pts": [
+        21,
+        11
+      ],
+      "evo": [
+        3,
+        3
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 19,
+      "seed": 21160936,
+      "winnerSeat": 1,
+      "pts": [
+        10,
+        18
+      ],
+      "evo": [
+        4,
+        8
+      ],
+      "turns": 47,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 20,
+      "seed": 21160937,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        14
+      ],
+      "evo": [
+        5,
+        3
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 21,
+      "seed": 21160938,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        12
+      ],
+      "evo": [
+        3,
+        1
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 22,
+      "seed": 21160939,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        16
+      ],
+      "evo": [
+        7,
+        5
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 23,
+      "seed": 21160940,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        17
+      ],
+      "evo": [
+        6,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 24,
+      "seed": 21160941,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        16
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 25,
+      "seed": 21160942,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        15
+      ],
+      "evo": [
+        6,
+        3
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 26,
+      "seed": 21160943,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        20
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 27,
+      "seed": 21160944,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        18
+      ],
+      "evo": [
+        3,
+        6
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 28,
+      "seed": 21160945,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        15
+      ],
+      "evo": [
+        2,
+        3
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 29,
+      "seed": 21160946,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        13
+      ],
+      "evo": [
+        4,
+        3
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 30,
+      "seed": 21160947,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        16
+      ],
+      "evo": [
+        2,
+        4
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 31,
+      "seed": 21160948,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        14
+      ],
+      "evo": [
+        8,
+        2
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 32,
+      "seed": 21160949,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        18
+      ],
+      "evo": [
+        4,
+        4
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 33,
+      "seed": 21160950,
+      "winnerSeat": 1,
+      "pts": [
+        13,
+        19
+      ],
+      "evo": [
+        3,
+        7
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 34,
+      "seed": 21160951,
+      "winnerSeat": 0,
+      "pts": [
+        22,
+        16
+      ],
+      "evo": [
+        9,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 35,
+      "seed": 21160952,
+      "winnerSeat": 1,
+      "pts": [
+        13,
+        19
+      ],
+      "evo": [
+        2,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 36,
+      "seed": 21160953,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        18
+      ],
+      "evo": [
+        3,
+        5
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 37,
+      "seed": 21160954,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        19
+      ],
+      "evo": [
+        4,
+        3
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 38,
+      "seed": 21160955,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        19
+      ],
+      "evo": [
+        3,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 39,
+      "seed": 21160956,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        19
+      ],
+      "evo": [
+        4,
+        2
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 40,
+      "seed": 21160957,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        18
+      ],
+      "evo": [
+        4,
+        2
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 41,
+      "seed": 21160958,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        13
+      ],
+      "evo": [
+        6,
+        3
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 42,
+      "seed": 21160959,
+      "winnerSeat": 0,
+      "pts": [
+        21,
+        16
+      ],
+      "evo": [
+        4,
+        6
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 43,
+      "seed": 21160960,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        11
+      ],
+      "evo": [
+        5,
+        1
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 44,
+      "seed": 21160961,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        16
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 45,
+      "seed": 21160962,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        12
+      ],
+      "evo": [
+        6,
+        2
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 46,
+      "seed": 21160963,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        18
+      ],
+      "evo": [
+        2,
+        4
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 47,
+      "seed": 21160964,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        14
+      ],
+      "evo": [
+        2,
+        5
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 48,
+      "seed": 21160965,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        21
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 49,
+      "seed": 21160966,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        19
+      ],
+      "evo": [
+        6,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 50,
+      "seed": 21160967,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        6
+      ],
+      "evo": [
+        5,
+        1
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 51,
+      "seed": 21160968,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        14
+      ],
+      "evo": [
+        5,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 52,
+      "seed": 21160969,
+      "winnerSeat": 1,
+      "pts": [
+        13,
+        21
+      ],
+      "evo": [
+        5,
+        4
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 53,
+      "seed": 21160970,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        18
+      ],
+      "evo": [
+        3,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 54,
+      "seed": 21160971,
+      "winnerSeat": 1,
+      "pts": [
+        16,
+        20
+      ],
+      "evo": [
+        4,
+        6
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 55,
+      "seed": 21160972,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        19
+      ],
+      "evo": [
+        5,
+        3
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 56,
+      "seed": 21160973,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        16
+      ],
+      "evo": [
+        6,
+        8
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 57,
+      "seed": 21160974,
+      "winnerSeat": 1,
+      "pts": [
+        9,
+        18
+      ],
+      "evo": [
+        1,
+        8
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 58,
+      "seed": 21160975,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        20
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 59,
+      "seed": 21160976,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        19
+      ],
+      "evo": [
+        3,
+        5
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 60,
+      "seed": 21160977,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        9
+      ],
+      "evo": [
+        1,
+        0
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 61,
+      "seed": 21160978,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        17
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 61,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 62,
+      "seed": 21160979,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        18
+      ],
+      "evo": [
+        5,
+        6
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 63,
+      "seed": 21160980,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        19
+      ],
+      "evo": [
+        3,
+        6
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 64,
+      "seed": 21160981,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        18
+      ],
+      "evo": [
+        2,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 65,
+      "seed": 21160982,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        15
+      ],
+      "evo": [
+        5,
+        3
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 66,
+      "seed": 21160983,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        18
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 67,
+      "seed": 21160984,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        18
+      ],
+      "evo": [
+        3,
+        7
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 68,
+      "seed": 21160985,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        19
+      ],
+      "evo": [
+        2,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 69,
+      "seed": 21160986,
+      "winnerSeat": 0,
+      "pts": [
+        21,
+        14
+      ],
+      "evo": [
+        6,
+        1
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 70,
+      "seed": 21160987,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        19
+      ],
+      "evo": [
+        3,
+        3
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 71,
+      "seed": 21160988,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        17
+      ],
+      "evo": [
+        4,
+        3
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 72,
+      "seed": 21160989,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        18
+      ],
+      "evo": [
+        1,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 73,
+      "seed": 21160990,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        15
+      ],
+      "evo": [
+        4,
+        4
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 74,
+      "seed": 21160991,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        19
+      ],
+      "evo": [
+        3,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 75,
+      "seed": 21160992,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        18
+      ],
+      "evo": [
+        4,
+        6
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 76,
+      "seed": 21160993,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        12
+      ],
+      "evo": [
+        6,
+        2
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 77,
+      "seed": 21160994,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        20
+      ],
+      "evo": [
+        2,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 78,
+      "seed": 21160995,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        18
+      ],
+      "evo": [
+        5,
+        4
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 79,
+      "seed": 21160996,
+      "winnerSeat": 1,
+      "pts": [
+        16,
+        19
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 80,
+      "seed": 21160997,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        18
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 81,
+      "seed": 21160998,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        19
+      ],
+      "evo": [
+        5,
+        4
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 82,
+      "seed": 21160999,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        20
+      ],
+      "evo": [
+        1,
+        5
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 83,
+      "seed": 21161000,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        18
+      ],
+      "evo": [
+        4,
+        6
+      ],
+      "turns": 47,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 84,
+      "seed": 21161001,
+      "winnerSeat": 0,
+      "pts": [
+        23,
+        21
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 65,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 85,
+      "seed": 21161002,
+      "winnerSeat": 1,
+      "pts": [
+        11,
+        21
+      ],
+      "evo": [
+        3,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 86,
+      "seed": 21161003,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        12
+      ],
+      "evo": [
+        6,
+        2
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 87,
+      "seed": 21161004,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        18
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 88,
+      "seed": 21161005,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        15
+      ],
+      "evo": [
+        6,
+        4
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 89,
+      "seed": 21161006,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        17
+      ],
+      "evo": [
+        3,
+        2
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 90,
+      "seed": 21161007,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        15
+      ],
+      "evo": [
+        7,
+        1
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 91,
+      "seed": 21161008,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        14
+      ],
+      "evo": [
+        7,
+        4
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 92,
+      "seed": 21161009,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        18
+      ],
+      "evo": [
+        4,
+        4
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 93,
+      "seed": 21161010,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        18
+      ],
+      "evo": [
+        5,
+        6
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 94,
+      "seed": 21161011,
+      "winnerSeat": 1,
+      "pts": [
+        13,
+        18
+      ],
+      "evo": [
+        4,
+        6
+      ],
+      "turns": 47,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 95,
+      "seed": 21161012,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        20
+      ],
+      "evo": [
+        6,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 96,
+      "seed": 21161013,
+      "winnerSeat": 1,
+      "pts": [
+        13,
+        18
+      ],
+      "evo": [
+        3,
+        6
+      ],
+      "turns": 47,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 97,
+      "seed": 21161014,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        18
+      ],
+      "evo": [
+        1,
+        4
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 98,
+      "seed": 21161015,
+      "winnerSeat": 1,
+      "pts": [
+        16,
+        18
+      ],
+      "evo": [
+        4,
+        2
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 99,
+      "seed": 21161016,
+      "winnerSeat": 1,
+      "pts": [
+        11,
+        18
+      ],
+      "evo": [
+        4,
+        8
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 100,
+      "seed": 21161017,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        15
+      ],
+      "evo": [
+        2,
+        3
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 101,
+      "seed": 21161018,
+      "winnerSeat": 1,
+      "pts": [
+        13,
+        19
+      ],
+      "evo": [
+        2,
+        3
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 102,
+      "seed": 21161019,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        6
+      ],
+      "evo": [
+        3,
+        0
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 103,
+      "seed": 21161020,
+      "winnerSeat": 1,
+      "pts": [
+        9,
+        22
+      ],
+      "evo": [
+        0,
+        4
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 104,
+      "seed": 21161021,
+      "winnerSeat": 1,
+      "pts": [
+        9,
+        18
+      ],
+      "evo": [
+        1,
+        5
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 105,
+      "seed": 21161022,
+      "winnerSeat": 1,
+      "pts": [
+        16,
+        19
+      ],
+      "evo": [
+        6,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 106,
+      "seed": 21161023,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        20
+      ],
+      "evo": [
+        4,
+        6
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 107,
+      "seed": 21161024,
+      "winnerSeat": 1,
+      "pts": [
+        19,
+        20
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 108,
+      "seed": 21161025,
+      "winnerSeat": 1,
+      "pts": [
+        13,
+        18
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 109,
+      "seed": 21161026,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        19
+      ],
+      "evo": [
+        7,
+        7
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 110,
+      "seed": 21161027,
+      "winnerSeat": 1,
+      "pts": [
+        6,
+        18
+      ],
+      "evo": [
+        1,
+        6
+      ],
+      "turns": 47,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 111,
+      "seed": 21161028,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        18
+      ],
+      "evo": [
+        7,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 112,
+      "seed": 21161029,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        19
+      ],
+      "evo": [
+        1,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 113,
+      "seed": 21161030,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        19
+      ],
+      "evo": [
+        4,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 114,
+      "seed": 21161031,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        13
+      ],
+      "evo": [
+        5,
+        6
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 115,
+      "seed": 21161032,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        15
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 116,
+      "seed": 21161033,
+      "winnerSeat": 1,
+      "pts": [
+        9,
+        18
+      ],
+      "evo": [
+        0,
+        6
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 117,
+      "seed": 21161034,
+      "winnerSeat": 1,
+      "pts": [
+        16,
+        18
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 118,
+      "seed": 21161035,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        22
+      ],
+      "evo": [
+        3,
+        7
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 119,
+      "seed": 21161036,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        15
+      ],
+      "evo": [
+        4,
+        3
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 120,
+      "seed": 21161037,
+      "winnerSeat": 1,
+      "pts": [
+        8,
+        18
+      ],
+      "evo": [
+        2,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 121,
+      "seed": 21161038,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        19
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 122,
+      "seed": 21161039,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        18
+      ],
+      "evo": [
+        3,
+        5
+      ],
+      "turns": 63,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 123,
+      "seed": 21161040,
+      "winnerSeat": 1,
+      "pts": [
+        13,
+        18
+      ],
+      "evo": [
+        3,
+        6
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 124,
+      "seed": 21161041,
+      "winnerSeat": 1,
+      "pts": [
+        16,
+        18
+      ],
+      "evo": [
+        2,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 125,
+      "seed": 21161042,
+      "winnerSeat": 1,
+      "pts": [
+        16,
+        19
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 126,
+      "seed": 21161043,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        16
+      ],
+      "evo": [
+        3,
+        2
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 127,
+      "seed": 21161044,
+      "winnerSeat": 1,
+      "pts": [
+        13,
+        22
+      ],
+      "evo": [
+        2,
+        6
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 128,
+      "seed": 21161045,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        19
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 129,
+      "seed": 21161046,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        16
+      ],
+      "evo": [
+        4,
+        3
+      ],
+      "turns": 61,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 130,
+      "seed": 21161047,
+      "winnerSeat": 0,
+      "pts": [
+        21,
+        18
+      ],
+      "evo": [
+        6,
+        3
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 131,
+      "seed": 21161048,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        21
+      ],
+      "evo": [
+        2,
+        4
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 132,
+      "seed": 21161049,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        18
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 133,
+      "seed": 21161050,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        17
+      ],
+      "evo": [
+        6,
+        4
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 134,
+      "seed": 21161051,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        12
+      ],
+      "evo": [
+        3,
+        2
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 135,
+      "seed": 21161052,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        20
+      ],
+      "evo": [
+        2,
+        6
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 136,
+      "seed": 21161053,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        19
+      ],
+      "evo": [
+        6,
+        6
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 137,
+      "seed": 21161054,
+      "winnerSeat": 1,
+      "pts": [
+        19,
+        21
+      ],
+      "evo": [
+        6,
+        4
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 138,
+      "seed": 21161055,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        8
+      ],
+      "evo": [
+        4,
+        0
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 139,
+      "seed": 21161056,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        19
+      ],
+      "evo": [
+        6,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 140,
+      "seed": 21161057,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        14
+      ],
+      "evo": [
+        7,
+        4
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 141,
+      "seed": 21161058,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        10
+      ],
+      "evo": [
+        4,
+        1
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 142,
+      "seed": 21161059,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        13
+      ],
+      "evo": [
+        8,
+        3
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 143,
+      "seed": 21161060,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        15
+      ],
+      "evo": [
+        6,
+        4
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 144,
+      "seed": 21161061,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        14
+      ],
+      "evo": [
+        3,
+        2
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 145,
+      "seed": 21161062,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        16
+      ],
+      "evo": [
+        6,
+        3
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 146,
+      "seed": 21161063,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        7
+      ],
+      "evo": [
+        5,
+        2
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 147,
+      "seed": 21161064,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        19
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 148,
+      "seed": 21161065,
+      "winnerSeat": 0,
+      "pts": [
+        22,
+        13
+      ],
+      "evo": [
+        7,
+        2
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 149,
+      "seed": 21161066,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        18
+      ],
+      "evo": [
+        3,
+        6
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 150,
+      "seed": 21161067,
+      "winnerSeat": 1,
+      "pts": [
+        9,
+        19
+      ],
+      "evo": [
+        1,
+        2
+      ],
+      "turns": 65,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 151,
+      "seed": 21161068,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        19
+      ],
+      "evo": [
+        4,
+        4
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 152,
+      "seed": 21161069,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        15
+      ],
+      "evo": [
+        4,
+        4
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 153,
+      "seed": 21161070,
+      "winnerSeat": 1,
+      "pts": [
+        19,
+        21
+      ],
+      "evo": [
+        6,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 154,
+      "seed": 21161071,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        17
+      ],
+      "evo": [
+        4,
+        6
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 155,
+      "seed": 21161072,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        18
+      ],
+      "evo": [
+        2,
+        5
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 156,
+      "seed": 21161073,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        20
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 157,
+      "seed": 21161074,
+      "winnerSeat": 1,
+      "pts": [
+        11,
+        20
+      ],
+      "evo": [
+        2,
+        4
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 158,
+      "seed": 21161075,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        3
+      ],
+      "evo": [
+        7,
+        0
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 159,
+      "seed": 21161076,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        18
+      ],
+      "evo": [
+        7,
+        7
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 160,
+      "seed": 21161077,
+      "winnerSeat": 1,
+      "pts": [
+        20,
+        20
+      ],
+      "evo": [
+        5,
+        6
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 161,
+      "seed": 21161078,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        21
+      ],
+      "evo": [
+        2,
+        6
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 162,
+      "seed": 21161079,
+      "winnerSeat": 1,
+      "pts": [
+        9,
+        18
+      ],
+      "evo": [
+        2,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 163,
+      "seed": 21161080,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        17
+      ],
+      "evo": [
+        1,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 164,
+      "seed": 21161081,
+      "winnerSeat": 1,
+      "pts": [
+        7,
+        20
+      ],
+      "evo": [
+        1,
+        6
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 165,
+      "seed": 21161082,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        19
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 166,
+      "seed": 21161083,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        16
+      ],
+      "evo": [
+        4,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 167,
+      "seed": 21161084,
+      "winnerSeat": 1,
+      "pts": [
+        10,
+        18
+      ],
+      "evo": [
+        2,
+        6
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 168,
+      "seed": 21161085,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        19
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 169,
+      "seed": 21161086,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        13
+      ],
+      "evo": [
+        5,
+        1
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 170,
+      "seed": 21161087,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        18
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 171,
+      "seed": 21161088,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        20
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 172,
+      "seed": 21161089,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        19
+      ],
+      "evo": [
+        7,
+        6
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 173,
+      "seed": 21161090,
+      "winnerSeat": 1,
+      "pts": [
+        9,
+        19
+      ],
+      "evo": [
+        0,
+        3
+      ],
+      "turns": 87,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 174,
+      "seed": 21161091,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        17
+      ],
+      "evo": [
+        5,
+        6
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 175,
+      "seed": 21161092,
+      "winnerSeat": 1,
+      "pts": [
+        11,
+        20
+      ],
+      "evo": [
+        2,
+        8
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 176,
+      "seed": 21161093,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        15
+      ],
+      "evo": [
+        7,
+        4
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 177,
+      "seed": 21161094,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        8
+      ],
+      "evo": [
+        8,
+        2
+      ],
+      "turns": 45,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 178,
+      "seed": 21161095,
+      "winnerSeat": 1,
+      "pts": [
+        11,
+        19
+      ],
+      "evo": [
+        2,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 179,
+      "seed": 21161096,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        18
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 180,
+      "seed": 21161097,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        19
+      ],
+      "evo": [
+        3,
+        5
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 181,
+      "seed": 21161098,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        18
+      ],
+      "evo": [
+        6,
+        4
+      ],
+      "turns": 65,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 182,
+      "seed": 21161099,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        24
+      ],
+      "evo": [
+        1,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 183,
+      "seed": 21161100,
+      "winnerSeat": 1,
+      "pts": [
+        20,
+        22
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 184,
+      "seed": 21161101,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        8
+      ],
+      "evo": [
+        8,
+        1
+      ],
+      "turns": 47,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 185,
+      "seed": 21161102,
+      "winnerSeat": 1,
+      "pts": [
+        19,
+        19
+      ],
+      "evo": [
+        2,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 186,
+      "seed": 21161103,
+      "winnerSeat": 1,
+      "pts": [
+        11,
+        18
+      ],
+      "evo": [
+        2,
+        4
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 187,
+      "seed": 21161104,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        13
+      ],
+      "evo": [
+        6,
+        1
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 188,
+      "seed": 21161105,
+      "winnerSeat": 1,
+      "pts": [
+        16,
+        20
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 189,
+      "seed": 21161106,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        18
+      ],
+      "evo": [
+        3,
+        2
+      ],
+      "turns": 61,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 190,
+      "seed": 21161107,
+      "winnerSeat": 1,
+      "pts": [
+        13,
+        22
+      ],
+      "evo": [
+        1,
+        4
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 191,
+      "seed": 21161108,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        14
+      ],
+      "evo": [
+        6,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 192,
+      "seed": 21161109,
+      "winnerSeat": 0,
+      "pts": [
+        22,
+        21
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 193,
+      "seed": 21161110,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        18
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 194,
+      "seed": 21161111,
+      "winnerSeat": 1,
+      "pts": [
+        10,
+        20
+      ],
+      "evo": [
+        1,
+        8
+      ],
+      "turns": 45,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 195,
+      "seed": 21161112,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        11
+      ],
+      "evo": [
+        2,
+        1
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 196,
+      "seed": 21161113,
+      "winnerSeat": 0,
+      "pts": [
+        22,
+        20
+      ],
+      "evo": [
+        6,
+        2
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 197,
+      "seed": 21161114,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        18
+      ],
+      "evo": [
+        2,
+        3
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 198,
+      "seed": 21161115,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        20
+      ],
+      "evo": [
+        7,
+        7
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 199,
+      "seed": 21161116,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        19
+      ],
+      "evo": [
+        3,
+        6
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 200,
+      "seed": 21161117,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        17
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 201,
+      "seed": 21161118,
+      "winnerSeat": 1,
+      "pts": [
+        16,
+        18
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 202,
+      "seed": 21161119,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        17
+      ],
+      "evo": [
+        3,
+        3
+      ],
+      "turns": 61,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 203,
+      "seed": 21161120,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        16
+      ],
+      "evo": [
+        6,
+        5
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 204,
+      "seed": 21161121,
+      "winnerSeat": 1,
+      "pts": [
+        10,
+        21
+      ],
+      "evo": [
+        2,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 205,
+      "seed": 21161122,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        21
+      ],
+      "evo": [
+        1,
+        7
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 206,
+      "seed": 21161123,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        20
+      ],
+      "evo": [
+        4,
+        3
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 207,
+      "seed": 21161124,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        16
+      ],
+      "evo": [
+        5,
+        3
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 208,
+      "seed": 21161125,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        10
+      ],
+      "evo": [
+        5,
+        1
+      ],
+      "turns": 47,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 209,
+      "seed": 21161126,
+      "winnerSeat": 0,
+      "pts": [
+        22,
+        13
+      ],
+      "evo": [
+        5,
+        1
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 210,
+      "seed": 21161127,
+      "winnerSeat": 1,
+      "pts": [
+        11,
+        19
+      ],
+      "evo": [
+        2,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 211,
+      "seed": 21161128,
+      "winnerSeat": 1,
+      "pts": [
+        16,
+        19
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 212,
+      "seed": 21161129,
+      "winnerSeat": 1,
+      "pts": [
+        19,
+        20
+      ],
+      "evo": [
+        6,
+        6
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 213,
+      "seed": 21161130,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        20
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 214,
+      "seed": 21161131,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        19
+      ],
+      "evo": [
+        7,
+        3
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 215,
+      "seed": 21161132,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        12
+      ],
+      "evo": [
+        3,
+        3
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 216,
+      "seed": 21161133,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        12
+      ],
+      "evo": [
+        4,
+        0
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 217,
+      "seed": 21161134,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        15
+      ],
+      "evo": [
+        6,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 218,
+      "seed": 21161135,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        10
+      ],
+      "evo": [
+        3,
+        2
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 219,
+      "seed": 21161136,
+      "winnerSeat": 1,
+      "pts": [
+        11,
+        18
+      ],
+      "evo": [
+        2,
+        4
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 220,
+      "seed": 21161137,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        18
+      ],
+      "evo": [
+        3,
+        5
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 221,
+      "seed": 21161138,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        10
+      ],
+      "evo": [
+        6,
+        2
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 222,
+      "seed": 21161139,
+      "winnerSeat": 1,
+      "pts": [
+        11,
+        18
+      ],
+      "evo": [
+        5,
+        6
+      ],
+      "turns": 47,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 223,
+      "seed": 21161140,
+      "winnerSeat": -1,
+      "pts": [
+        1,
+        0
+      ],
+      "evo": [
+        0,
+        0
+      ],
+      "turns": 800,
+      "finished": false,
+      "leak": null
+    },
+    {
+      "i": 224,
+      "seed": 21161141,
+      "winnerSeat": 1,
+      "pts": [
+        9,
+        20
+      ],
+      "evo": [
+        1,
+        4
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 225,
+      "seed": 21161142,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        19
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 226,
+      "seed": 21161143,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        18
+      ],
+      "evo": [
+        3,
+        6
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 227,
+      "seed": 21161144,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        11
+      ],
+      "evo": [
+        3,
+        3
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 228,
+      "seed": 21161145,
+      "winnerSeat": 1,
+      "pts": [
+        13,
+        20
+      ],
+      "evo": [
+        2,
+        6
+      ],
+      "turns": 47,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 229,
+      "seed": 21161146,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        16
+      ],
+      "evo": [
+        6,
+        4
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 230,
+      "seed": 21161147,
+      "winnerSeat": 0,
+      "pts": [
+        21,
+        10
+      ],
+      "evo": [
+        7,
+        1
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 231,
+      "seed": 21161148,
+      "winnerSeat": 1,
+      "pts": [
+        11,
+        19
+      ],
+      "evo": [
+        2,
+        6
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 232,
+      "seed": 21161149,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        18
+      ],
+      "evo": [
+        2,
+        5
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 233,
+      "seed": 21161150,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        14
+      ],
+      "evo": [
+        6,
+        2
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 234,
+      "seed": 21161151,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        17
+      ],
+      "evo": [
+        4,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 235,
+      "seed": 21161152,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        16
+      ],
+      "evo": [
+        1,
+        4
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 236,
+      "seed": 21161153,
+      "winnerSeat": 1,
+      "pts": [
+        19,
+        21
+      ],
+      "evo": [
+        5,
+        7
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 237,
+      "seed": 21161154,
+      "winnerSeat": 1,
+      "pts": [
+        16,
+        18
+      ],
+      "evo": [
+        6,
+        6
+      ],
+      "turns": 47,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 238,
+      "seed": 21161155,
+      "winnerSeat": 0,
+      "pts": [
+        21,
+        21
+      ],
+      "evo": [
+        4,
+        4
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 239,
+      "seed": 21161156,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        6
+      ],
+      "evo": [
+        4,
+        0
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 240,
+      "seed": 21161157,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        16
+      ],
+      "evo": [
+        5,
+        4
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 241,
+      "seed": 21161158,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        15
+      ],
+      "evo": [
+        7,
+        4
+      ],
+      "turns": 47,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 242,
+      "seed": 21161159,
+      "winnerSeat": 1,
+      "pts": [
+        13,
+        19
+      ],
+      "evo": [
+        3,
+        8
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 243,
+      "seed": 21161160,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        18
+      ],
+      "evo": [
+        2,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 244,
+      "seed": 21161161,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        20
+      ],
+      "evo": [
+        4,
+        8
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 245,
+      "seed": 21161162,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        18
+      ],
+      "evo": [
+        6,
+        5
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 246,
+      "seed": 21161163,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        13
+      ],
+      "evo": [
+        6,
+        1
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 247,
+      "seed": 21161164,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        10
+      ],
+      "evo": [
+        5,
+        0
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 248,
+      "seed": 21161165,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        18
+      ],
+      "evo": [
+        3,
+        3
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 249,
+      "seed": 21161166,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        13
+      ],
+      "evo": [
+        4,
+        3
+      ],
+      "turns": 47,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 250,
+      "seed": 21161167,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        14
+      ],
+      "evo": [
+        5,
+        3
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 251,
+      "seed": 21161168,
+      "winnerSeat": 1,
+      "pts": [
+        10,
+        18
+      ],
+      "evo": [
+        3,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 252,
+      "seed": 21161169,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        15
+      ],
+      "evo": [
+        2,
+        2
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 253,
+      "seed": 21161170,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        14
+      ],
+      "evo": [
+        6,
+        2
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 254,
+      "seed": 21161171,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        19
+      ],
+      "evo": [
+        1,
+        6
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 255,
+      "seed": 21161172,
+      "winnerSeat": 1,
+      "pts": [
+        17,
+        19
+      ],
+      "evo": [
+        6,
+        6
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 256,
+      "seed": 21161173,
+      "winnerSeat": 1,
+      "pts": [
+        9,
+        18
+      ],
+      "evo": [
+        1,
+        5
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 257,
+      "seed": 21161174,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        18
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 258,
+      "seed": 21161175,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        15
+      ],
+      "evo": [
+        7,
+        6
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 259,
+      "seed": 21161176,
+      "winnerSeat": 1,
+      "pts": [
+        13,
+        21
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 260,
+      "seed": 21161177,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        15
+      ],
+      "evo": [
+        5,
+        2
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 261,
+      "seed": 21161178,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        13
+      ],
+      "evo": [
+        7,
+        6
+      ],
+      "turns": 45,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 262,
+      "seed": 21161179,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        15
+      ],
+      "evo": [
+        3,
+        1
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 263,
+      "seed": 21161180,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        18
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 264,
+      "seed": 21161181,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        12
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 61,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 265,
+      "seed": 21161182,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        12
+      ],
+      "evo": [
+        5,
+        3
+      ],
+      "turns": 45,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 266,
+      "seed": 21161183,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        20
+      ],
+      "evo": [
+        2,
+        9
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 267,
+      "seed": 21161184,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        15
+      ],
+      "evo": [
+        7,
+        3
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 268,
+      "seed": 21161185,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        13
+      ],
+      "evo": [
+        5,
+        2
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 269,
+      "seed": 21161186,
+      "winnerSeat": 1,
+      "pts": [
+        11,
+        19
+      ],
+      "evo": [
+        2,
+        3
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 270,
+      "seed": 21161187,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        10
+      ],
+      "evo": [
+        4,
+        2
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 271,
+      "seed": 21161188,
+      "winnerSeat": 1,
+      "pts": [
+        16,
+        18
+      ],
+      "evo": [
+        2,
+        3
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 272,
+      "seed": 21161189,
+      "winnerSeat": 1,
+      "pts": [
+        10,
+        18
+      ],
+      "evo": [
+        1,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 273,
+      "seed": 21161190,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        12
+      ],
+      "evo": [
+        5,
+        3
+      ],
+      "turns": 49,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 274,
+      "seed": 21161191,
+      "winnerSeat": 1,
+      "pts": [
+        20,
+        20
+      ],
+      "evo": [
+        6,
+        8
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 275,
+      "seed": 21161192,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        20
+      ],
+      "evo": [
+        3,
+        4
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 276,
+      "seed": 21161193,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        22
+      ],
+      "evo": [
+        4,
+        6
+      ],
+      "turns": 59,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 277,
+      "seed": 21161194,
+      "winnerSeat": 1,
+      "pts": [
+        16,
+        21
+      ],
+      "evo": [
+        4,
+        5
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 278,
+      "seed": 21161195,
+      "winnerSeat": 0,
+      "pts": [
+        22,
+        15
+      ],
+      "evo": [
+        3,
+        5
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 279,
+      "seed": 21161196,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        14
+      ],
+      "evo": [
+        5,
+        4
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 280,
+      "seed": 21161197,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        19
+      ],
+      "evo": [
+        2,
+        7
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 281,
+      "seed": 21161198,
+      "winnerSeat": 1,
+      "pts": [
+        12,
+        22
+      ],
+      "evo": [
+        3,
+        7
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 282,
+      "seed": 21161199,
+      "winnerSeat": 1,
+      "pts": [
+        19,
+        19
+      ],
+      "evo": [
+        3,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 283,
+      "seed": 21161200,
+      "winnerSeat": 0,
+      "pts": [
+        23,
+        21
+      ],
+      "evo": [
+        4,
+        4
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 284,
+      "seed": 21161201,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        19
+      ],
+      "evo": [
+        1,
+        5
+      ],
+      "turns": 65,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 285,
+      "seed": 21161202,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        12
+      ],
+      "evo": [
+        6,
+        0
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 286,
+      "seed": 21161203,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        19
+      ],
+      "evo": [
+        5,
+        5
+      ],
+      "turns": 57,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 287,
+      "seed": 21161204,
+      "winnerSeat": 1,
+      "pts": [
+        18,
+        18
+      ],
+      "evo": [
+        3,
+        7
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 288,
+      "seed": 21161205,
+      "winnerSeat": 1,
+      "pts": [
+        19,
+        21
+      ],
+      "evo": [
+        2,
+        7
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 289,
+      "seed": 21161206,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        12
+      ],
+      "evo": [
+        3,
+        2
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 290,
+      "seed": 21161207,
+      "winnerSeat": 0,
+      "pts": [
+        20,
+        14
+      ],
+      "evo": [
+        5,
+        3
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 291,
+      "seed": 21161208,
+      "winnerSeat": 1,
+      "pts": [
+        19,
+        22
+      ],
+      "evo": [
+        6,
+        5
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 292,
+      "seed": 21161209,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        18
+      ],
+      "evo": [
+        2,
+        3
+      ],
+      "turns": 69,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 293,
+      "seed": 21161210,
+      "winnerSeat": 0,
+      "pts": [
+        18,
+        13
+      ],
+      "evo": [
+        3,
+        2
+      ],
+      "turns": 55,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 294,
+      "seed": 21161211,
+      "winnerSeat": 1,
+      "pts": [
+        10,
+        19
+      ],
+      "evo": [
+        1,
+        6
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 295,
+      "seed": 21161212,
+      "winnerSeat": 0,
+      "pts": [
+        21,
+        19
+      ],
+      "evo": [
+        8,
+        7
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 296,
+      "seed": 21161213,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        18
+      ],
+      "evo": [
+        3,
+        3
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 297,
+      "seed": 21161214,
+      "winnerSeat": 1,
+      "pts": [
+        14,
+        20
+      ],
+      "evo": [
+        4,
+        2
+      ],
+      "turns": 53,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 298,
+      "seed": 21161215,
+      "winnerSeat": 1,
+      "pts": [
+        15,
+        18
+      ],
+      "evo": [
+        4,
+        6
+      ],
+      "turns": 51,
+      "finished": true,
+      "leak": null
+    },
+    {
+      "i": 299,
+      "seed": 21161216,
+      "winnerSeat": 0,
+      "pts": [
+        19,
+        17
+      ],
+      "evo": [
+        5,
+        3
+      ],
+      "turns": 63,
+      "finished": true,
+      "leak": null
+    }
+  ],
+  "createdAt": "2026-09-18 14:05:43"
+}

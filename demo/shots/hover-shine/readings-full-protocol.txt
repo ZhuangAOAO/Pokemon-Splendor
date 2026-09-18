@@ -1,0 +1,94 @@
+== 环境 ==
+innerWidth×innerHeight = 876×1508；dpr=1
+prefers-reduced-motion:reduce matches = false
+生产 CSS = ../style.css?t=1789745965437（58232 字符）；强制 hover 副本 = /:hover/g → .force-hover
+按钮实测宽 w = 146.0px
+
+== A 扫光 .btn.pk-anim-hover:hover::after（3 轮 × 4 组 + 1 组确定性采样）==
+[A 轮1] ① t=0（未 hover）                伪元素=不存在 content=none transform=none tx=n/a w=146.0px opacity=1 bg-pos=0% 0% anim=none/0s fill=none | 动画对象: (无动画对象)
+            → 不可见（伪元素不存在）
+[A 轮1] ② 强制hover@160ms（扫光跑动中）  伪元素=存在 content="" transform=matrix(1, 0, 0, 1, 29.0752, 0) tx=29.08px w=146.0px opacity=1 bg-pos=0% 0% anim=pkShine/0.32s fill=none | 动画对象: running@0ms,iters=1,prog=42%
+            → ★ 可见（带子落在按钮框内）
+[A 轮1] ④′ 确定性@currentTime=160ms      伪元素=存在 content="" transform=matrix(1, 0, 0, 1, 59.3074, 0) tx=59.31px w=146.0px opacity=1 bg-pos=0% 0% anim=pkShine/0.32s fill=none | 动画对象: paused@0ms,iters=1,prog=50%
+[A 轮1] ③ 结束态@~560ms（自然播完）      伪元素=存在 content="" transform=matrix(1, 0, 0, 1, -160.6, 0) tx=-160.60px w=146.0px opacity=1 bg-pos=0% 0% anim=pkShine/0.32s fill=none | 动画对象: (无动画对象)
+            → 不可见（带子整体移出按钮框：|tx|=160.60px >= w=146.0px，被 .btn.pk-anim-hover 的 overflow:hidden 裁掉）；动画对象 (无动画对象)（fill:none 的动画播完就被引擎移出 getAnimations 列表 = 引擎里没有残留在持值的动画）
+[A 轮1] ④ 撤掉强制态@+80ms（=移开鼠标）  伪元素=不存在 content=none transform=none tx=n/a w=146.0px opacity=1 bg-pos=0% 0% anim=none/0s fill=none | 动画对象: (无动画对象)
+            → 不可见（伪元素不存在）
+
+[A 轮2] ① t=0（未 hover）                伪元素=不存在 content=none transform=none tx=n/a w=146.0px opacity=1 bg-pos=0% 0% anim=none/0s fill=none | 动画对象: (无动画对象)
+            → 不可见（伪元素不存在）
+[A 轮2] ② 强制hover@160ms（扫光跑动中）  伪元素=存在 content="" transform=matrix(1, 0, 0, 1, 29.0705, 0) tx=29.07px w=146.0px opacity=1 bg-pos=0% 0% anim=pkShine/0.32s fill=none | 动画对象: running@0ms,iters=1,prog=42%
+            → ★ 可见（带子落在按钮框内）
+[A 轮2] ④′ 确定性@currentTime=160ms      伪元素=存在 content="" transform=matrix(1, 0, 0, 1, 59.3074, 0) tx=59.31px w=146.0px opacity=1 bg-pos=0% 0% anim=pkShine/0.32s fill=none | 动画对象: paused@0ms,iters=1,prog=50%
+[A 轮2] ③ 结束态@~560ms（自然播完）      伪元素=存在 content="" transform=matrix(1, 0, 0, 1, -160.6, 0) tx=-160.60px w=146.0px opacity=1 bg-pos=0% 0% anim=pkShine/0.32s fill=none | 动画对象: (无动画对象)
+            → 不可见（带子整体移出按钮框：|tx|=160.60px >= w=146.0px，被 .btn.pk-anim-hover 的 overflow:hidden 裁掉）；动画对象 (无动画对象)（fill:none 的动画播完就被引擎移出 getAnimations 列表 = 引擎里没有残留在持值的动画）
+[A 轮2] ④ 撤掉强制态@+80ms（=移开鼠标）  伪元素=不存在 content=none transform=none tx=n/a w=146.0px opacity=1 bg-pos=0% 0% anim=none/0s fill=none | 动画对象: (无动画对象)
+            → 不可见（伪元素不存在）
+
+[A 轮3] ① t=0（未 hover）                伪元素=不存在 content=none transform=none tx=n/a w=146.0px opacity=1 bg-pos=0% 0% anim=none/0s fill=none | 动画对象: (无动画对象)
+            → 不可见（伪元素不存在）
+[A 轮3] ② 强制hover@160ms（扫光跑动中）  伪元素=存在 content="" transform=matrix(1, 0, 0, 1, 48.2588, 0) tx=48.26px w=146.0px opacity=1 bg-pos=0% 0% anim=pkShine/0.32s fill=none | 动画对象: running@0ms,iters=1,prog=47%
+            → ★ 可见（带子落在按钮框内）
+[A 轮3] ④′ 确定性@currentTime=160ms      伪元素=存在 content="" transform=matrix(1, 0, 0, 1, 59.3074, 0) tx=59.31px w=146.0px opacity=1 bg-pos=0% 0% anim=pkShine/0.32s fill=none | 动画对象: paused@0ms,iters=1,prog=50%
+[A 轮3] ③ 结束态@~560ms（自然播完）      伪元素=存在 content="" transform=matrix(1, 0, 0, 1, -160.6, 0) tx=-160.60px w=146.0px opacity=1 bg-pos=0% 0% anim=pkShine/0.32s fill=none | 动画对象: (无动画对象)
+            → 不可见（带子整体移出按钮框：|tx|=160.60px >= w=146.0px，被 .btn.pk-anim-hover 的 overflow:hidden 裁掉）；动画对象 (无动画对象)（fill:none 的动画播完就被引擎移出 getAnimations 列表 = 引擎里没有残留在持值的动画）
+[A 轮3] ④ 撤掉强制态@+80ms（=移开鼠标）  伪元素=不存在 content=none transform=none tx=n/a w=146.0px opacity=1 bg-pos=0% 0% anim=none/0s fill=none | 动画对象: (无动画对象)
+            → 不可见（伪元素不存在）
+
+== A 判定 ==
+PASS ① 动画结束后不可见（3 轮都满足）
+PASS ② 撤掉强制态后的读数 == t=0 的读数（3 轮逐字段相同）
+PASS ③ 确定性采样三轮完全一致 → 二次/三次触发都是从 0 重播
+PASS ④ 扫光本身还在（强制 hover 后伪元素与动画对象都存在）
+③ 三轮原始字符串：
+   轮1 {"content":"\"\"","transform":"matrix(1, 0, 0, 1, 59.3074, 0)","tx":59.3074,"opacity":"1"}
+   轮2 {"content":"\"\"","transform":"matrix(1, 0, 0, 1, 59.3074, 0)","tx":59.3074,"opacity":"1"}
+   轮3 {"content":"\"\"","transform":"matrix(1, 0, 0, 1, 59.3074, 0)","tx":59.3074,"opacity":"1"}
+
+== B 切屏转场 .pk-anim-switch（pkOpen .30s，fill:both）==
+[B 轮1] ① t=0      clip-path=none opacity=1 anim=none | (无动画对象)
+[B 轮1] ③ 结束态   clip-path=inset(0px 0px 0%) opacity=1 anim=pkOpen | finished@0ms,iters=1,prog=100%
+[B 轮1] ④′ 确定性@150ms clip-path=inset(0px 0px 1.28376%) opacity=0.984651
+[B 轮1] ④ 撤class clip-path=none opacity=1 → 与 t=0 相同 = 是
+[B 轮2] ① t=0      clip-path=none opacity=1 anim=none | (无动画对象)
+[B 轮2] ③ 结束态   clip-path=inset(0px 0px 0%) opacity=1 anim=pkOpen | finished@0ms,iters=1,prog=100%
+[B 轮2] ④′ 确定性@150ms clip-path=inset(0px 0px 1.28376%) opacity=0.984651
+[B 轮2] ④ 撤class clip-path=none opacity=1 → 与 t=0 相同 = 是
+[B 轮3] ① t=0      clip-path=none opacity=1 anim=none | (无动画对象)
+[B 轮3] ③ 结束态   clip-path=inset(0px 0px 0%) opacity=1 anim=pkOpen | finished@0ms,iters=1,prog=100%
+[B 轮3] ④′ 确定性@150ms clip-path=inset(0px 0px 1.28376%) opacity=0.984651
+[B 轮3] ④ 撤class clip-path=none opacity=1 → 与 t=0 相同 = 是
+B 判定：结束态 clip-path=inset(0px 0px 0px 0px)（=不裁剪，视觉等于默认 none）+ opacity=1 → 无残留；确定性三轮一致 = PASS
+   [inset(0px 0px 1.28376%)|op=0.984651 ; inset(0px 0px 1.28376%)|op=0.984651 ; inset(0px 0px 1.28376%)|op=0.984651]
+
+== C 加载等待 .pk-anim-loading::after（pkWobble .90s infinite）==
+[C] 无 class：content=none → 伪元素不存在
+[C] @0ms    伪元素=存在 content="" transform=matrix(0.999997, -0.00260778, 0.00260778, 0.999997, 0, 0) tx=0.00px w=79.2px opacity=1 bg-pos=0% 0% anim=pkWobble/0.9s fill=none | 动画对象: running@0ms,iters=Infinity,prog=2%
+            iteration-count(声明)=infinite；动画对象 = running@0ms,iters=Infinity,prog=2%
+[C] @180ms  transform=matrix(0.971728, -0.236103, 0.236103, 0.971728, 0, 0)（角度 -0.1° → -13.7°）| running@0ms,iters=Infinity,prog=22%
+[C] @1780ms transform=matrix(1, 5.70062e-09, -5.70062e-09, 1, 0, 0)（角度 0.0°）| running@0ms,iters=Infinity,prog=100%
+[C] 判定：infinite → 只有「循环中」没有「结束态」，结构上不存在「停在中间」；采样角度在变 = 是；1.78s 后仍 running = true
+[C] 去掉 class：content=none → 伪元素消失
+
+== D 获胜徽章 .pk-anim-badge（pkBadge .30s，fill:both）= 等价 #go-title 在 hidden modal 里的显隐 ==
+[D 轮1] 藏起 display:none → (无动画对象)
+[D 轮1] 显示瞬间 running@0ms,iters=1,prog=0%
+[D 轮1] ④′ 确定性@150ms transform=matrix(1.12012, 0, 0, 1.12012, 0, 0) opacity=1（60% 关键帧的放大态）
+[D 轮1] ③ 结束态 transform=matrix(1, 0, 0, 1, 0, 0) opacity=1 | finished@0ms,iters=1,prog=100%
+[D 轮1]    判定：结束态 transform 为单位矩阵 = true，opacity=1 → 与默认态一致（无残留）
+[D 轮2] 藏起 display:none → (无动画对象)
+[D 轮2] 显示瞬间 running@0ms,iters=1,prog=0%
+[D 轮2] ④′ 确定性@150ms transform=matrix(1.12012, 0, 0, 1.12012, 0, 0) opacity=1（60% 关键帧的放大态）
+[D 轮2] ③ 结束态 transform=matrix(1, 0, 0, 1, 0, 0) opacity=1 | finished@0ms,iters=1,prog=100%
+[D 轮2]    判定：结束态 transform 为单位矩阵 = true，opacity=1 → 与默认态一致（无残留）
+[D 轮3] 藏起 display:none → (无动画对象)
+[D 轮3] 显示瞬间 running@0ms,iters=1,prog=0%
+[D 轮3] ④′ 确定性@150ms transform=matrix(1.12012, 0, 0, 1.12012, 0, 0) opacity=1（60% 关键帧的放大态）
+[D 轮3] ③ 结束态 transform=matrix(1, 0, 0, 1, 0, 0) opacity=1 | finished@0ms,iters=1,prog=100%
+[D 轮3]    判定：结束态 transform 为单位矩阵 = true，opacity=1 → 与默认态一致（无残留）
+D 判定：三次「显示」的确定性采样一致 = PASS
+   [matrix(1.12012, 0, 0, 1.12012, 0, 0)|op=1 ; matrix(1.12012, 0, 0, 1.12012, 0, 0)|op=1 ; matrix(1.12012, 0, 0, 1.12012, 0, 0)|op=1]
+
+== 画廊 == 已建立（5 个冻结状态），pin 帧见各条 caption
+== DONE ==
+== EOF ==

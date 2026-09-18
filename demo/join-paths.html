@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>加入卡 / 房间列表 路径取证 harness（join-paths）</title>
+<style>
+  html,body{margin:0;background:#141414;color:#e8e8e8;font:13px/1.45 Consolas,"Courier New",monospace}
+  #wrap{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:8px}
+  iframe{width:1240px;height:820px;border:1px solid #444;background:#fff;flex:0 0 auto}
+  #side{width:1240px;box-sizing:border-box;background:#0d0d0d;border:1px solid #333;padding:8px}
+  h3{margin:10px 0 4px;color:#ffd479;font-size:13px}
+  pre{white-space:pre-wrap;word-break:break-all;margin:0;font-size:12px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <iframe id="app"></iframe>
+  <div id="side">
+    <h3 id="phase">phase: boot</h3>
+    <h3>事件日志</h3><pre id="log"></pre>
+    <h3>抓到的 /api 调用（真实 bytes；token 已脱敏）</h3><pre id="rec"></pre>
+    <h3>RAW READINGS</h3><pre id="raw"></pre>
+  </div>
+</div>
+<script>
+'use strict';
+/* ==========================================================================
+   加入卡「手输房间号 → 进入游戏」与「公开房间列表 → 加入」两条路径的取证 harness
+   用法：/demo/join-paths.html?mode=typed|roomlist&case=<名字>&u=<账号>&p=<密码>
+   纪律：被测路径一律真 .click()，不直接调 joinGame()；
+         拿的是 iframe 里 fetch 的真实 bytes（init.body 原串）+ 真实响应。
+   房主由「另一个账号」扮演（服务端 handleJoin 用「名字唯一」挡同账号重复加入），
+   该账号口令放在收集器 http://127.0.0.1:3211/host-acct，不进 URL、不进项目文件。
+   读数落盘：POST → http://127.0.0.1:3211/report
+   ========================================================================== */
+const q = new URLSearchParams(location.search);
+const U = q.get('u') || '';
+const P = q.get('p') || '';
+const CASE = q.get('case') || 'run';
+const MODE = q.get('mode') || 'typed';           // typed | roomlist
+const COL = 'http://127.0.0.1:3211';
+const f = document.getElementById('app');
+const REC = [], RAW = {}, ROWS = [], LOGL = [];
+let loadNo = 0, pendLoad = null;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const TAG = 'probe-' + Math.random().toString(36).slice(2, 8);
+
+function log(s) { LOGL.push('[' + new Date().toISOString().slice(11, 23) + '] ' + s); render(); }
+function raw(k, v) {
+  RAW[k] = v;
+  const i = ROWS.findIndex((r) => r[0] === k);
+  if (i < 0) ROWS.push([k, v]); else ROWS[i][1] = v;
+  render();
+}
+function redact(o) {
+  if (o && typeof o === 'object' && 'token' in o) { const c = Object.assign({}, o); c.token = '<token len=' + String(o.token).length + '>'; return c; }
+  return o;
+}
+function redactBody(b) { return typeof b === 'string' ? b.replace(/"token":"[^"]*"/g, '"token":"<redacted>"') : String(b); }
+function render() {
+  document.getElementById('rec').textContent = REC.map((r, i) => {
+    if (r.via === 'postApi') {
+      return '#' + i + ' [postApi load=' + r.load + '] ' + JSON.stringify(redact(r.obj))
+        + '\n        hasOwnProperty("mode")=' + r.hasMode + '  ("mode" 值=' + JSON.stringify(r.obj && r.obj.mode) + ')';
+    }
+    return '#' + i + ' [fetch load=' + r.load + '] ' + r.url
+      + '\n        body=' + (r.body === null || r.body === undefined ? '(no string body)' : redactBody(r.body))
+      + '\n        resp=' + JSON.stringify(r.res || r.netErr || null);
+  }).join('\n');
+  document.getElementById('raw').textContent = ROWS.map(([k, v]) => k + ' = ' + (typeof v === 'string' ? v : JSON.stringify(v))).join('\n');
+  document.getElementById('log').textContent = LOGL.join('\n');
+}
+window.__RAW = RAW; window.__REC = REC; window.__LOGL = LOGL;
+
+function reportCheckpoint(tag) {
+  const payload = {
+    case: CASE + '-' + MODE, checkpoint: tag, mode: MODE, ts: new Date().toISOString(), raw: RAW,
+    rec: REC.map((r) => r.via === 'postApi'
+      ? { load: r.load, via: r.via, obj: redact(r.obj), hasMode: r.hasMode }
+      : { load: r.load, via: r.via, url: r.url, body: typeof r.body === 'string' ? redactBody(r.body) : r.body, res: r.res || null }),
+    log: LOGL,
+  };
+  return fetch(COL + '/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+    .then(() => log('REPORT sent: ' + tag)).catch((e) => log('REPORT failed(' + tag + '): ' + e.message));
+}
+
+/* ---- 探针：fetch（真实 bytes）+ postApi（能看出 mode 键在不在） ---- */
+function probe(w, label) {
+  try {
+    if (!w) return false;
+    if (w.__probeTag !== TAG) {
+      const of = w.fetch;
+      if (typeof of !== 'function') return false;
+      w.__probeTag = TAG;
+      w.fetch = async function (input, init) {
+        const rec = { load: label, via: 'fetch', url: String(input), body: null, res: null, at: Date.now() };
+        try { if (init && typeof init.body === 'string') { rec.body = init.body; rec.bodyParse = JSON.parse(init.body); } } catch (e) { rec.bodyErr = String(e); }
+        REC.push(rec); render();
+        const r = await of.call(w, input, init);
+        try { rec.res = await r.clone().json(); } catch (e) { rec.resErr = String(e); }
+        render();
+        return r;
+      };
+      log('PROBE(fetch) armed: ' + label);
+    }
+    if (w.__postProbeTag !== TAG && typeof w.postApi === 'function') {
+      w.__postProbeTag = TAG;
+      const op = w.postApi;
+      w.postApi = function (obj, t) {
+        REC.push({ load: label, via: 'postApi', obj, hasMode: !!(obj && Object.prototype.hasOwnProperty.call(obj, 'mode')), at: Date.now() });
+        render();
+        return op.call(w, obj, t);
+      };
+      log('PROBE(postApi) armed: ' + label);
+    }
+    return true;
+  } catch (e) { log('probe err: ' + e.message); return false; }
+}
+
+/* ---- 父页直连 /api（本页与游戏同源，用于让「另一个账号」当房主） ---- */
+async function api(obj) {
+  const r = await fetch('/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(obj) });
+  return await r.json();
+}
+
+/* ---- DOM 读取助手 ---- */
+function elOf(root, sel) {
+  try {
+    if (!root) return null;
+    if (root.nodeType === 9) return root.querySelector(sel);
+    if (root.document) return root.document.querySelector(sel);
+    return root.querySelector(sel);
+  } catch (e) { return null; }
+}
+function qs(w, sel) { return elOf(w, sel); }
+function tsel(root, sel) { const e = elOf(root, sel); return e ? e.textContent.replace(/\s+/g, ' ').trim() : null; }
+function hdn(root, sel) { const e = elOf(root, sel); return e ? e.hidden : null; }
+function seats(w) {
+  const box = qs(w, '#lobby-seats');
+  if (!box) return [];
+  return [...box.querySelectorAll('.lobby-seat')].map((s) => ({
+    cls: s.className.replace(/lobby-seat ?/, ''),
+    tag: tsel(s, '.lobby-tag'),
+    text: s.textContent.replace(/\s+/g, ' ').trim(),
+  }));
+}
+function joinCalls() {
+  return REC.filter((r) => r.via === 'fetch' && r.bodyParse && r.bodyParse.type === 'join').map((r) => ({
+    load: r.load,
+    bodyRaw: typeof r.body === 'string' ? redactBody(r.body) : r.body,       // ← 原始 bytes（原文）
+    body: redact(r.bodyParse),
+    rawBodyHasRoomIdKey: typeof r.body === 'string' ? r.body.indexOf('"roomId"') >= 0 : null,
+    rawBodyHasModeKey: typeof r.body === 'string' ? r.body.indexOf('"mode"') >= 0 : null,
+    resp: r.res ? { ok: r.res.ok, roomId: r.res.roomId, cid: r.res.cid ? String(r.res.cid).slice(0, 8) + '…(' + String(r.res.cid).length + ')' : r.res.cid, msg: r.res.msg } : null,
+  }));
+}
+async function waitFor(fn, ms, label) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    let v = false; try { v = fn(); } catch (e) { v = false; }
+    if (v) return true;
+    await sleep(30);
+  }
+  log('TIMEOUT waiting: ' + label);
+  return false;
+}
+async function dismissUpdate(w) {
+  let clicked = false;
+  await waitFor(() => {
+    const ov = qs(w, '#modal-overlay'), cl = qs(w, '#btn-upd-close');
+    if (ov && !ov.hidden && cl) { cl.click(); clicked = true; return true; }
+    return false;
+  }, 3000, 'update modal');
+  if (clicked) log('关闭「版本更新」弹窗（app 自带启动弹窗，非被测路径）');
+  return clicked;
+}
+f.addEventListener('load', () => {
+  loadNo++;
+  const w = f.contentWindow;
+  try { log('IFRAME LOAD #' + loadNo + '  href=' + w.location.href); } catch (e) { log('IFRAME LOAD #' + loadNo); }
+  probe(w, 'load' + loadNo);
+  if (pendLoad) { const r = pendLoad; pendLoad = null; r(); }
+});
+async function nextLoad(ms) {
+  if (!pendLoad) await new Promise((res) => {
+    let done = false;
+    pendLoad = () => { done = true; res(); };
+    setTimeout(() => { if (!done) { pendLoad = null; res(); } }, ms || 15000);
+  });
+  return f.contentWindow;
+}
+
+/* ==================== 主流程 ==================== */
+(async function main() {
+  document.getElementById('phase').textContent = 'phase: ' + CASE + ' · ' + MODE + ' · 启动';
+  raw('case', CASE);
+  raw('mode', MODE);
+
+  /* ---- 0. 让「另一个账号」当房主，先把房真建出来 ---- */
+  const hc = await (await fetch(COL + '/host-acct')).json();
+  const hl = await api({ type: 'login', name: hc.name, password: hc.password });
+  raw('0.host.login.ok', hl.ok);
+  raw('0.host.name(房主显示名)', hl.nickname || hl.name);
+  const isPublic = (MODE === 'roomlist');
+  const hj = await api({ type: 'join', token: hl.token, isPublic });
+  raw('0.host.join.resp', { ok: hj.ok, roomId: hj.roomId, cidLen: hj.cid ? String(hj.cid).length : null, msg: hj.msg });
+  const HOST_ROOM = hj.roomId;
+  raw('0.目标房号(房主建的)', HOST_ROOM);
+  raw('0.目标房 isPublic', isPublic);
+  // 房主那条连接挂上 SSE：房间才不会因为房主断线被回收
+  let hostSeen = null;
+  try {
+    const hes = new EventSource('/events?cid=' + encodeURIComponent(hj.cid));
+    hes.onmessage = (e) => {
+      try {
+        const m = JSON.parse(e.data);
+        if (m.type === 'state' && m.room) hostSeen = { id: m.room.id, isPublic: m.room.isPublic, phase: m.room.phase, humans: (m.room.humans || []).map((h) => h.name), ais: (m.room.ais || []).length };
+      } catch (err) { /* ignore */ }
+    };
+    window.__hostEs = hes;
+    await waitFor(() => !!hostSeen, 5000, 'host SSE first state');
+  } catch (e) { log('host SSE err: ' + e.message); }
+  raw('0.房主侧 SSE 首帧 room', hostSeen || '(没拿到)');
+  if (!hj.ok) { raw('FATAL', 'host room 没建成，后面没法验'); await reportCheckpoint('host-failed'); return; }
+  const lr0 = await api({ type: 'listRooms' });
+  raw('0.listRooms(建完房后)', lr0.rooms);
+
+  /* ---- 1. iframe 起干净会话 + 真登录 ---- */
+  try { localStorage.removeItem('spToken'); sessionStorage.removeItem('spChallenge'); } catch (e) { /* ignore */ }
+  f.src = '/index.html';
+  const w = await nextLoad(15000);
+  raw('step0.href', w.location.href);
+  await waitFor(() => hdn(w, '#screen-login') === false || hdn(w, '#screen-lobby') === false, 12000, 'boot screen');
+  await dismissUpdate(w);
+  const needLogin = hdn(w, '#screen-login') === false;
+  raw('step0.登录表单出现', needLogin);
+  if (needLogin) {
+    qs(w, '#login-name').value = U;
+    qs(w, '#login-pass').value = P;
+    log('真点击 #btn-login');
+    qs(w, '#btn-login').click();
+    await waitFor(() => hdn(w, '#screen-lobby') === false, 8000, 'lobby after login');
+    await dismissUpdate(w);
+  }
+  raw('step0.lobby.hidden', hdn(w, '#screen-lobby'));
+  raw('step0.nickname-input.value', (qs(w, '#nickname-input') || {}).value);
+  await waitFor(() => w.document.querySelectorAll('#lobby-nav .nav-btn').length > 0, 8000, 'nav buttons');
+  // 确保停在「开始对局」分区（加入卡）
+  const navStart = [...w.document.querySelectorAll('#lobby-nav .nav-btn')].find((b) => b.dataset.sec === 'start');
+  if (navStart) { navStart.click(); await sleep(200); }
+  raw('step0.lobby-sec-start.hidden', hdn(w, '#lobby-sec-start'));
+  raw('step0.join-card.hidden(false=在加入卡)', hdn(w, '#join-card'));
+  raw('step0.room-card.hidden(true=还没进房)', hdn(w, '#room-card'));
+  await reportCheckpoint('boot');
+
+  if (MODE === 'typed') {
+    /* ---- 路径 A：加入卡里手输房间号 → 真点击「进入游戏」 ---- */
+    const inp = qs(w, '#join-roomid');
+    raw('A1.点击前 #join-roomid.value(原始)', inp.value);
+    inp.value = HOST_ROOM;                       // 填入房主刚建出来的那个房号
+    raw('A2.填入后 #join-roomid.value', qs(w, '#join-roomid').value);
+    raw('A3.填入的值 === 目标房号', qs(w, '#join-roomid').value === HOST_ROOM);
+    const before = joinCalls().length;
+    document.getElementById('phase').textContent = 'phase: 真点击 #btn-join（手输房号）';
+    log('真点击 #btn-join（手输房号 ' + HOST_ROOM + '）');
+    qs(w, '#btn-join').click();
+    await waitFor(() => joinCalls().length > before, 8000, 'typed join call');
+    await sleep(1200);
+    const jc = joinCalls();
+    raw('A4.join 调用（原文 body + 响应）', jc);
+    const last = jc[jc.length - 1];
+    raw('判定.A.body 含 "roomId":"' + HOST_ROOM + '"', !!(last && typeof last.bodyRaw === 'string' && last.bodyRaw.indexOf('"roomId":"' + HOST_ROOM + '"') >= 0));
+    raw('判定.A.body 含 "mode" 键', !!(last && last.rawBodyHasModeKey));
+    raw('判定.A.响应 roomId === 目标房号（真加入，不是新建）', !!(last && last.resp && last.resp.roomId === HOST_ROOM));
+    raw('判定.A.响应 roomId（实际）', last && last.resp ? last.resp.roomId : null);
+    await sleep(1000);
+    raw('A5.点后 room-card.hidden(false=进房了)', hdn(w, '#room-card'));
+    raw('A5.点后 join-card.hidden(true=加入卡收起)', hdn(w, '#join-card'));
+    raw('A5.点后 #lobby-room-info', tsel(w, '#lobby-room-info'));
+    raw('A5.点后 座位(服务端下发)', seats(w));
+  } else {
+    /* ---- 路径 B：公开房间列表 → 点列表里的「加入」 ---- */
+    document.getElementById('phase').textContent = 'phase: 真点击 #btn-room-list';
+    log('真点击 #btn-room-list');
+    qs(w, '#btn-room-list').click();
+    await waitFor(() => hdn(w, '#room-list-box') === false, 8000, 'room list box');
+    const box = qs(w, '#room-list-box');
+    const rowsAll = box ? [...box.querySelectorAll('.room-list-row')].map((r) => r.textContent.replace(/\s+/g, ' ').trim()) : [];
+    raw('B1.列表行', rowsAll);
+    const btn = box ? [...box.querySelectorAll('button[data-room]')].find((b) => b.dataset.room === HOST_ROOM) : null;
+    raw('B2.目标房那一行的按钮 data-room', btn ? btn.dataset.room : '(没找到目标房行)');
+    raw('B2.目标房那一行文本', btn ? btn.closest('.room-list-row').textContent.replace(/\s+/g, ' ').trim() : null);
+    if (!btn) { raw('FATAL', '公开列表里没有目标房'); await reportCheckpoint('list-missing'); return; }
+    const before = joinCalls().length;
+    log('真点击列表里「加入」（data-room=' + btn.dataset.room + '）');
+    btn.click();
+    await waitFor(() => joinCalls().length > before, 8000, 'roomlist join call');
+    await sleep(1200);
+    const jc = joinCalls();
+    raw('B3.join 调用（原文 body + 响应）', jc);
+    const last = jc[jc.length - 1];
+    raw('判定.B.body 含 "roomId":"' + HOST_ROOM + '"', !!(last && typeof last.bodyRaw === 'string' && last.bodyRaw.indexOf('"roomId":"' + HOST_ROOM + '"') >= 0));
+    raw('判定.B.响应 roomId === 目标房号', !!(last && last.resp && last.resp.roomId === HOST_ROOM));
+    raw('B4.点后 #join-roomid.value', (qs(w, '#join-roomid') || {}).value);
+    raw('B4.点后 room-card.hidden(false=进房了)', hdn(w, '#room-card'));
+  }
+
+  await reportCheckpoint('final');
+  window.__DONE = true;
+  document.getElementById('phase').textContent = 'phase: DONE (' + CASE + ' · ' + MODE + ')';
+  log('DONE');
+})().catch(async (e) => {
+  log('FATAL ' + (e && e.stack || e));
+  await reportCheckpoint('fatal');
+  window.__DONE = 'error';
+});
+</script>
+</body>
+</html>

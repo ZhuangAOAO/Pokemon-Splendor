@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>⑥ 结束教程 · 实测装置（file:// 本地单机模式）</title>
+<style>
+  html,body{ margin:0; font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif; background:#0f1216; color:#e8edf3; }
+  #f{ width:920px; height:520px; border:0; background:#fff; display:block; }
+  #panel{ padding:8px 12px; }
+  .h{ color:#ffd24a; font-weight:800; }
+  #out{ white-space:pre-wrap; font-family:Consolas,monospace; font-size:12px; color:#cfe3ff; }
+</style>
+</head>
+<body>
+<!-- 测试用，可随时删：只为本项目 ⑥「结束教程」确认框做一次实测取证（file:// 本地模式，不连服务器） -->
+<div><iframe id="f" src="../index.html"></iframe></div>
+<div id="panel">
+  <div class="h">场景：结束教程（tutorial.js:451，file:// 本地单机模式）</div>
+  <div id="out">运行中…</div>
+</div>
+<script>
+const f = document.getElementById('f');
+const out = document.getElementById('out');
+const lines = [];
+function say(s) { lines.push(s); out.textContent = lines.join('\n'); }
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+f.onload = () => setTimeout(() => run().catch((e) => say('异常：' + e.message)), 800);
+
+async function run() {
+  const w = f.contentWindow, d = f.contentDocument;
+  const title = () => (d.querySelector('#spc2-title') ? d.querySelector('#spc2-title').textContent : '(无)');
+  const visible = () => { const m = d.querySelector('#spc2-mask'); return !!(m && !m.hidden); };
+
+  say('online = ' + (typeof w.ONLINE === 'boolean' ? w.ONLINE : '?') + '（file:// 下应为 false → 教程走本地分支）');
+
+  // 1) 确保停在设置页（本地模式的家）
+  w.eval("try{ if (typeof showScreen==='function') showScreen('setup'); }catch(e){ document.title='ERR:'+e.message; }");
+  await sleep(400);
+
+  // 2) 点 tutorial.js 注入的真实「新手教程」按钮（在 #btn-start 前）
+  w.eval("var t=document.querySelector('.tut-btn'); if(t) t.click(); else document.title='NO_TUT_BTN';");
+  await sleep(900);
+  say('① 顶栏存在 #tut-bar = ' + (!!d.getElementById('tut-bar')) + '；退出按钮 #tut-exit = ' + (!!d.getElementById('tut-exit')));
+
+  // 3) 点「结束教程」→ 应弹自定义确认框
+  w.eval("var x=document.getElementById('tut-exit'); if(x) x.click();");
+  await sleep(400);
+  say('② 弹框标题 = 「' + title() + '」，可见 = ' + (visible() ? '是' : '否') + '，危险样式 = '
+      + (/spc2-danger/.test((d.querySelector('#spc2-ok') || {}).className || '') ? '是' : '否'));
+
+  // 4) 取消 → 教程应继续（顶栏仍在）
+  const ca = d.querySelector('#spc2-cancel'); if (ca) ca.click();
+  await sleep(300);
+  say('③ 取消后：弹框隐藏 = ' + (!visible()) + '；教程顶栏仍在 = ' + (!!d.getElementById('tut-bar')));
+
+  // 5) 再点一次并确认 → 教程应结束（顶栏消失 / 回到设置页）
+  w.eval("var x2=document.getElementById('tut-exit'); if(x2) x2.click();");
+  await sleep(400);
+  const ok = d.querySelector('#spc2-ok'); if (ok) ok.click();
+  await sleep(600);
+  say('④ 确认后：弹框隐藏 = ' + (!visible()) + '；顶栏已消失 = ' + (!d.getElementById('tut-bar'))
+      + '；当前屏 = ' + (d.querySelector('#screen-setup') && !d.querySelector('#screen-setup').hidden ? 'setup ✓' : '(非 setup)'));
+
+  // 6) 留下弹框供截图辨认场景
+  w.eval("var x3=document.getElementById('tut-exit'); if(x3) x3.click();");
+  await sleep(500);
+  say('⑤ 截图态：弹框标题 = 「' + title() + '」，可见 = ' + (visible() ? '是' : '否'));
+}
+</script>
+</body>
+</html>

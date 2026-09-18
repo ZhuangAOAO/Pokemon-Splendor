@@ -74,70 +74,162 @@
   </div>
 </div>
 
-<!-- ==================== 联机模式：加入界面（http:// 打开时） ==================== -->
-<div id="screen-join" hidden>
-  <div class="setup-box">
-    <div class="logo">
-      <span class="ball xl logo-ball" style="--bc:#e3350d;--band:#24303d"></span>
-      <h1>璀璨宝石 <span class="accent">·</span> 宝可梦</h1>
-    </div>
-    <div class="setup-panel join-panel">
-      <h2>加入游戏</h2>
-      <div class="join-as">
-        <label for="nickname-input" class="nick-label">游戏内昵称（默认是你的姓名）</label>
-        <input id="nickname-input" class="row-name join-name" maxlength="12">
+<!-- ==================== 联机模式：加入界面已并入大厅外壳（见下方 #lobby-sec-start 的 #join-card） ==================== -->
+
+<!-- ==================== 联机模式：游戏大厅（方案 A 外壳：顶栏标题 / 右侧顶部导航 / 窄屏左竖栏） ==================== -->
+<div id="screen-lobby" hidden>
+  <div class="shell">
+
+    <!-- 左侧竖向导航栏（照搬 demo/lobby-plan-a.html：标题在竖栏内） -->
+    <aside class="rail">
+      <div class="logo">
+        <span class="ball lg logo-ball" style="--bc:#e3350d;--band:#24303d"></span>
+        <h1>璀璨宝石 <span class="accent">·</span> 宝可梦</h1>
       </div>
-      <div class="target-row" id="room-visibility">
-        <span class="label">房间类型</span>
-        <label><input type="radio" name="visibility" value="private" checked> 私有（凭房间号加入）</label>
-        <label><input type="radio" name="visibility" value="public"> 公开（可被搜索）</label>
-      </div>
-      <input id="join-roomid" class="row-name join-name" maxlength="4" placeholder="房间号（留空 = 创建新房间）">
-      <div class="setup-actions">
-        <button id="btn-join" class="btn primary lg">进入游戏</button>
-      </div>
-      <div class="setup-actions">
-        <button id="btn-room-list" class="btn ghost lg">公开房间列表</button>
-        <button class="btn ghost lg js-rules">规则说明</button>
-      </div>
-      <div id="room-list-box" hidden></div>
-      <p class="footnote">创建房间 = 留空房间号；加入朋友房间 = 输入他告诉你的 4 位房间号</p>
-      <p class="footnote" id="user-links"><a href="#" id="link-password">修改密码</a> · <a href="#" id="link-leaderboard">排行榜</a> · <a href="/replay">对局回放</a></p>
-      <div id="password-box" hidden>
-        <input id="pw-old" type="password" class="row-name join-name" placeholder="原密码">
-        <input id="pw-new" type="password" class="row-name join-name" placeholder="新密码（至少 6 位）">
-        <input id="pw-new2" type="password" class="row-name join-name" placeholder="确认新密码">
-        <div class="setup-actions">
-          <button id="btn-password" class="btn primary">确认修改</button>
-          <button id="btn-password-cancel" class="btn ghost">取消</button>
+      <nav class="nav" id="lobby-nav" aria-label="一级导航"></nav>
+      <p class="foot" id="lobby-rail-foot">v3.4.2</p>
+    </aside>
+
+    <main class="stage">
+      <header class="topbar">
+        <h2 id="lobby-sec-title">开始对局</h2>
+        <div class="utils">
+          <button type="button" class="btn ghost sm" data-util="account">账号</button>
+          <button type="button" class="btn ghost sm" data-util="tutorial">教程</button>
+          <button type="button" class="btn ghost sm" data-util="rules">说明</button>
+          <button type="button" class="btn ghost sm" id="lobby-logs" hidden>记录</button>
+          <button type="button" class="btn ghost sm" id="lobby-sound" aria-pressed="true">音效：开</button>
         </div>
-      </div>
-      <p class="footnote" id="admin-links" hidden><a href="/admin">管理台</a> · <a href="/backdoor.html">后门注册</a></p>
-    </div>
+      </header>
+
+        <!-- ② 不阻断的横屏提示（大厅专用，点了可忽略） -->
+        <div class="landscape-tip" id="landscape-tip" hidden>
+          <span class="lt-ico">📱</span>
+          <span>手机横屏体验更好</span>
+          <button class="btn ghost sm" id="lt-close" aria-label="忽略提示" title="忽略提示">×</button>
+        </div>
+
+        <div class="content">
+          <!-- 区 1：开始对局 —— 未进房时是「加入卡」，进房后换成「房间卡」（同一套外壳，只换中间这张卡） -->
+          <section class="setup-panel sec on" id="lobby-sec-start">
+
+            <div id="join-card">
+              <h2>开始对局</h2>
+              <div class="join-as">
+                <label for="nickname-input" class="nick-label">游戏内昵称（默认是你的姓名）</label>
+                <input id="nickname-input" class="row-name join-name" maxlength="12">
+              </div>
+              <div class="target-row" id="room-visibility">
+                <span class="label">房间类型</span>
+                <label><input type="radio" name="visibility" value="private" checked> 私有（凭房间号加入）</label>
+                <label><input type="radio" name="visibility" value="public"> 公开（可被搜索）</label>
+              </div>
+              <input id="join-roomid" class="row-name join-name" maxlength="4" placeholder="房间号（留空 = 创建新房间）">
+              <div class="setup-actions">
+                <button id="btn-join" class="btn primary lg pk-anim-hover">进入游戏</button>
+                <button id="btn-room-list" class="btn secondary lg">公开房间列表</button>
+              </div>
+              <div id="room-list-box" hidden></div>
+              <p class="footnote" id="user-links" hidden><a href="#" id="link-password">修改密码</a> · <a href="/replay">对局回放</a></p>
+              <a href="#" id="link-leaderboard" hidden>训练家排行</a>
+              <div id="password-box" hidden>
+                <input id="pw-old" type="password" class="row-name join-name" placeholder="原密码">
+                <input id="pw-new" type="password" class="row-name join-name" placeholder="新密码（至少 6 位）">
+                <input id="pw-new2" type="password" class="row-name join-name" placeholder="确认新密码">
+                <div class="setup-actions">
+                  <button id="btn-password" class="btn primary pk-anim-hover">确认修改</button>
+                  <button id="btn-password-cancel" class="btn ghost">取消</button>
+                </div>
+              </div>
+              <p class="footnote" id="admin-links" hidden><a href="/admin">管理台</a> · <a href="/backdoor.html">后门注册</a></p>
+            </div>
+
+            <div id="room-card" hidden>
+            <div class="lobby-zone" id="lobby-zone-room">
+              <div id="lobby-room-info"></div>
+              <div id="lobby-target-ro" class="lobby-target-ro"></div>
+              <p class="footnote" id="lobby-hint"></p>
+            </div>
+
+            <div class="lobby-zone">
+              <div class="lobby-divider">座位（2~4 人）</div>
+              <div id="lobby-seats"></div>
+              <div id="lobby-add-ai-box" hidden>
+                <button id="btn-add-ai" class="btn secondary sm">添加电脑玩家</button>
+              </div>
+            </div>
+
+            <div id="lobby-host" hidden>
+              <div class="lobby-divider">房主设置</div>
+              <div class="target-row" id="lobby-target">
+                <span class="label">调整目标分数</span>
+              </div>
+            </div>
+
+            <div class="setup-actions lobby-actions">
+              <button id="btn-lobby-start" class="btn primary lg pk-anim-hover">开始游戏</button>
+              <button id="btn-lobby-leave" class="btn ghost lg">退出大厅</button>
+            </div>
+            </div><!-- /#room-card -->
+          </section>
+
+          <!-- 区 2：挑战阿尔宙斯（专用房 mode=challenge，对手固定阿尔宙斯级） -->
+          <section class="setup-panel sec" id="lobby-sec-champ" hidden>
+            <h2>挑战阿尔宙斯</h2>
+            <div class="chips" id="champ-size"></div>
+            <div class="setup-actions" style="margin-top:10px">
+              <button class="btn primary pk-anim-hover" id="champ-start">创建挑战房</button>
+            </div>
+          </section>
+
+          <!-- 区 3：训练家排行（入口） -->
+          <section class="setup-panel sec" id="lobby-sec-rank" hidden>
+            <h2>训练家排行</h2>
+            <button class="btn secondary" id="lobby-rank-open">打开训练家排行</button>
+          </section>
+
+          <!-- 区 4：对局回放（入口） -->
+          <section class="setup-panel sec" id="lobby-sec-replay" hidden>
+            <h2>对局回放</h2>
+            <button class="btn secondary" id="lobby-replay-open">打开记录</button>
+          </section>
+
+          <!-- 区 5：名人堂（④）：只收挑战局，按人数分栏，每条挂回放 -->
+          <section class="setup-panel sec" id="lobby-sec-honor" hidden>
+            <h2>名人堂</h2>
+            <div class="hall-bar">
+              <div class="chips" id="hall-scope">
+                <button type="button" class="chip on" data-scope="hall">殿堂（永久）</button>
+                <button type="button" class="chip" data-scope="season">本赛季</button>
+              </div>
+              <div class="chips" id="hall-size">
+                <button type="button" class="chip on" data-size="2">2 人局</button>
+                <button type="button" class="chip" data-size="3">3 人局</button>
+                <button type="button" class="chip" data-size="4">4 人局</button>
+              </div>
+              <div class="chips" id="hall-view">
+                <button type="button" class="chip on" data-view="card">卡片</button>
+                <button type="button" class="chip" data-view="row">紧凑</button>
+              </div>
+            </div>
+            <div id="hall-list"></div>
+          </section>
+        </div>
+      </main>
   </div>
+
 </div>
 
-<!-- ==================== 联机模式：游戏大厅 ==================== -->
-<div id="screen-lobby" hidden>
-  <div class="setup-box">
-    <div class="setup-panel lobby-panel">
-      <h2>游戏大厅</h2>
-      <div id="lobby-room-info"></div>
-      <div id="lobby-roster"></div>
-      <div id="lobby-host" hidden>
-        <div class="lobby-divider">房主控制区</div>
-        <div id="lobby-ais"></div>
-        <button id="btn-add-ai" class="btn secondary sm">添加电脑玩家</button>
-        <div class="target-row" id="lobby-target">
-          <span class="label">目标分数</span>
-        </div>
-      </div>
-      <div class="setup-actions">
-        <button id="btn-lobby-start" class="btn primary lg">开始游戏</button>
-        <button id="btn-lobby-leave" class="btn ghost lg">退出大厅</button>
-      </div>
-      <p class="footnote" id="lobby-hint"></p>
-    </div>
+<!-- 右上角收纳弹层（账号 / 教程 / 说明；照搬 demo 方案 A） -->
+<div class="pop" id="lobby-pop" hidden><div id="lobby-pop-body"></div></div>
+
+<!-- ⑤ 手机竖屏提示（不做 transform 强制旋转；iOS 限制如实标注） -->
+<div class="rotate-mask" id="rotate-mask" hidden>
+  <div class="rotate-card">
+    <div class="rotate-ico">📱</div>
+    <h3>请横屏游玩</h3>
+    <button class="btn primary pk-anim-hover" id="btn-rotate-go">全屏并横屏</button>
+    <p class="footnote" id="rotate-hint" hidden>此设备（如 iPhone / Safari）不支持全屏与自动横屏，请手动旋转设备。</p>
   </div>
 </div>
 
@@ -229,7 +321,7 @@
         <li>场上的卡牌被收服或预约后，自动从牌堆补充</li>
         <li>开局随机决定<b>先手</b>玩家（面板上有「先手」标记）；有人达到目标分后完成当前一轮，每名玩家行动次数相同</li>
         <li>电脑（简单）随机性更强；电脑（困难）会精打细算</li>
-        <li>电脑（冠军）由强化学习训练的策略决策（仅联机房间可选）</li>
+        <li>电脑（阿尔宙斯）的每一步棋，由阿尔宙斯自己决定。</li>
         <li>联机模式：断线的玩家轮到自己时 30 秒后自动跳过；任何玩家都可以发起「结束对局」投票，全体在线玩家同意即结束（离线者自动视为同意）；全员离线时对局自动结束</li>
       </ul>
     </div>
@@ -237,7 +329,7 @@
   </div>
 
   <div class="modal" id="modal-gameover" hidden>
-    <h2 id="go-title"></h2>
+    <h2 id="go-title" class="pk-anim-badge"></h2>
     <div id="go-result"></div>
     <div class="modal-actions">
       <button id="btn-again" class="btn primary lg">再来一局</button>
@@ -252,7 +344,7 @@
   </div>
 
   <div class="modal" id="modal-leaderboard" hidden>
-    <h2>排行榜</h2>
+    <h2>训练家排行</h2>
     <div id="lb-body"></div>
     <button class="btn primary" data-close>关闭</button>
   </div>
@@ -278,6 +370,7 @@
 <!-- 先加载数据配置，再加载游戏核心，最后是客户端 -->
 <script src="config.js"></script>
 <script src="game-core.js"></script>
+<script src="confirm-dialog.js"></script>
 <script src="client.js"></script>
 <script src="tutorial.js"></script>
 </body>

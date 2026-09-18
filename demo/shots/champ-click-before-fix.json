@@ -1,0 +1,201 @@
+{
+  "case": "bug-before-fix4",
+  "checkpoint": "final",
+  "ts": "2026-09-18T16:06:47.971Z",
+  "raw": {
+    "case": "bug-before-fix4",
+    "harness.说明": "let/const 顶层声明不挂 window，父页读不到 myToken/room/myCid → 一律用 DOM + 请求体取证",
+    "step0.href": "http://localhost:3000/index.html",
+    "step0.screenLogin.hidden(boot 后)": true,
+    "step0.screenLobby.hidden(boot 后)": false,
+    "step0.登录表单是否出现": false,
+    "step0.screenLobby.hidden(登录后)": false,
+    "step0.nickname-input.value": "ZYH",
+    "step0.navBtns": [
+      "▶开始对局",
+      "★挑战阿尔宙斯",
+      "≡训练家排行",
+      "⟲对局回放",
+      "♛名人堂"
+    ],
+    "step0.lobby-sec-start.hidden": false,
+    "1.点击的按钮文字": "★挑战阿尔宙斯",
+    "1.lobby-sec-champ.hidden": false,
+    "1.lobby-sec-start.hidden": true,
+    "1.lobby-sec-rank.hidden": true,
+    "1.lobby-sec-title": "挑战阿尔宙斯",
+    "1.navBtn.on": [
+      "champ"
+    ],
+    "1.champ-size.chips": [
+      "2 人局[on]",
+      "3 人局",
+      "4 人局"
+    ],
+    "1.champ-size.dataset.size(未点人数档时的原始值)": "undefined",
+    "1.champ-start.text": "创建挑战房",
+    "2.sessionStorage.spChallenge(点击前)": null,
+    "2.sessionStorage.spChallenge(点击后立刻)": "3",
+    "2.reload 已提交(Document 换掉)": true,
+    "2.load#2.href": "http://localhost:3000/index.html",
+    "3.load#2.sessionStorage.spChallenge(还在吗)": "3",
+    "3.load#2.join 调用": [],
+    "3.load#2.room-card.hidden(有房=false)": true,
+    "3.load#2.join-card.hidden(有房=true)": false,
+    "3.load#2.nickname-input.value": "ZYH",
+    "3.load#2.toast.hidden": true,
+    "3.load#2.toast.text": "",
+    "3.load#2.座位(服务端下发)": [],
+    "4.重载后是否已进房": false,
+    "4.进入游戏前 lobby-sec-start.hidden": false,
+    "4.点后 join 调用": [
+      {
+        "load": "commit1",
+        "body": {
+          "type": "join",
+          "token": "<token len=36>",
+          "isPublic": false,
+          "mode": {
+            "isTrusted": false
+          }
+        },
+        "rawBodyHasModeKey": true,
+        "rawBodyHasChallenge": false,
+        "hasSize": false,
+        "respOk": true,
+        "roomId": "2014"
+      }
+    ],
+    "4.点后 room-card.hidden": false,
+    "4.点后 座位(服务端下发)": [
+      {
+        "cls": "self",
+        "tag": null,
+        "text": "1ZYH（房主）（你）",
+        "aiInput": null
+      },
+      {
+        "cls": "empty",
+        "tag": null,
+        "text": "2空位",
+        "aiInput": null
+      },
+      {
+        "cls": "empty",
+        "tag": null,
+        "text": "3空位",
+        "aiInput": null
+      },
+      {
+        "cls": "empty",
+        "tag": null,
+        "text": "4空位",
+        "aiInput": null
+      }
+    ],
+    "5.API直连.有 token": true,
+    "5.API直连.join resp": {
+      "ok": true,
+      "roomId": "8830",
+      "cidLen": 36
+    },
+    "5.API直连.SSE 首帧 room(mode/ais)": {
+      "mode": "challenge",
+      "ais": [
+        "小智/champion",
+        "小霞/champion"
+      ],
+      "humans": [
+        "ZYH"
+      ]
+    },
+    "判定.join 调用总数": 1,
+    "判定.是否有 mode:\"challenge\" 的 join": false,
+    "判定.是否有带 size 的 join": false,
+    "判定.重载后自动进房(boot join)": false,
+    "判定.座位里含「阿尔宙斯」的标签": [],
+    "判定.座位里含「挑战房 · 固定阿尔宙斯级」": false
+  },
+  "rec": [
+    {
+      "load": "commit1",
+      "via": "fetch",
+      "url": "/api",
+      "body": "{\"type\":\"whoami\",\"token\":\"<redacted>\"}",
+      "res": {
+        "ok": true,
+        "name": "ZYH",
+        "role": "admin",
+        "nickname": "ZYH"
+      }
+    },
+    {
+      "load": "commit1",
+      "via": "fetch",
+      "url": "更新日志.json",
+      "body": null,
+      "res": {
+        "3.4.1": [
+          "修复：挑战阿尔宙斯标题上误留的「占位」标记已摘除；顺带清理两处过时注释"
+        ],
+        "3.4.0": [
+          "新增「挑战阿尔宙斯」：大厅一级入口 → 专用房间，和阿尔宙斯正面对战（普通对局仍是 简单 / 困难）",
+          "新增「名人堂」：只收录挑战局，按人数分栏、按模型版本分季，每条都能点开回放复盘",
+          "命名统一：难度 → 训练家等级、排行榜 → 训练家排行、光荣榜 → 名人堂",
+          "确认弹窗换成自带样式：退出房间 / 移出玩家 / 结束投票等不再弹浏览器原生框",
+          "界面瘦身：删去页面上的解释性小字；按钮扫光、切屏与获胜动画上线"
+        ],
+        "3.3.0": [
+          "挑战阿尔宙斯独立成模式：大厅一级入口 → 专用房间，对手固定阿尔宙斯级；普通对局不再提供阿尔宙斯级",
+          "大厅改版：标题独立一条、宽屏顶部导航 / 窄屏左竖栏；座位制 + 房主/非房主两套视图",
+          "名人堂上线：只收挑战局，按人数分栏、按模型版本分季，每条可点开回放",
+          "手机竖屏进对局提示横屏（一键「全屏并横屏」）；大厅加不阻断提示",
+          "挑战回放对全站登录用户开放；普通局回放保持「仅参与者」"
+        ],
+        "3.2.2": [
+          "市场卡牌动画升级：被收服/预约的卡「掀角」离场，新补的卡入场；开启系统「减弱动态效果」时自动降级",
+          "新增版本更新弹窗：发版后进入游戏即可看到本次改动，每台设备只弹一次"
+        ]
+      }
+    },
+    {
+      "load": "load2",
+      "via": "postApi",
+      "obj": {
+        "type": "join",
+        "token": "<token len=36>",
+        "isPublic": false,
+        "mode": {
+          "isTrusted": false
+        }
+      },
+      "hasMode": true
+    },
+    {
+      "load": "commit1",
+      "via": "fetch",
+      "url": "/api",
+      "body": "{\"type\":\"join\",\"token\":\"<redacted>\",\"isPublic\":false,\"mode\":{\"isTrusted\":false}}",
+      "res": {
+        "ok": true,
+        "cid": "0cfe45e7-d5a6-4c03-b629-4fa063fd94e0",
+        "roomId": "2014"
+      }
+    }
+  ],
+  "log": [
+    "[16:06:37.306] IFRAME LOAD #1  href=http://localhost:3000/index.html  readyState=complete",
+    "[16:06:37.306] PROBE(fetch) armed: load1",
+    "[16:06:37.306] PROBE(postApi) armed: load1",
+    "[16:06:40.492] TIMEOUT waiting: update modal",
+    "[16:06:40.493] 步骤1：点导航「挑战阿尔宙斯」（dataset.sec=champ）",
+    "[16:06:40.699] REPORT sent: after-step1-nav",
+    "[16:06:40.699] 步骤2：点 #champ-start（真·点击）",
+    "[16:06:40.719] PROBE(fetch) armed: commit1",
+    "[16:06:40.738] IFRAME LOAD #2  href=http://localhost:3000/index.html  readyState=complete",
+    "[16:06:40.738] PROBE(postApi) armed: load2",
+    "[16:06:46.299] TIMEOUT waiting: update modal",
+    "[16:06:46.305] REPORT sent: after-reload",
+    "[16:06:46.456] 步骤3：点 #btn-join（真·点击）"
+  ]
+}

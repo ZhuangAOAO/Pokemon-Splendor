@@ -1,0 +1,127 @@
+{
+  "case": "normal-path",
+  "checkpoint": "final",
+  "ts": "2026-09-18T16:09:42.917Z",
+  "raw": {
+    "case": "normal-path",
+    "harness.说明": "let/const 顶层声明不挂 window，父页读不到 myToken/room/myCid → 一律用 DOM + 请求体取证",
+    "step0.href": "http://localhost:3000/index.html",
+    "step0.screenLogin.hidden(boot 后)": true,
+    "step0.screenLobby.hidden(boot 后)": false,
+    "step0.登录表单是否出现": false,
+    "step0.screenLobby.hidden(登录后)": false,
+    "step0.nickname-input.value": "ZYH",
+    "step0.navBtns": [
+      "▶开始对局",
+      "★挑战阿尔宙斯",
+      "≡训练家排行",
+      "⟲对局回放",
+      "♛名人堂"
+    ],
+    "step0.lobby-sec-start.hidden": false,
+    "6.nopath 模式": "跳过导航「挑战阿尔宙斯」/「创建挑战房」，直接点「进入游戏」",
+    "6.sessionStorage.spChallenge": null,
+    "4.重载后是否已进房": false,
+    "4.进入游戏前 lobby-sec-start.hidden": false,
+    "4.点后 join 调用": [
+      {
+        "load": "load1",
+        "body": {
+          "type": "join",
+          "token": "<token len=36>",
+          "isPublic": false,
+          "mode": {
+            "isTrusted": false
+          }
+        },
+        "rawBodyHasModeKey": true,
+        "rawBodyHasChallenge": false,
+        "hasSize": false,
+        "respOk": true,
+        "roomId": "7740"
+      }
+    ],
+    "4.点后 room-card.hidden": false,
+    "4.点后 座位(服务端下发)": [
+      {
+        "cls": "self",
+        "tag": null,
+        "text": "1ZYH（房主）（你）",
+        "aiInput": null
+      },
+      {
+        "cls": "empty",
+        "tag": null,
+        "text": "2空位",
+        "aiInput": null
+      },
+      {
+        "cls": "empty",
+        "tag": null,
+        "text": "3空位",
+        "aiInput": null
+      },
+      {
+        "cls": "empty",
+        "tag": null,
+        "text": "4空位",
+        "aiInput": null
+      }
+    ],
+    "5.API直连.有 token": true,
+    "5.API直连.join resp": {
+      "ok": true,
+      "roomId": "4416",
+      "cidLen": 36
+    },
+    "5.API直连.SSE 首帧 room(mode/ais)": {
+      "mode": "challenge",
+      "ais": [
+        "小智/champion",
+        "小霞/champion"
+      ],
+      "humans": [
+        "ZYH"
+      ]
+    },
+    "判定.join 调用总数": 1,
+    "判定.是否有 mode:\"challenge\" 的 join": false,
+    "判定.是否有带 size 的 join": false,
+    "判定.重载后自动进房": false,
+    "判定.座位里含「阿尔宙斯」的标签": [],
+    "判定.座位里含「挑战房 · 固定阿尔宙斯级」": false
+  },
+  "rec": [
+    {
+      "load": "load1",
+      "via": "postApi",
+      "obj": {
+        "type": "join",
+        "token": "<token len=36>",
+        "isPublic": false,
+        "mode": {
+          "isTrusted": false
+        }
+      },
+      "hasMode": true
+    },
+    {
+      "load": "load1",
+      "via": "fetch",
+      "url": "/api",
+      "body": "{\"type\":\"join\",\"token\":\"<redacted>\",\"isPublic\":false,\"mode\":{\"isTrusted\":false}}",
+      "res": {
+        "ok": true,
+        "cid": "9b426d49-b400-49fd-ae53-22f77bcfbda2",
+        "roomId": "7740"
+      }
+    }
+  ],
+  "log": [
+    "[16:09:38.033] IFRAME LOAD #1  href=http://localhost:3000/index.html  readyState=complete",
+    "[16:09:38.033] PROBE(fetch) armed: load1",
+    "[16:09:38.033] PROBE(postApi) armed: load1",
+    "[16:09:41.242] TIMEOUT waiting: update modal",
+    "[16:09:41.397] 步骤3：点 #btn-join（真·点击）"
+  ]
+}

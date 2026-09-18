@@ -114,7 +114,7 @@
       <button class="tab active" data-i="0">待审核<span class="cnt" id="cnt-0"></span></button>
       <button class="tab" data-i="1">已通过<span class="cnt" id="cnt-1"></span></button>
       <button class="tab" data-i="2">已拒绝<span class="cnt" id="cnt-2"></span></button>
-      <button class="tab" data-i="3">排行榜<span class="cnt" id="cnt-3"></span></button>
+      <button class="tab" data-i="3">训练家排行<span class="cnt" id="cnt-3"></span></button>
       <button class="tab" data-i="4">日志<span class="cnt" id="cnt-4"></span></button>
     </div>
     <div class="panels-viewport">
@@ -141,6 +141,7 @@
   </div>
 </div>
 
+<script src="confirm-dialog.js"></script>
 <script>
 'use strict';
 const $ = (s) => document.querySelector(s);
@@ -245,7 +246,7 @@ async function refresh() {
   refreshLeaderboard();
   refreshLogs();
 }
-// 排行榜：胜场 → 胜率 → 场次排序（服务器端已排好），前三名金银铜色
+// 训练家排行：胜场 → 胜率 → 场次排序（服务器端已排好），前三名金银铜色
 async function refreshLeaderboard() {
   const j = await api({ type: 'leaderboard', token });
   const list = (j && j.ok && j.list) || [];
@@ -282,7 +283,7 @@ $('#ad-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#ad
     const b = e.target.closest('button');
     if (!b || !b.dataset.name) return;
     const actText = b.dataset.act === 'approve' ? '通过' : '拒绝';
-    if (!confirm('确定把 ' + b.dataset.name + ' 的状态改为「' + actText + '」吗？')) return;
+    if (!await spConfirm({ title: '审核用户', message: '确定把 ' + b.dataset.name + ' 的状态改为「' + actText + '」吗？' })) return;
     const j = await api({ type: 'adminReview', token, name: b.dataset.name, action: b.dataset.act });
     if (j.ok) toast('已处理：' + b.dataset.name);
     else toast(j.msg || '操作失败');
@@ -304,7 +305,7 @@ $('#new-admin-ok').addEventListener('click', async () => {
   const password = $('#new-admin-pass').value;
   if (name.length < 2 || name.length > 12) { toast('用户名需 2~12 个字符'); return; }
   if (password.length < 6) { toast('密码至少 6 位'); return; }
-  if (!confirm('确定创建管理员「' + name + '」吗？')) return;
+  if (!await spConfirm({ title: '创建管理员', message: '确定创建管理员「' + name + '」吗？', confirmText: '创建' })) return;
   const j = await api({ type: 'createAdmin', token, name, password });
   toast(j.msg || '创建失败');
   if (j.ok) { $('#ad-create-box').hidden = true; refresh(); }

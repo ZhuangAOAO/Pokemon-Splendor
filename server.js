@@ -108,11 +108,12 @@ function newRoomId() {
   do { id = String(Math.floor(1000 + Math.random() * 9000)); } while (rooms.has(id));
   return id;
 }
-function createRoom(isPublic) {
+function createRoom(isPublic, mode) {
   const session = core.createSession();
   const room = {
     id: newRoomId(),
     isPublic: !!isPublic,
+    mode: mode === 'challenge' ? 'challenge' : 'normal', // 挑战房与普通房在数据层可区分（回放/光荣榜靠它筛）
     phase: 'lobby',   // lobby | game
     ais: [],          // 电脑玩家 [{name, level}]
     target: RULES.defaultTarget,
@@ -186,6 +187,7 @@ function broadcastRoom(room) {
       room: {
         id: room.id,
         isPublic: room.isPublic,
+        mode: room.mode,
         phase: room.phase,
         target: room.target,
         championReady: aiPolicy.isReady(), // 冠军 AI 权重是否就绪（前端据此置灰冠军选项）
@@ -298,6 +300,15 @@ const AI_VER = (() => {
       .update(fs.readFileSync(path.join(__dirname, 'game-core.js'))).digest('hex').slice(0, 8);
   } catch (e) { return ''; }
 })();
+// 电脑玩家默认名（挑战房按人数自动补位用）
+const AI_NAMES = ['小智', '小霞', '小刚', '武藏'];
+// 人类可读的权重档名（如 ppo-agent-p3-LEAGUE4-p3-best.json）——半年后看台账，sha256 认不出来，档名认得出来
+function aiWeightsNameFor(total) {
+  try {
+    const m = aiPolicy.metaOf ? aiPolicy.metaOf(total) : null;
+    return (m && m.file) || '';
+  } catch (e) { return ''; }
+}
 
 async function initDb() {
   // 先连服务器（不指定库）确保数据库存在；只创建自己的库，不碰其他数据
@@ -347,6 +358,11 @@ async function initDb() {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   // 迁移：给已有库补 ai_ver（这一局是哪版 AI）。1060 = 列已存在，忽略即可
   try { await pool.query("ALTER TABLE replays ADD COLUMN ai_ver VARCHAR(16) NOT NULL DEFAULT ''"); }
+  catch (e) { if (e.errno !== 1060) throw e; }
+  // 迁移：mode（挑战局/普通局在回放列表里可区分）与 ai_name（可读档名）
+  try { await pool.query("ALTER TABLE replays ADD COLUMN mode VARCHAR(12) NOT NULL DEFAULT 'normal'"); }
+  catch (e) { if (e.errno !== 1060) throw e; }
+  try { await pool.query("ALTER TABLE replays ADD COLUMN ai_name VARCHAR(48) NOT NULL DEFAULT ''"); }
   catch (e) { if (e.errno !== 1060) throw e; }
   logEvent(null, '数据库', `MySQL 连接成功（数据库 ${dbConfig.database}）`);
 }
@@ -431,6 +447,42 @@ async function handleLeaderboard(body) {
 function safeJson(text, fallback) {
   try { return JSON.parse(text || ''); } catch (e) { return fallback; }
 }
+// ④ 光荣榜：只收挑战局（mode=challenge）；按人数分栏 / 按模型版本分季；每条挂回放（复用 ③ 已落库的字段）
+async function handleHallOfFame(body) {
+  const u = await authUser(body.token);
+  if (!u) return { ok: false, msg: '请先登录' };
+  const [rows] = await pool.query(
+    "SELECT id, room_id, target, players, final, created_at, ai_ver, ai_name FROM replays " +
+    "WHERE mode = 'challenge' ORDER BY id DESC LIMIT 200");
+  const entries = rows.map((r) => {
+    const players = safeJson(r.players, []);
+    const fin = safeJson(r.final, null);
+    const ranked = fin && Array.isArray(fin.players) ? rankEndgame(fin.players) : null;
+    const humans = (players || []).filter((p) => p && p.type === 'human');
+    return {
+      id: r.id,
+      roomId: r.room_id,
+      target: r.target,
+      createdAt: r.created_at,
+      size: (players || []).length,
+      aiName: r.ai_name || '',
+      aiVer: r.ai_ver || '',
+      winners: ranked ? ranked.winners : [],
+      humans: humans.map((p) => ({ name: p.name, account: p.account || '' })),
+      // 回放权限：挑战局对全站登录用户开放（canView），普通局仍沿用参与者/管理员
+      mine: humans.some((p) => p.account && p.account === u.name) || u.role === 'admin',
+      canView: true,
+    };
+  });
+  // 赛季：按模型版本（ai_ver + 档名）分季 —— 换一版 AI 就天然开新赛季，不用手工清榜
+  const seasonMap = new Map();
+  entries.forEach((e) => {
+    const key = (e.aiVer || 'unknown') + '|' + (e.aiName || '');
+    if (!seasonMap.has(key)) seasonMap.set(key, { key, aiVer: e.aiVer, aiName: e.aiName, count: 0, latest: e.createdAt });
+    seasonMap.get(key).count++;
+  });
+  return { ok: true, admin: u.role === 'admin', entries, seasons: [...seasonMap.values()] };
+}
 // 回放列表：玩家只看自己参与的对局，管理员看全部（登录后可见）
 async function handleReplayList(body) {
   const u = await authUser(body.token);
@@ -439,12 +491,12 @@ async function handleReplayList(body) {
   let rows = [];
   if (isAdmin) {
     [rows] = await pool.query(
-      'SELECT id, room_id, target, players, actions, final, created_at FROM replays ORDER BY id DESC LIMIT 50');
+      'SELECT id, room_id, target, players, actions, final, created_at, mode, ai_name FROM replays ORDER BY id DESC LIMIT 50');
   } else if (u.name) {
     // players 是 JSON 数组（每人带 account），用 JSON_CONTAINS 挑出这局里有当前账号的。
     // 注意：电脑座位的 account 是空串，所以绝不能用空账号去查，否则会把电脑局全捞出来。
     [rows] = await pool.query(
-      'SELECT id, room_id, target, players, actions, final, created_at FROM replays ' +
+      'SELECT id, room_id, target, players, actions, final, created_at, mode, ai_name FROM replays ' +
       'WHERE JSON_CONTAINS(CAST(players AS JSON), ?) ORDER BY id DESC LIMIT 50',
       [JSON.stringify({ account: u.name })]);
   }
@@ -461,6 +513,8 @@ async function handleReplayList(body) {
         target: r.target,
         steps: safeJson(r.actions, []).length,
         createdAt: r.created_at,
+        mode: r.mode === 'challenge' ? 'challenge' : 'normal',
+        aiName: r.ai_name || '',
         players: withPoints(safeJson(r.players, []), fin),
         winners: ranked ? ranked.winners : [],
       };
@@ -479,11 +533,16 @@ async function handleReplay(body) {
   // 权限：管理员可看全部，普通玩家只能看自己参与的对局（别局按 id 猜也打不开）
   const players = safeJson(r.players, []);
   const mine = players.some((p) => p && p.account && p.account === u.name);
-  if (!mine && u.role !== 'admin') return { ok: false, msg: '只能查看自己参与的对局' };
+  // 挑战局回放对全站登录用户开放；普通局回放仍只给参与者（濠哥 2026-09-18 拍板，不一刀切）
+  const openToAll = (r.mode === 'challenge');
+  if (!mine && !openToAll && u.role !== 'admin') return { ok: false, msg: '只能查看自己参与的对局' };
   return {
     ok: true,
     replay: {
       id: r.id, roomId: r.room_id, target: r.target, createdAt: r.created_at,
+      mode: r.mode === 'challenge' ? 'challenge' : 'normal',
+      aiName: r.ai_name || '',
+      aiVer: r.ai_ver || '',
       players,
       initial: safeJson(r.initial, null),
       actions: safeJson(r.actions, []),
@@ -716,7 +775,12 @@ async function handleJoin(body) {
   // 没有房间号：创建新房间（isPublic 由客户端指定）
   if (!room) {
     if (body.roomId) return { ok: false, msg: '房间不存在，请检查房间号' };
-    room = createRoom(body.isPublic === true);
+    room = createRoom(body.isPublic === true, body.mode);
+    // 挑战房：对手固定为冠军级，按人数档自动补位（size-1 个电脑）
+    if (room.mode === 'challenge') {
+      const size = [2, 3, 4].includes(+body.size) ? +body.size : 3;
+      room.ais = Array.from({ length: size - 1 }, (_, i) => ({ name: AI_NAMES[i % AI_NAMES.length], level: 'champion' }));
+    }
   }
   if (room.phase === 'lobby') {
     if (connectedHumans(room).length >= NET.maxPlayers) return { ok: false, msg: '房间已满（最多 ' + NET.maxPlayers + ' 人）' };
@@ -748,9 +812,16 @@ function startGame(room, humans) {
   const total = humans.length + room.ais.length;
   if (total < 2) return { ok: false, msg: '至少需要 2 名玩家' };
   if (total > 4) return { ok: false, msg: '最多 4 名玩家' };
+  // 兼容旧房间/旧存档：普通房里可能残留 champion 座位（现已不提供）→ 优雅降级，绝不报错
+  (room.ais || []).forEach((a) => {
+    if (a.level === 'champion' && room.mode !== 'challenge') {
+      a.level = 'hard';
+      logEvent(room, '大厅', `检测到普通房间残留的阿尔宙斯座位「${a.name}」，已降级为「困难」`);
+    }
+  });
   if (room.ais.some((a) => a.level === 'champion') && !aiPolicy.isReadyFor(total)) {
-    logEvent(room, '对局', `开局被拦：冠军 AI 未就绪（${total} 人局：${aiPolicy.errorMessage(total)}）`);
-    return { ok: false, msg: `冠军 AI 未就绪（${total} 人局权重加载失败），请先把该座位换成简单/困难电脑` };
+    logEvent(room, '对局', `开局被拦：阿尔宙斯 AI 未就绪（${total} 人局：${aiPolicy.errorMessage(total)}）`);
+    return { ok: false, msg: `阿尔宙斯 AI 未就绪（${total} 人局权重加载失败），请先把该座位换成简单/困难电脑` };
   }
   humans.forEach((h, i) => { h.seat = i; });
   const cfg = {
@@ -802,9 +873,11 @@ async function saveReplay(room) {
   if (room.tutorial) return;
   try {
     await pool.query(
-      'INSERT INTO replays (room_id, target, players, initial, actions, final, created_at, ai_ver) VALUES (?,?,?,?,?,?,?,?)',
+      'INSERT INTO replays (room_id, target, players, initial, actions, final, created_at, ai_ver, mode, ai_name) VALUES (?,?,?,?,?,?,?,?,?,?)',
       [rec.roomId, rec.target, JSON.stringify(rec.players), rec.initial,
-        JSON.stringify(rec.actions), JSON.stringify(room.session.S), rec.startedAt, AI_VER]);
+        JSON.stringify(rec.actions), JSON.stringify(room.session.S), rec.startedAt, AI_VER,
+        room.mode === 'challenge' ? 'challenge' : 'normal',
+        (room.ais || []).some((a) => a.level === 'champion') ? aiWeightsNameFor((rec.players || []).length) : '']);
     logEvent(room, '回放', `对局回放已保存（${rec.actions.length} 步）`);
   } catch (e) { logEvent(room, '回放', '回放保存失败：' + e.message); }
 }
@@ -832,14 +905,21 @@ async function handleTutorial(body) {
 function handleSetAIs(conn, ais) {
   const room = conn.room;
   if (!conn.isHost || room.phase !== 'lobby') return { ok: false, msg: '只有房主在大厅时可以设置' };
-  const list = (Array.isArray(ais) ? ais : []).slice(0, 4).map((a) => ({
-    name: String((a && a.name) || '电脑').trim().slice(0, 8) || '电脑',
-    level: ['hard', 'champion'].includes(a && a.level) ? a.level : 'easy',
-  }));
+  const challenge = room.mode === 'challenge';
+  let downgraded = 0;
+  const list = (Array.isArray(ais) ? ais : []).slice(0, 4).map((a) => {
+    const name = String((a && a.name) || '电脑').trim().slice(0, 8) || '电脑';
+    // 挑战房：一律冠军级（房主也改不了难度，改难度请求直接忽略）
+    if (challenge) return { name, level: 'champion' };
+    // 普通房：服务端兜底拒冠军级（伪造请求也无效）→ 降级为困难，不报错
+    if (a && a.level === 'champion') { downgraded++; return { name, level: 'hard' }; }
+    return { name, level: ['hard', 'easy'].includes(a && a.level) ? a.level : 'easy' };
+  });
   if (connectedHumans(room).length + list.length > 4) return { ok: false, msg: '总共最多 4 名玩家' };
   room.ais = list;
+  if (downgraded) logEvent(room, '大厅', `普通对局不接受阿尔宙斯级（${downgraded} 个座位已降级为「困难」）`);
   broadcastRoom(room);
-  return { ok: true };
+  return { ok: true, msg: downgraded ? '普通对局不接受阿尔宙斯级，已降级为「困难」' : undefined };
 }
 function handleSetTarget(conn, target) {
   const room = conn.room;
@@ -1081,6 +1161,7 @@ function handleApi(req, res) {
     else if (obj.type === 'changePassword') result = await handleChangePassword(obj);
     else if (obj.type === 'leaderboard') result = await handleLeaderboard(obj);
     else if (obj.type === 'replayList') result = await handleReplayList(obj);
+  else if (obj.type === 'hallOfFame') result = await handleHallOfFame(obj);
     else if (obj.type === 'replay') result = await handleReplay(obj);
     else if (obj.type === 'logout') result = handleLogout(obj);
     else if (obj.type === 'adminList') result = await handleAdminList(obj);
@@ -1137,7 +1218,8 @@ const handler = (req, res) => {
     const ext = path.extname(full).toLowerCase();
     const type = MIME[ext] || 'application/octet-stream';
     // 缓存：图片 7 天（几乎不变），文本类 1 分钟（更新代码后玩家几乎立刻拿到新版，不用手动强刷）
-    const cache = ext === '.jpg' || ext === '.png' ? 'public, max-age=604800' : 'public, max-age=60';
+    // html/js/css/json 一律 no-cache：避免「改了代码但浏览器还拿旧版」（图片仍长期缓存）
+  const cache = (ext === '.jpg' || ext === '.png') ? 'public, max-age=604800' : 'no-cache';
     const accept = String(req.headers['accept-encoding'] || '');
     if (GZIP_EXT.includes(ext) && accept.includes('gzip') && data.length > 1024) {
       res.writeHead(200, { 'Content-Type': type, 'Content-Encoding': 'gzip', 'Cache-Control': cache });

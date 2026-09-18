@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>宝可梦元素三方向预览 v2（说明移到画面外）· 测试用，可随时删</title>
+<style>
+  html,body{ margin:0; font:13px/1.6 system-ui,"Microsoft YaHei",sans-serif; background:#0f1216; color:#e8edf3; }
+  .row{ display:flex; gap:10px; align-items:flex-start; padding:10px 12px 0; }
+  iframe{ border:0; background:#fff; width:900px; height:520px; display:block; }
+  iframe.small{ width:640px; height:372px; }
+  .lab{ color:#ffd24a; font-weight:800; margin:6px 0 2px; }
+  #legend{ padding:10px 14px 18px; }
+  #legend .h{ color:#ffd24a; font-weight:800; }
+  #out{ white-space:pre-wrap; font-family:Consolas,monospace; font-size:12px; color:#cfe3ff; }
+  .pk-strip{ display:flex; gap:14px; align-items:flex-end; margin:8px 0; }
+  .cell{ text-align:center; font-size:11px; color:#9fb3c8; }
+  .stage{ width:74px; height:74px; display:grid; place-items:center; background:#1b2129; border:1px solid #2c3641; border-radius:14px; overflow:hidden; position:relative; }
+  .sw{ display:flex; gap:8px; flex-wrap:wrap; margin:6px 0; }
+  .chip{ display:flex; align-items:center; gap:6px; padding:5px 11px; border-radius:999px; border:1px solid #2c3641; background:#1b2129; font-weight:800; font-size:12px; color:#cfe3ff; }
+  .chip i{ width:11px; height:11px; border-radius:50%; display:inline-block; }
+</style>
+</head>
+<body>
+<div class="row" id="row">
+  <div><div class="lab" id="lab1">—</div><iframe id="f" src="/index.html?card=lg"></iframe></div>
+  <div id="second" style="display:none"><div class="lab" id="lab2">—</div><iframe id="f2" src="/index.html?card=lg"></iframe></div>
+</div>
+<div id="legend"><div class="h" id="hd">方向：—</div><div id="out">运行中…</div></div>
+<script>
+const q = new URLSearchParams(location.search);
+const dir = (q.get('dir') || 'A').toUpperCase();
+const pair = q.get('pair') === '1';            // A 与 A2 并排对比
+const out = document.getElementById('out');
+const lines = []; const say = (s) => { lines.push(s); const el = document.getElementById('out'); if (el) el.textContent = lines.join('\n'); };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const BALL = '.pok-ball{ width:var(--s,34px); height:var(--s,34px); border-radius:50%; position:relative;'
+  + ' background:linear-gradient(180deg,#ef4a26 0 46%,#22303d 46% 54%,#f5f7fa 54% 100%);'
+  + ' box-shadow:inset 0 0 0 2px #16202b, 0 6px 14px rgba(16,24,36,.28); }'
+  + '.pok-ball::after{ content:""; position:absolute; left:50%; top:50%; width:34%; height:34%;'
+  + ' transform:translate(-50%,-50%); border-radius:50%; background:#f5f7fa; box-shadow:inset 0 0 0 3px #22303d; }';
+
+// ---------------- 各方向：只需"页内元素"（说明一律在画面外） ----------------
+const DIRS = {
+  A: {
+    name: 'A · 氛围层（v3：无桌垫纹理；远景球=与近景同一套 .ball，缩小+模糊，铺满舞台）',
+    css: BALL
+      // 桌垫纹理已按要求整块移除（v2 的 A2 一并作废）
+      + '@keyframes pkFloat{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-9px) } }'
+      + '.pk-far{ position:absolute; z-index:0; pointer-events:none; filter:blur(2.5px); opacity:.32;'
+      + ' animation:pkFloat 9s ease-in-out infinite; }'
+      // 复用同一套自绘球（只缩小，不做简化版）：克隆时保留内部 .ball 原样
+      + '.pk-far .ball{ transform:scale(.72); }'
+      + '@media (prefers-reduced-motion: reduce){ .pk-far{ animation:none !important } }'
+      // 视觉修正：rail 不透明并置顶 → 即使有球几何上相交，也**不会出现在导航栏里**
+      + '#screen-lobby .rail{ position:relative; z-index:3; background:var(--paper,#ffffff); }'
+      + '#screen-lobby .rail .logo .logo-ball{ box-shadow:0 0 0 4px rgba(227,53,13,.10), 0 8px 20px rgba(16,24,36,.18); }',
+    dom: (d) => {
+      // 选择器回退链：大厅内容区的容器名可能随版本变，取到哪个就报哪个
+      const stage = d.querySelector('#screen-lobby .stage')
+        || d.querySelector('#screen-lobby .content')
+        || d.getElementById('screen-lobby');
+      if (!stage) return ['未找到容器（.stage/.content/#screen-lobby 都没命中）'];
+      const used = stage.className ? '.' + String(stage.className).split(' ')[0] : '#' + stage.id;
+      // 从页面上现存的一颗近景球（buildDeco 生成）克隆：保证是**同一套球**，不是另做的简化版
+      let src = d.querySelector('#screen-lobby .deco');
+      if (!src) {
+        const b = d.createElement('div');
+        b.className = 'deco';
+        b.innerHTML = '<div class="ball red"></div>';
+        src = b;
+      }
+      // 位置铺在**整个舞台区**（卡片周围/贴边/被卡片部分遮住都行）——
+      // .stage 本身不含左侧 rail，所以天然不会压到导航按钮
+      const spots = [[ '8%', '10%' ], [ '74%', '20%' ], [ '46%', '76%' ]];
+      spots.forEach((p, i) => {
+        const c = src.cloneNode(true);
+        c.className = 'pk-far';                    // 去掉 .deco，避开它自带的 floaty
+        c.style.left = p[0]; c.style.top = p[1];
+        c.style.animationDelay = (-i * 2.6) + 's';
+        stage.appendChild(c);
+      });
+      // ---- DOM 实测（不靠眼睛）：rail 矩形 vs 每颗球矩形，逐个判相交 ----
+      const rail = d.querySelector('#screen-lobby .rail');
+      const rr = rail ? rail.getBoundingClientRect() : null;
+      const all = Array.prototype.slice.call(d.querySelectorAll('#screen-lobby .deco, #screen-lobby .pk-far'));
+      let hits = 0, newHits = 0;
+      const rows = all.map((el, i) => {
+        const r = el.getBoundingClientRect();
+        const isNew = el.classList.contains('pk-far');
+        const hit = rr ? !(r.right < rr.left || r.left > rr.right || r.bottom < rr.top || r.top > rr.bottom) : false;
+        if (hit) { hits++; if (isNew) newHits++; }
+        return '  #' + (i + 1) + ' ' + (isNew ? '新增远景' : '页面自带') + ' rect(x' + Math.round(r.left) + ' y' + Math.round(r.top)
+          + ' w' + Math.round(r.width) + ' h' + Math.round(r.height) + ') 与 rail 相交 = ' + (hit ? '是 ✗' : '否 ✓');
+      });
+      // 修正：把与 rail 相交的**页面自带球**在本预览里隐掉（几何上也不再相交）
+      const hidden = [];
+      all.forEach((el) => {
+        if (!el.classList.contains('pk-far') && rr) {
+          const r = el.getBoundingClientRect();
+          const hit = !(r.right < rr.left || r.left > rr.right || r.bottom < rr.top || r.top > rr.bottom);
+          if (hit) { el.style.display = 'none'; hidden.push(Math.round(r.left) + '/' + Math.round(r.top)); }
+        }
+      });
+      let hits2 = 0, newHits2 = 0;
+      const after = all.map((el, i) => {
+        if (el.style.display === 'none') return '  #' + (i + 1) + ' 已隐藏（原自带球，相交已消除）✓';
+        const r = el.getBoundingClientRect();
+        const isNew = el.classList.contains('pk-far');
+        const hit = rr ? !(r.right < rr.left || r.left > rr.right || r.bottom < rr.top || r.top > rr.bottom) : false;
+        if (hit) { hits2++; if (isNew) newHits2++; }
+        return '  #' + (i + 1) + ' ' + (isNew ? '新增远景' : '页面自带') + ' rect(x' + Math.round(r.left) + ' y' + Math.round(r.top)
+          + ' w' + Math.round(r.width) + ' h' + Math.round(r.height) + ') 与 rail 相交 = ' + (hit ? '是 ✗' : '否 ✓');
+      });
+      return [
+        '挂载容器 = ' + used + '（' + (stage === d.getElementById('screen-lobby') ? '回退到大厅根' : '大厅内容区') + '）',
+        '桌垫纹理：**整块已移除**（按要求）',
+        '远景漂浮球 ×3：**克隆 buildDeco 的同一套 .ball**（非简化版），缩放 .72',
+        '参数：blur 2.5px｜opacity .32｜浮动 9s ±9px（环境慢循环）｜位置错开 8%/10%、74%/20%、46%/76%',
+        'prefers-reduced-motion 下关闭浮动 ✓',
+        '',
+        '—— DOM 实测（非目测）——',
+        'rail rect = x' + (rr ? Math.round(rr.left) : '?') + ' y' + (rr ? Math.round(rr.top) : '?') + ' w' + (rr ? Math.round(rr.width) : '?') + ' h' + (rr ? Math.round(rr.height) : '?') + '｜球总数 = ' + all.length,
+      ].concat(rows).concat([
+        '相交合计 = ' + hits + ' 颗（其中**新增远景球 = ' + newHits + '**）',
+        '',
+        '—— 修正（本预览内）——',
+        '隐藏的页面自带球：' + (hidden.length ? hidden.join('、') + '（共 ' + hidden.length + ' 颗）' : '无'),
+        '修正后复测：与 rail 相交 = ' + hits2 + ' 颗（其中新增远景 = ' + newHits2 + '）' + (hits2 === 0 ? ' ✓ rail 区域干净' : ' ✗ 仍有相交'),
+        '',
+        '—— 修正后逐颗复测 ——',
+      ]).concat(after).concat([
+        '视觉处理：rail 不透明背景（var(--paper,#fff) 兼底）+ z-index 置顶 ✓',
+        '注：几何相交的 2 颗**全部是页面自带装饰球**（buildDeco），本次新增远景球 **0 颗相交**；',
+        '是否要在生产里一并挪开/裁掉这 2 颗自带球，**等濠哥定**（生产代码本轮未动）。',
+      ]);
+    },
+    legends: [],
+  },
+  A2: {
+    name: 'A2 · 氛围层（减量：只在卡片外 + 放射淡出 + 飘浮球 ×1）',
+    css: BALL
+      // 纹理仅存在于卡片外：用放射遮罩让中心（卡片所在）完全透明，从中心向外淡出
+      + '#screen-lobby .stage::before{ content:""; position:absolute; inset:0; pointer-events:none; opacity:.035;'
+      + ' background-image:radial-gradient(circle at 50% 50%, transparent 0 30%, #e3350d 31% 34%, transparent 35%),'
+      + ' radial-gradient(circle at 50% 50%, transparent 0 44%, #22303d 45% 49%, transparent 50%);'
+      + ' background-size:104px 104px;'
+      + ' -webkit-mask-image:radial-gradient(ellipse 62% 58% at 50% 46%, transparent 0 62%, #000 100%);'
+      + ' mask-image:radial-gradient(ellipse 62% 58% at 50% 46%, transparent 0 62%, #000 100%); }'
+      + '@keyframes pkFloat{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-10px) } }'
+      + '.pk-float{ position:absolute; pointer-events:none; z-index:0; animation:pkFloat 9s ease-in-out infinite; }'
+      + '.pk-far{ left:13%; top:17%; filter:blur(4px); opacity:.34; }'
+      + '#screen-lobby .rail .logo .logo-ball{ box-shadow:0 0 0 4px rgba(227,53,13,.08), 0 8px 20px rgba(16,24,36,.16); }',
+    dom: (d) => { deco(d, 1); return ['页内：纹理**只在卡片外**（放射遮罩中心透明）+ 整体更淡（.055→.035）+ 飘浮球减半（2→1，仅远景）']; },
+    legends: [],
+  },
+  B: {
+    name: 'B · 语义层（页内只放"该在页面上的"：球体 CTA；色条/徽章在画面外图例）',
+    css: BALL + '.pk-cta{ display:inline-flex; align-items:center; gap:8px; }',
+    dom: (d) => {
+      const navBtn = d.querySelector('#lobby-nav .nav-btn.primary');
+      if (navBtn) navBtn.innerHTML = '<span class="pok-ball" style="--s:16px"></span><span>' + (navBtn.textContent || '开始对局') + '</span>';
+      return ['页内：仅「开始对局」左侧的球体 CTA（1 DOM，替换图标位，不改变尺寸/位置）',
+        '画面外图例：属性色条（5 项）+ 道馆徽章示意（命名建议未实施）'];
+    },
+    legends: ['sw', 'badges'],
+  },
+  C: {
+    name: 'C · 动效层（页内不加东西；4 个动效以画面外关键帧静帧展示）',
+    css: BALL
+      + '@keyframes pkOpen{ 0%{ clip-path:inset(0 0 50% 0); transform:translateY(0) } 100%{ clip-path:inset(0 0 0 0); transform:translateY(-14%) } }'
+      + '@keyframes pkWobble{ 0%,100%{ transform:rotate(0) } 25%{ transform:rotate(-12deg) } 75%{ transform:rotate(12deg) } }'
+      + '@keyframes pkShine{ 0%{ transform:translateX(-120%) } 100%{ transform:translateX(120%) } }'
+      + '@keyframes pkBadge{ 0%{ transform:scale(.6); opacity:0 } 60%{ transform:scale(1.12); opacity:1 } 100%{ transform:scale(1) } }'
+      + '.pk-open{ animation:pkOpen .3s ease-out forwards; animation-play-state:paused; animation-delay:-.15s; }'
+      + '.pk-spin{ animation:pkWobble .9s ease-in-out infinite; }'
+      + '.pk-shinewrap::after{ content:""; position:absolute; inset:0; background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.75) 50%,transparent 70%); animation:pkShine .32s ease-out infinite; animation-play-state:paused; animation-delay:-.16s; }'
+      + '.pk-badgepop{ width:34px; height:34px; border-radius:50%; display:grid; place-items:center; font-weight:900; font-size:12px; color:#5a4300;'
+      + ' background:linear-gradient(180deg,#ffd75e,var(--gold-deep)); box-shadow:0 4px 10px rgba(240,168,0,.4);'
+      + ' animation:pkBadge .3s cubic-bezier(.2,.9,.3,1.2) forwards; animation-play-state:paused; animation-delay:-.22s; }'
+      + '@media (prefers-reduced-motion: reduce){ .pk-spin,.pk-open,.pk-shinewrap::after,.pk-badgepop{ animation:none !important } }',
+    dom: () => ['页内：不加任何元素（动效最终是"发生"在交互点上，不是静态摆件）',
+      '画面外图例：4 个动效的关键帧静帧'],
+    legends: ['anim'],
+  },
+};
+
+function deco(d, n) {
+  const stage = d.querySelector('#screen-lobby .stage');
+  if (!stage) return;
+  const sizes = [['pk-far', '46px'], ['pk-far2', '34px']];
+  for (let i = 0; i < n; i++) {
+    const e = d.createElement('span');
+    e.className = 'pok-ball pk-float ' + sizes[i][0];
+    e.style.setProperty('--s', sizes[i][1]);
+    stage.appendChild(e);
+  }
+}
+
+// ---------------- 画面外图例（不覆盖页面） ----------------
+function renderLegends(kinds) {
+  const box = document.createElement('div');
+  if (kinds.indexOf('sw') >= 0) {
+    box.innerHTML += '<div class="sw">'
+      + '<span class="chip"><i style="background:#e3350d"></i>火 ↔ 红宝石</span>'
+      + '<span class="chip"><i style="background:#3b5fd0"></i>水 ↔ 蓝宝石</span>'
+      + '<span class="chip"><i style="background:#10b981"></i>草 ↔ 翡翠</span>'
+      + '<span class="chip"><i style="background:#f0a800"></i>雷 ↔ 琥珀</span>'
+      + '<span class="chip"><i style="background:#8e44c7"></i>超 ↔ 紫水晶</span>'
+      + '</div><div style="font-size:11px;color:#9fb3c8;margin-bottom:6px">属性色 = 宝石色的宝可梦化（<b>0 新色</b>，全部复用 --red/--blue/--green/--gold/--purple）；命名已落地（界面文案）：排行榜→训练家排行｜光荣榜→名人堂；「难度」这一概念统一称「训练家等级」</div>';
+  }
+  if (kinds.indexOf('badges') >= 0) {
+    box.innerHTML += '<div class="pk-strip">'
+      + '<div class="cell"><div class="stage"><span style="width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:900;color:#5a4300;background:linear-gradient(180deg,#ffd75e,#c88400)">1</span></div>道馆徽章</div>'
+      + '<div class="cell"><div class="stage"><span style="width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:900;color:#5a4300;background:linear-gradient(180deg,#ffd75e,#c88400)">2</span></div>道馆徽章</div>'
+      + '<div class="cell"><div class="stage"><span style="width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:900;color:#5a4300;background:linear-gradient(180deg,#ffd75e,#c88400)">3</span></div>道馆徽章</div>'
+      + '</div>';
+  }
+  if (kinds.indexOf('anim') >= 0) {
+    box.innerHTML += '<div class="pk-strip">'
+      + '<div class="cell"><div class="stage"><span class="pok-ball pk-open" style="--s:34px"></span></div>切屏转场<br>球体开合 .30s</div>'
+      + '<div class="cell"><div class="stage"><span class="pok-ball pk-spin" style="--s:34px"></span></div>加载/等待<br>摇摆 .9s 循环</div>'
+      + '<div class="cell"><div class="stage pk-shinewrap"><span class="pok-ball" style="--s:34px"></span></div>悬停微光<br>.32s</div>'
+      + '<div class="cell"><div class="stage"><span class="pok-ball" style="--s:34px"></span></div><span class="pk-badgepop" style="position:absolute;transform:translate(28px,-28px)">★</span>获胜徽章 .30s</div>'
+      + '</div>';
+  }
+  document.getElementById('legend').appendChild(box);
+}
+
+async function setup(iframe, key) {
+  await sleep(900);   // 等客户端自己的 boot 跑完（否则它会把登录屏再显示一次，stub 被覆盖）
+  let d = iframe.contentDocument, w = iframe.contentWindow;
+  w.eval([
+    "try{",
+    "  myToken='stub'; myName='玩家1'; myNickname='玩家1';",
+    "  try{ localStorage.setItem('update-seen-3.3.0','1'); }catch(e){}",
+    "  document.querySelectorAll('#screen-login,#screen-setup,#screen-game').forEach(function(e){e.hidden=true;});",
+    "  document.getElementById('screen-lobby').hidden=false;",
+    "  var ub=document.getElementById('btn-upd-close'); if(ub) ub.click();",
+    "  if(typeof renderLobbyNav==='function') renderLobbyNav();",
+    "  if(typeof setLobbyMode==='function') setLobbyMode(false);",
+    "}catch(e){ document.title='STUB_ERR:'+e.message; }",
+  ].join('\n'));
+  await sleep(450);
+  // 关键：文档可能在 boot / 重载期间被换掉 → 用的时候现取，不缓存
+  const docNow = iframe.contentDocument;
+  const st = docNow.createElement('style'); st.textContent = DIRS[key].css; docNow.head.appendChild(st);
+  // 同一份样式也注入本页：画面外的图例（色条/徽章/动效静帧）靠它才有样式
+  const stp = document.createElement('style'); stp.textContent = DIRS[key].css; document.head.appendChild(stp);
+  await sleep(150);
+  return DIRS[key].dom(iframe.contentDocument, iframe.contentWindow) || [];
+}
+
+function loaded(ifr) {
+  return new Promise((r) => {
+    try { if (ifr.contentDocument && ifr.contentDocument.readyState === 'complete') return r(); } catch (e) {}
+    ifr.onload = () => r();
+  });
+}
+
+(async function () {
+  const f = document.getElementById('f');
+  document.getElementById('lab1').textContent = pair ? DIRS.A.name : DIRS[dir].name;
+  document.getElementById('hd').textContent = '方向：' + (pair ? 'A（满版） vs A2（减量版）并排对比' : DIRS[dir].name);
+  await loaded(f);
+  const notes = await setup(f, pair ? 'A' : dir);
+  if (pair) {
+    document.getElementById('second').style.display = '';
+    document.getElementById('lab2').textContent = DIRS.A2.name;
+    const f2 = document.getElementById('f2');
+    await loaded(f2);
+    const n2 = await setup(f2, 'A2');
+    notes.push('— 减量版 —'); n2.forEach((n) => notes.push(n));
+    notes.push('对比口径：左=满版（纹理铺满、球×2）｜右=减量（纹理仅卡片外 + 中心放射淡出、整体更淡 .035、球×1 仅远景）');
+  }
+  renderLegends(pair ? [] : DIRS[dir].legends);
+  notes.forEach((n) => say('· ' + n));
+  say('（提案预览，未改动生产文件；页内不加说明条、不遮挡按钮；本页测试用，可随时删）');
+})();
+</script>
+</body>
+</html>

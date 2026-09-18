@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>导航「开始对局」行数 · DOM 原始数字（测试用，可随时删）</title>
+<style>
+  html,body{ margin:0; font:12px/1.5 Consolas,monospace; background:#0f1216; color:#cfe3ff; }
+  #f{ width:100vw; height:300px; border:0; background:#fff; display:block; }
+  #out{ white-space:pre-wrap; padding:8px 10px; }
+</style>
+</head>
+<body>
+<!-- 测试用，可随时删：只做一件事——把「开始对局」那颗按钮的行数用 DOM 原始数字量出来 -->
+<iframe id="f" src="/index.html"></iframe>
+<div id="out">运行中…</div>
+<script>
+const f = document.getElementById('f');
+const out = document.getElementById('out');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => {
+  await sleep(900);
+  const w = f.contentWindow;
+  w.eval([
+    "try{ myToken='stub'; myName='玩家1'; myNickname='玩家1';",
+    "  try{ localStorage.setItem('update-seen-3.3.0','1'); }catch(e){}",
+    "  if (typeof showScreen==='function') showScreen('lobby');",
+    "  if(typeof renderLobbyNav==='function') renderLobbyNav();",
+    "  if(typeof setLobbyMode==='function') setLobbyMode(false);",
+    "  var ub=document.getElementById('btn-upd-close'); if(ub) ub.click();",
+    "}catch(e){ document.title='STUB_ERR:'+e.message; }",
+  ].join('\n'));
+  await sleep(700);
+  const d = f.contentDocument;
+  const L = [];
+  const R = (x) => Math.round(x * 100) / 100;
+  const items = Array.prototype.slice.call(d.querySelectorAll('#lobby-nav .nav-btn, .rail .nav-btn'));
+  L.push('导航项数 = ' + items.length);
+  items.forEach((btn, i) => {
+    const label = (btn.textContent || '').replace(/\s+/g, ' ').trim();
+    const cs = w.getComputedStyle(btn);
+    const r = btn.getBoundingClientRect();
+    // 逐个文本节点分别圈（图标/文字分开），取最大行盒数——不靠 firstChild
+    const walk = d.createTreeWalker(btn, NodeFilter.SHOW_TEXT, null);
+    const parts = [];
+    let maxLines = 0;
+    while (walk.nextNode()) {
+      const tn = walk.currentNode;
+      if (!/\S/.test(tn.nodeValue)) continue;
+      const rg = d.createRange(); rg.selectNodeContents(tn);
+      const rcs = rg.getClientRects();
+      parts.push('"' + tn.nodeValue.trim() + '"=' + rcs.length + '行');
+      if (rcs.length > maxLines) maxLines = rcs.length;
+    }
+    L.push('#' + (i + 1) + ' "' + label + '" → 行盒数=' + maxLines + (maxLines === 1 ? ' ✓单行' : ' ✗换行')
+      + ' | offsetH=' + btn.offsetHeight + ' | scrollW/clientW=' + btn.scrollWidth + '/' + btn.clientWidth
+      + ' | white-space=' + cs.whiteSpace + ' | font=' + cs.fontSize
+      + ' | rect=' + R(r.width) + 'x' + R(r.height)
+      + ' | 明细: ' + parts.join(' '));
+  });
+  const btn = items.filter((b) => /开始对局/.test(b.textContent))[0] || items[0];
+  L.push('（下面是对「开始对局」主按钮的旧口径补充）');
+  if (btn) {
+    const cs = w.getComputedStyle(btn);
+    const r = btn.getBoundingClientRect();
+    L.push('按钮 rect = x' + R(r.left) + ' y' + R(r.top) + ' ' + R(r.width) + 'x' + R(r.height));
+    L.push('按钮 offsetHeight = ' + btn.offsetHeight + '｜clientHeight = ' + btn.clientHeight);
+    L.push('按钮 scrollWidth = ' + btn.scrollWidth + '｜clientWidth = ' + btn.clientWidth
+      + '（scrollWidth > clientWidth 说明有横向裁切/挤压）');
+    L.push('computed font-size = ' + cs.fontSize + '｜line-height = ' + cs.lineHeight
+      + '｜white-space = ' + cs.whiteSpace + '｜padding = ' + cs.paddingLeft + '/' + cs.paddingRight);
+    // 关键：文本行的真实行盒数（Range 只看文字，不受 flex 容器影响）
+    const walker = d.createTreeWalker(btn, NodeFilter.SHOW_TEXT, null);
+    let tn = null;
+    while (walker.nextNode()) { if (/\S/.test(walker.currentNode.nodeValue)) { tn = walker.currentNode; break; } }
+    if (tn) {
+      const range = d.createRange(); range.selectNodeContents(tn);
+      const rects = range.getClientRects();
+      L.push('文本 "' + tn.nodeValue.trim() + '" → range.getClientRects().length = ' + rects.length
+        + (rects.length > 1 ? '  ✗ 换行成 ' + rects.length + ' 行' : '  ✓ 单行'));
+      for (let i = 0; i < rects.length; i++) {
+        L.push('   行盒#' + (i + 1) + ' x' + R(rects[i].left) + ' y' + R(rects[i].top) + ' ' + R(rects[i].width) + 'x' + R(rects[i].height));
+      }
+      const lh = parseFloat(cs.lineHeight) || 0;
+      L.push('单行判定（行盒高 ' + R(rects.length ? rects[0].height : 0) + ' vs line-height ' + lh + '）：'
+        + (rects.length === 1 ? '单行 ✓' : '多行 ✗'));
+    } else { L.push('未找到按钮内文本节点'); }
+    // 衬底：内层 span（精灵球 CTA 的兄弟）
+    const span = btn.querySelector('span:not(.pok-ball)');
+    if (span) { const sr = span.getBoundingClientRect(); L.push('内层文本 span rect = ' + R(sr.width) + 'x' + R(sr.height) + '（高≈1 行 = 单行）'); }
+  }
+  L.push('');
+  L.push('视口 = ' + w.innerWidth + 'x' + w.innerHeight + '（本页窗口由 --window-size 决定）');
+  out.textContent = L.join('\n');
+  d.title = 'NAVROWS=' + (btn ? 'measured' : 'missing');
+};
+</script>
+</body>
+</html>
