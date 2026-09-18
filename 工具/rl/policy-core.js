@@ -265,11 +265,28 @@ function greedyMove(actor, p) {
 //   · score 噪声收进 1.0~1.8 紧凑带（旧版 2.5 太噪：收服/预约打分被搅乱，口味不稳）
 //   · need 噪声拉开成风格主轴：平稳 0.7 < 囤卡 1.8 < 中局 2.5 < 终局 3.0（终局拉满 = 末期
 //     拿球节奏乱序，风格最鲜明；平稳 = 缺口判断稳，节奏贴着 def 走）
+// 2026-09-18 二次改版（风格参数档）：内置 var1..var4 改为**确定性的评分参数风格**
+//（只抢两色 / 极端预约流 / 更早买卡 / 更爱阻断），不再靠噪声区分。
+// 动机：上一版是"围绕 def 的一个噪声分布"，只能验证"扩大同一策略的分布"是否有用；
+// 这一版要验证的是**行为策略不同的对手**能否逼出泛化与针对性利用。
+// 风格覆盖只作用于"选哪张 / 选哪个色"的评分权重，**不破坏 def 的决策骨架**（结构规则一致）；
+// 未覆盖的参数一律取回 def 口径（HEUR_PARAMS），所以 var 档位的强度可与 def 直接对比。
+// 强度校准硬要求：每个变体 vs 基础 AI（2 人 5000 局）必须落在 50% ± 8 点内。
+const STYLE_DEFS = {
+  // 只抢两色：拿球时对"自己已持有的颜色"加权（牌型越打越集中），同分买卡略偏好便宜的
+  concentrate: { label: '只抢两色', sameColorBias: 2.4, buyTieCostW: 0.12 },
+  // 极端预约流：预约更看分、对缺口更宽容，并把预约门槛从 vp≥2 降到 vp≥1
+  reserveHeavy: { label: '极端预约流', reserveVpW: 7.0, reserveEffW: 0.6, reserveTierW: 0.8, reserveThresholdVp: 1 },
+  // 更早买卡：同分里更偏好便宜卡（成本权重拉高 → 更快出手起分）
+  earlyBuy: { label: '更早买卡', buyTieCostW: 0.45, reserveEffW: 1.5 },
+  // 更爱阻断：拿球时对"对手所需色"加权（偏防守、卡人节奏）
+  blocker: { label: '更爱阻断', blockBias: 2.4, buyTieTierW: 0.7 },
+};
 const VARIANT_DEFS = [
-  { key: 'var1', label: '平稳',     scoreSigma: 1.6, needSigma: 0.7, phase: 'all', style: null,   fumble: 0.015 },
-  { key: 'var2', label: '中局激进', scoreSigma: 1.8, needSigma: 2.5, phase: 'mid', style: null,   fumble: 0.025 },
-  { key: 'var3', label: '终局',     scoreSigma: 1.5, needSigma: 3.0, phase: 'end', style: null,   fumble: 0.015 },
-  { key: 'var4', label: '囤卡',     scoreSigma: 1.0, needSigma: 1.8, phase: 'all', style: 'hoard', fumble: 0 },
+  { key: 'var1', label: '只抢两色',   style: 'concentrate',  scoreSigma: 0, needSigma: 0, phase: 'all', fumble: 0 },
+  { key: 'var2', label: '极端预约流', style: 'reserveHeavy', scoreSigma: 0, needSigma: 0, phase: 'all', fumble: 0 },
+  { key: 'var3', label: '更早买卡',   style: 'earlyBuy',     scoreSigma: 0, needSigma: 0, phase: 'all', fumble: 0 },
+  { key: 'var4', label: '更爱阻断',   style: 'blocker',      scoreSigma: 0, needSigma: 0, phase: 'all', fumble: 0 },
 ];
 // varIdx（1 基）→ 生效档案：内置 σ 档案 + 调用方叠加的全局额外 σ（extra，缺省 0）。
 // 硬下限：scoreSigma/needSigma ≥ 0.5（σ=0 会让并列规则完全退化成 def，档案失去意义；
@@ -277,14 +294,16 @@ const VARIANT_DEFS = [
 // summary 是给 meta.poolVariantDefs 落档的紧凑签名（例：var1=平稳/score1.6/need0.7）。
 function variantProfile(varIdx, extraNoise) {
   const base = VARIANT_DEFS[(varIdx - 1) % VARIANT_DEFS.length];
-  const scoreSigma = Math.max(0.5, base.scoreSigma);
-  const needSigma = Math.max(0.5, base.needSigma);
+  const scoreSigma = Math.max(0, base.scoreSigma);
+  const needSigma = Math.max(0, base.needSigma);
   const fumble = Math.max(0, base.fumble);
+  const styleParams = (base.style && STYLE_DEFS[base.style]) ? STYLE_DEFS[base.style] : null;
+  const label = (styleParams && styleParams.label) ? styleParams.label : base.label;
   return {
-    key: 'var' + varIdx, label: base.label,
+    key: 'var' + varIdx, label,
     scoreSigma, needSigma,
-    phase: base.phase, style: base.style, fumble,
-    summary: `${base.label}/score${scoreSigma}/need${needSigma}`,
+    phase: base.phase, style: base.style, styleParams, fumble,
+    summary: `${label}` + ((scoreSigma || needSigma) ? `/score${scoreSigma}/need${needSigma}` : '（风格参数档）'),
     extra: extraNoise || 0,
   };
 }
@@ -329,6 +348,19 @@ function variantMove(p, rng, prof) {
   const nSigma = prof.needSigma + prof.extra;    // 拿球缺口排序噪声 σ
   const engineCards = (typeof AI_CONFIG !== 'undefined' && AI_CONFIG) ? AI_CONFIG.engineCards : 5;
   const HP = heurParams(); // 启发式常数（单一参数源 = config.js 的 HEUR_PARAMS；与 def 逐位同源）
+  // 风格参数覆盖：缺省 = 取回 def 口径（HEUR_PARAMS 的对应项），只有风格档位才带覆盖
+  const SP = prof.styleParams || {};
+  const W = {
+    buyTieTierW: SP.buyTieTierW != null ? SP.buyTieTierW : HP.buyTieTierW,
+    buyTieCostW: SP.buyTieCostW != null ? SP.buyTieCostW : HP.buyTieCostW,
+    reserveVpW: SP.reserveVpW != null ? SP.reserveVpW : HP.reserveVpW,
+    reserveEffW: SP.reserveEffW != null ? SP.reserveEffW : HP.reserveEffW,
+    reserveTierW: SP.reserveTierW != null ? SP.reserveTierW : HP.reserveTierW,
+    reserveCostW: SP.reserveCostW != null ? SP.reserveCostW : HP.reserveCostW,
+  };
+  const sameColorBias = SP.sameColorBias || 0;   // 风格「只抢两色」：已持有色加分
+  const blockBias = SP.blockBias || 0;           // 风格「更爱阻断」：对手所需色加分
+  const reserveVpFloor = SP.reserveThresholdVp != null ? SP.reserveThresholdVp : 2;
 
   // 1) 能收服就收服：def 只挑 vp 最高的可收服卡（并列比阶、再比成本）。这里的"最高 vp"
   //    是硬规则、不加噪声——实测零均值评估噪声在 buy 上净赚（def 太刚性，噪声偶尔换到
@@ -350,7 +382,7 @@ function variantMove(p, rng, prof) {
     const top = list.filter((a) => a.card.vp === maxVp);
     let best = null, bestScore = -Infinity;
     top.forEach((a) => {
-      const score = a.card.tier * HP.buyTieTierW - totalCost(a.card) * HP.buyTieCostW + jit(sSigma);
+      const score = a.card.tier * W.buyTieTierW - totalCost(a.card) * W.buyTieCostW + jit(sSigma);
       if (score > bestScore) { bestScore = score; best = a; }
     });
     return best.kind === 'buy' ? { type: 'buy', tier: best.tier, idx: best.idx }
@@ -365,12 +397,12 @@ function variantMove(p, rng, prof) {
     if (engine && c.tier === 3 && prof.style !== 'hoard') return;              // def 结构规则
     if (engine && c.tier === 3 && prof.style === 'hoard' && rng() >= 0.35) return; // 囤高阶风格：35% 破例
     const m = missingFor(p, c);
-    let score = c.vp * HP.reserveVpW - m.effTot * HP.reserveEffW + c.tier * HP.reserveTierW
-      - totalCost(c) * HP.reserveCostW + jit(sSigma);
+    let score = c.vp * W.reserveVpW - m.effTot * W.reserveEffW + c.tier * W.reserveTierW
+      - totalCost(c) * W.reserveCostW + jit(sSigma);
     if (prof.style === 'hoard' && c.tier === 3) score += 2;                    // 囤高阶风格：三阶卡加分
     if (score > rtScore) { rtScore = score; rt = { tier: t, idx, card: c }; }
   }));
-  if (rt && p.reserved.length < RULES.reserveLimit && (S.pool.master > 0 || rt.card.vp >= 2)) {
+  if (rt && p.reserved.length < RULES.reserveLimit && (S.pool.master > 0 || rt.card.vp >= reserveVpFloor)) {
     return { type: 'reserve', tier: rt.tier, idx: rt.idx };
   }
   // 3) 开启"只拿大师球"行动时：预约没得约了，就攒大师球当万能球用
@@ -389,7 +421,20 @@ function variantMove(p, rng, prof) {
   const rem = {};
   COLORS.forEach((c) => { rem[c] = Math.max(0, need[c] - p.balls[c]); });
   const noisyRem = {};
-  COLORS.forEach((c) => { noisyRem[c] = rem[c] + jit(nSigma); });
+  // 风格偏置（只作用在"先拿哪个缺色"的排序键上，不改"只拿缺色"的结构）：
+  //   · 只抢两色：已持有色加分 → 牌型向已有颜色集中
+  //   · 更爱阻断：对手缺口里还缺的色加分 → 优先抢掉对手要的球
+  const oppNeed = {};
+  if (blockBias) {
+    const opps = S.players.filter((x) => x !== p);
+    COLORS.forEach((c) => { let mx = 0; opps.forEach((o) => { mx = Math.max(mx, globalNeed(o)[c]); }); oppNeed[c] = mx; });
+  }
+  COLORS.forEach((c) => {
+    let bias = 0;
+    if (sameColorBias && p.balls[c] > 0) bias += sameColorBias;
+    if (blockBias && rem[c] > 0 && (oppNeed[c] || 0) > 0 && p.balls[c] < oppNeed[c]) bias += blockBias;
+    noisyRem[c] = rem[c] + bias + jit(nSigma);
+  });
   const avail = COLORS.filter((c) => S.pool[c] > 0);
   const wanted = avail.filter((c) => rem[c] > 0).sort((a, b) => noisyRem[b] - noisyRem[a]);
   const surplus = COLORS.filter((c) => p.balls[c] > 0 && p.balls[c] > need[c]);
