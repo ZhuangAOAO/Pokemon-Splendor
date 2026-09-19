@@ -34,7 +34,7 @@
  *                    [--ent-coef 0.01] [--shape-w 0.01]
  *                    [--target-kl 0.02] [--grad-clip 0.5] [--no-adv-norm]
  *                    [--sample-seed 777] [--rollback-stop 5] [--eval-only 权重文件]
- *                    [--eval-seats str,def,rand,var1,...] [--str-weights 权重文件]
+ *                    [--eval-seats str,def,rand,var1,...|mirror] [--str-weights 权重文件]
  *                    [--feat-opp2] [--feat-opp-rem] [--feat-opp-bonus-percolor]
  *                    [--train-seed 20260917] [--tag 名字] [--allow-overwrite]
  *                    [--snapshot-every 2000] [--pool-recent 0]
@@ -74,6 +74,12 @@
  *                             列表长度 ≤ --players，不足的座位自动补 def
  *                             （"str" + --players 2 → [str,def]），超长报错。
  *                             缺省 ['str','def',...] = 旧行为（贪心 vs 启发式）。
+ *                             **预设名 mirror** = 镜像线：按 --players 自动展开成全 str
+ *                             （p2→[str,str]、p3→[str,str,str]、p4→[str,str,str,str]），
+ *                             即「被测策略 vs N-1 个同权重自己」（座位 ≥1 的 str 缺省同网，
+ *                             要换成另一份权重仍用 --str-weights）。展开结果与手写
+ *                             `str,str,...` 逐位一致（连产物文件名都一致）；
+ *                             预设只能整条单独用（`str,mirror` 之类混写报错）。
  *   座位 0 的 str = 被测策略（--eval-only 的文件 / 训练中的当前模型）；座位 ≥1 的
  *   str = --str-weights 指定的文件（缺省 = 被测策略同一张网，即自对弈）——这样
  *   --eval-only A --eval-seats str,str,def --str-weights B 就是 A vs B vs 启发式对打。
@@ -332,9 +338,13 @@ const tagSuffix = TAG ? '-' + TAG : '';
 // str = 策略 AI（座位 0 = 被测策略；座位 ≥1 = --str-weights，缺省与被测同网）
 // def = 困难启发式 AI；rand = 随机合法动作 AI（走游戏种子 RNG，逐位可复现）
 // 列表长度 ≤ --players，不足自动补 def；缺省 ['str','def',...] = 旧行为（贪心 vs 启发式）
+// 预设名 mirror = 镜像线（全 str），按 --players 自动展开；显式写法照旧可用。
 const EVAL_SEATS = (() => {
   const raw = flagVal('--eval-seats', '');
   if (!raw) return ['str', ...new Array(N_PLAYERS - 1).fill('def')];
+  // 预设展开：mirror → 全 str（p2→[str,str] / p3→[str,str,str] / p4→4×str）
+  // 语义与逐位手写 str,str,... 完全相同（下游 evalVs / 落档文件名都只看见展开后的列表）。
+  if (raw.trim() === 'mirror') return new Array(N_PLAYERS).fill('str');
   const seats = raw.split(',').map((s) => s.trim());
   if (seats.length > N_PLAYERS) {
     console.error(`参数错误：--eval-seats 座位数（${seats.length}）超过 --players ${N_PLAYERS}（收到 "${raw}"）`);
@@ -342,7 +352,7 @@ const EVAL_SEATS = (() => {
   }
   for (const s of seats) {
     if (!['str', 'def', 'rand'].includes(s) && !/^var[1-9]\d*$/.test(s)) {
-      console.error(`参数错误：--eval-seats 每个座位只能是 str/def/rand/var1..varN（收到 "${s}"）`);
+      console.error(`参数错误：--eval-seats 每个座位只能是 str/def/rand/var1..varN（预设 mirror 只能单独用，收到 "${s}"）`);
       process.exit(1);
     }
   }
