@@ -7,8 +7,8 @@
 <style>
   *{ box-sizing:border-box; margin:0; padding:0; }
   [hidden]{ display:none !important; }
-  body{ font-family:"YouYuan","幼圆","Microsoft YaHei","PingFang SC",sans-serif; background:#eef2f7; color:#22303d; }
-  .btn{ border:none; border-radius:10px; padding:8px 16px; font-size:13px; font-weight:800; cursor:pointer; font-family:inherit; background:#fff; border:2px solid #dde5ef; }
+  body{ font-family:"YouYuan","幼圆","Microsoft YaHei","PingFang SC",sans-serif; background:#f6f8fb; color:#22303d; }
+  .btn{ border:none; border-radius:6px; padding:7px 13px; font-size:13px; font-weight:800; cursor:pointer; font-family:inherit; background:#fff; border:1px solid #cdd8e6; }
   .btn.green{ background:linear-gradient(180deg,#34d399,#10b981); color:#fff; border:none; }
   .btn.red{ background:linear-gradient(180deg,#f87171,#dc2626); color:#fff; border:none; }
   .btn.primary{ background:linear-gradient(180deg,#5b7ff0,#3b5fd0); color:#fff; border:none; }
@@ -26,38 +26,37 @@
   /* ---- 后台看板 ---- */
   #review-box{ min-height:100vh; display:flex; flex-direction:column; }
   .topbar{
-    position:sticky; top:0; z-index:10; background:#fff; box-shadow:0 2px 10px rgba(34,48,61,.08);
-    display:flex; align-items:center; gap:12px; padding:12px 28px;
+    position:sticky; top:0; z-index:10; background:#fff; border-bottom:1px solid #dfe5ee;
+    display:flex; align-items:center; gap:10px; padding:10px 22px;
   }
   .topbar h1{ font-size:18px; }
   .topbar h1 span{ color:#e3350d; }
   .topbar .spacer{ flex:1; }
-  .content{ max-width:960px; width:100%; margin:0 auto; padding:18px 24px 40px; }
+  .content{ max-width:1280px; width:100%; margin:0 auto; padding:14px 22px 32px; }
 
   /* 滑动标签 */
-  .tabs{ position:relative; display:flex; background:#dfe5ee; border-radius:12px; padding:4px; margin-bottom:14px; max-width:560px; }
+  .tabs{ position:relative; display:flex; background:#e8edf4; border-bottom:1px solid #cdd8e6; padding:0; margin-bottom:0; max-width:none; }
   .tab-indicator{
-    position:absolute; top:4px; bottom:4px; left:4px;
-    width:calc((100% - 8px) / 5);
-    background:#fff; border-radius:10px; box-shadow:0 2px 8px rgba(34,48,61,.14);
+    position:absolute; top:auto; bottom:0; left:0; height:3px;
+    width:20%; background:#e3350d; border-radius:0; box-shadow:none;
     transition:transform .35s cubic-bezier(.3,.8,.3,1);
   }
-  .tab{ flex:1; border:none; background:transparent; padding:10px 6px; font-size:14px; font-weight:800; cursor:pointer; position:relative; z-index:1; color:#5b6b7b; border-radius:10px; font-family:inherit; transition:color .25s; }
+  .tab{ flex:1; border:none; background:transparent; padding:10px 8px; font-size:13px; font-weight:800; cursor:pointer; position:relative; z-index:1; color:#5b6b7b; border-radius:0; font-family:inherit; transition:color .25s; }
   .tab.active{ color:#e3350d; }
   .tab .cnt{ font-size:11px; color:#93a2b3; margin-left:2px; }
 
   /* 内容面板：横向滑动切换 */
-  .panels-viewport{ overflow:hidden; border-radius:12px; background:#fff; box-shadow:0 2px 8px rgba(34,48,61,.06); }
+  .panels-viewport{ overflow:hidden; background:#fff; border:1px solid #dfe5ee; border-top:0; }
   .panels-track{ display:flex; transition:transform .35s cubic-bezier(.3,.8,.3,1); }
-  .panel{ flex:none; width:100%; max-height:64vh; overflow-y:auto; }
+  .panel{ flex:none; width:100%; max-height:70vh; overflow-y:auto; }
 
   /* 表格列表 */
   table{ width:100%; border-collapse:collapse; font-size:14px; }
   thead th{
     position:sticky; top:0; background:#f5f8fc; text-align:left;
-    padding:10px 16px; font-size:12px; color:#5b6b7b; border-bottom:2px solid #e3e9f2; white-space:nowrap;
+    padding:8px 12px; font-size:11px; color:#5b6b7b; border-bottom:1px solid #dfe5ee; white-space:nowrap;
   }
-  tbody td{ padding:10px 16px; border-bottom:1px solid #eef2f7; white-space:nowrap; }
+  tbody td{ padding:8px 12px; border-bottom:1px solid #eef2f7; white-space:nowrap; }
   tbody tr:hover{ background:#f8fafd; }
   td.name{ font-weight:900; }
   td.info{ color:#5b6b7b; font-size:13px; }
@@ -65,6 +64,22 @@
   td.ops{ text-align:right; }
   td.ops .btn{ padding:5px 12px; font-size:12px; margin-left:6px; }
   .empty{ color:#93a2b3; text-align:center; padding:36px 12px; font-size:14px; }
+  .source-badge{ display:inline-block; padding:2px 7px; border-radius:999px; font-size:11px; font-weight:800; background:#eef2f7; color:#5b6b7b; }
+  .source-badge.backdoor{ background:#fff6dc; color:#8a5a00; border:1px solid #f3e2a8; }
+  .modal-mask{ position:fixed; inset:0; background:rgba(34,48,61,.48); display:flex; align-items:center; justify-content:center; z-index:50; }
+  .modal-mask .login-card{ width:420px; }
+  .modal-mask h3{ margin-bottom:12px; font-size:17px; }
+  .modal-actions{ display:flex; justify-content:center; gap:10px; margin-top:4px; }
+  .row-edit{ cursor:pointer; }
+  @media (max-width:760px){
+    .topbar{ flex-wrap:wrap; padding:10px 12px; }
+    .topbar .spacer{ display:none; }
+    .content{ padding:10px 8px 24px; }
+    .tabs{ overflow-x:auto; }
+    .tab{ min-width:92px; }
+    .panel{ overflow-x:auto; }
+    table{ min-width:760px; }
+  }
 
   /* ---- 日志面板 ---- */
   .log-bar{ display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid #eef2f7; flex-wrap:wrap; }
@@ -140,6 +155,37 @@
     </div>
   </div>
 </div>
+<div id="ad-edit-box" class="modal-mask" hidden>
+  <div class="login-card">
+    <h3>编辑账号资料</h3>
+    <p class="hint" id="ad-edit-account"></p>
+    <input id="ad-edit-real" maxlength="20" placeholder="真实姓名">
+    <input id="ad-edit-grad" maxlength="4" inputmode="numeric" placeholder="届数（如 2023）">
+    <input id="ad-edit-nick" maxlength="20" placeholder="游戏内昵称">
+    <input id="ad-edit-remark" maxlength="40" placeholder="管理员备注">
+    <div class="modal-actions"><button id="ad-edit-ok" class="btn primary">保存</button><button id="ad-edit-cancel" class="btn">取消</button></div>
+  </div>
+</div>
+<div id="ad-reset-box" class="modal-mask" hidden>
+  <div class="login-card">
+    <h3>重置账号密码</h3>
+    <p class="hint" id="ad-reset-account"></p>
+    <input id="ad-reset-pass" type="password" placeholder="新密码（至少 6 位）">
+    <div class="modal-actions"><button id="ad-reset-ok" class="btn primary">重置</button><button id="ad-reset-cancel" class="btn">取消</button></div>
+  </div>
+</div>
+<div id="ad-stats-box" class="modal-mask" hidden>
+  <div class="login-card">
+    <h3>修正累计战绩</h3>
+    <p class="hint" id="ad-stats-account"></p>
+    <input id="ad-stats-nick" maxlength="20" placeholder="排行榜显示昵称">
+    <input id="ad-stats-wins" type="number" min="0" step="1" placeholder="胜场">
+    <input id="ad-stats-games" type="number" min="0" step="1" placeholder="场次">
+    <input id="ad-stats-points" type="number" min="0" step="1" placeholder="累计分数">
+    <input id="ad-stats-evolutions" type="number" min="0" step="1" placeholder="进化次数">
+    <div class="modal-actions"><button id="ad-stats-ok" class="btn primary">保存</button><button id="ad-stats-cancel" class="btn">取消</button></div>
+  </div>
+</div>
 
 <script src="confirm-dialog.js"></script>
 <script>
@@ -208,7 +254,7 @@ function renderLogPanel() {
 function tableHtml(users, actionsFor) {
   if (!users.length) return '<div class="empty">暂无记录</div>';
   return `<table>
-    <thead><tr><th>用户名</th><th>信息</th><th>申请时间</th><th style="text-align:right">操作</th></tr></thead>
+    <thead><tr><th>用户名</th><th>来源</th><th>资料</th><th>创建时间</th><th style="text-align:right">操作</th></tr></thead>
     <tbody>${users.map((u) => {
       const info = u.source === 'backdoor'
         ? `后门 · ${u.remark || '无备注'}`
@@ -219,7 +265,8 @@ function tableHtml(users, actionsFor) {
         : '';
       return `<tr>
         <td class="name">${u.name}</td>
-        <td class="info">${info}${dupBadge}</td>
+        <td><span class="source-badge ${u.source === 'backdoor' ? 'backdoor' : ''}">${u.source === 'backdoor' ? '后门注册' : '公开申请'}</span></td>
+        <td class="info">${info}${u.nickname ? ' · 昵称：' + u.nickname : ''}${dupBadge}</td>
         <td class="time">${u.createdAt}</td>
         <td class="ops">${actionsFor(u)}</td>
       </tr>`;
@@ -230,6 +277,7 @@ async function refresh() {
   const j = await api({ type: 'adminList', token });
   if (!j.ok) { toast(j.msg || '登录已过期'); showLogin(); return; }
   const users = j.users || [];
+  adminUsers = new Map(users.map((u) => [u.name, u]));
   const groups = [
     users.filter((u) => u.status === 'pending'),
     users.filter((u) => u.status === 'approved'),
@@ -240,8 +288,12 @@ async function refresh() {
     <button class="btn green" data-name="${u.name}" data-act="approve">通过</button>
     <button class="btn red" data-name="${u.name}" data-act="deny">拒绝</button>`);
   $('#panel-1').innerHTML = tableHtml(groups[1], (u) => `
+    <button class="btn" data-name="${u.name}" data-act="edit">编辑</button>
+    <button class="btn" data-name="${u.name}" data-act="reset">重置密码</button>
     <button class="btn red" data-name="${u.name}" data-act="deny">撤销</button>`);
   $('#panel-2').innerHTML = tableHtml(groups[2], (u) => `
+    <button class="btn" data-name="${u.name}" data-act="edit">编辑</button>
+    <button class="btn" data-name="${u.name}" data-act="reset">重置密码</button>
     <button class="btn green" data-name="${u.name}" data-act="approve">重新通过</button>`);
   refreshLeaderboard();
   refreshLogs();
@@ -255,7 +307,7 @@ async function refreshLeaderboard() {
   const rankStyle = (i) => ['color:#d4a017;', 'color:#8c9bab;', 'color:#b06a3b;'][i] || 'color:#5b6b7b;';
   $('#panel-3').innerHTML = `<table>
     <thead><tr><th>排名</th><th>姓名</th><th>账号</th><th>胜场</th><th>场次</th><th>胜率</th><th>平均分</th><th>进化次数</th></tr></thead>
-    <tbody>${list.map((s, i) => `<tr>
+    <tbody>${list.map((s, i) => `<tr class="row-edit" data-account="${s.account}" title="点击修正累计战绩">
       <td style="${rankStyle(i)}font-weight:900;">${i + 1}</td>
       <td class="name">${s.realName || s.nickname}</td>
       <td class="info">${s.account}</td>
@@ -266,8 +318,13 @@ async function refreshLeaderboard() {
       <td>${s.evolutions}</td>
     </tr>`).join('')}</tbody>
   </table>`;
+  $('#panel-3').querySelectorAll('tr[data-account]').forEach((row) => row.addEventListener('click', () => openStats(row.dataset.account, list.find((s) => s.account === row.dataset.account))));
 }
-function showLogin() { clearInterval(logTimer); $('#login-box').hidden = false; $('#review-box').hidden = true; $('#ad-create-box').hidden = true; }
+let adminUsers = new Map();
+let editingName = '';
+let resettingName = '';
+let statsAccount = '';
+function showLogin() { clearInterval(logTimer); $('#login-box').hidden = false; $('#review-box').hidden = true; $('#ad-create-box').hidden = true; $('#ad-edit-box').hidden = true; $('#ad-reset-box').hidden = true; $('#ad-stats-box').hidden = true; }
 function showReview() { $('#login-box').hidden = true; $('#review-box').hidden = false; refresh(); }
 $('#ad-login').addEventListener('click', async () => {
   const j = await api({ type: 'login', name: $('#ad-name').value.trim(), password: $('#ad-pass').value });
@@ -282,6 +339,8 @@ $('#ad-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#ad
   $('#panel-' + i).addEventListener('click', async (e) => {
     const b = e.target.closest('button');
     if (!b || !b.dataset.name) return;
+    if (b.dataset.act === 'edit') { openEdit(b.dataset.name); return; }
+    if (b.dataset.act === 'reset') { openReset(b.dataset.name); return; }
     const actText = b.dataset.act === 'approve' ? '通过' : '拒绝';
     if (!await spConfirm({ title: '审核用户', message: '确定把 ' + b.dataset.name + ' 的状态改为「' + actText + '」吗？' })) return;
     const j = await api({ type: 'adminReview', token, name: b.dataset.name, action: b.dataset.act });
@@ -289,6 +348,65 @@ $('#ad-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#ad
     else toast(j.msg || '操作失败');
     refresh();
   });
+});
+function openEdit(name) {
+  const u = adminUsers.get(name); if (!u) return;
+  editingName = name;
+  $('#ad-edit-account').textContent = '账号：' + name;
+  $('#ad-edit-real').value = u.realName === '—' ? '' : (u.realName || '');
+  $('#ad-edit-grad').value = u.gradYear || '';
+  $('#ad-edit-nick').value = u.nickname || '';
+  $('#ad-edit-remark').value = u.remark || '';
+  $('#ad-edit-box').hidden = false;
+  $('#ad-edit-real').focus();
+}
+function openReset(name) {
+  resettingName = name;
+  $('#ad-reset-account').textContent = '账号：' + name;
+  $('#ad-reset-pass').value = '';
+  $('#ad-reset-box').hidden = false;
+  $('#ad-reset-pass').focus();
+}
+$('#ad-edit-cancel').addEventListener('click', () => { $('#ad-edit-box').hidden = true; });
+$('#ad-edit-ok').addEventListener('click', async () => {
+  const j = await api({ type: 'adminUpdateUser', token, name: editingName,
+    realName: $('#ad-edit-real').value, gradYear: $('#ad-edit-grad').value,
+    nickname: $('#ad-edit-nick').value, remark: $('#ad-edit-remark').value });
+  toast(j.msg || '保存失败');
+  if (j.ok) { $('#ad-edit-box').hidden = true; refresh(); }
+});
+$('#ad-reset-cancel').addEventListener('click', () => { $('#ad-reset-box').hidden = true; });
+$('#ad-reset-ok').addEventListener('click', async () => {
+  const password = $('#ad-reset-pass').value;
+  if (password.length < 6) { toast('密码至少 6 位'); return; }
+  if (!await spConfirm({ title: '重置密码', message: '确定重置账号「' + resettingName + '」的密码吗？', confirmText: '重置' })) return;
+  const j = await api({ type: 'adminResetPassword', token, name: resettingName, password });
+  toast(j.msg || '重置失败');
+  if (j.ok) $('#ad-reset-box').hidden = true;
+});
+function openStats(account, s) {
+  if (!s) return;
+  statsAccount = account;
+  $('#ad-stats-account').textContent = '账号：' + account;
+  $('#ad-stats-nick').value = s.nickname || s.realName || '';
+  $('#ad-stats-wins').value = s.wins;
+  $('#ad-stats-games').value = s.games;
+  $('#ad-stats-points').value = s.points;
+  $('#ad-stats-evolutions').value = s.evolutions;
+  $('#ad-stats-box').hidden = false;
+  $('#ad-stats-nick').focus();
+}
+$('#ad-stats-cancel').addEventListener('click', () => { $('#ad-stats-box').hidden = true; });
+$('#ad-stats-ok').addEventListener('click', async () => {
+  const fields = ['wins', 'games', 'points', 'evolutions'];
+  const values = Object.fromEntries(fields.map((k) => [k, Number($('#ad-stats-' + k).value)]));
+  if (fields.some((k) => !Number.isSafeInteger(values[k]) || values[k] < 0)) { toast('战绩必须是非负整数'); return; }
+  if (values.wins > values.games) { toast('胜场不能超过场次'); return; }
+  if (!await spConfirm({ title: '修正累计战绩', message: '确定保存账号「' + statsAccount + '」的累计战绩吗？', confirmText: '保存' })) return;
+  const j = await api({ type: 'adminUpdateStats', token, account: statsAccount,
+    nickname: $('#ad-stats-nick').value, ...values });
+  toast(j.msg || '保存失败');
+  if (j.ok) { $('#ad-stats-box').hidden = true; refreshLeaderboard(); }
 });
 // ---- 对局回放：新标签页打开回放列表 ----
 $('#ad-replay').addEventListener('click', () => { window.open('/replay', '_blank'); });

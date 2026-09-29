@@ -69,6 +69,7 @@ let actingLock = false; // 联机：行动已发送、等待服务器回推期�
 let actingSeq = 0;     // 行动发送序号：迟到的旧回包/超时不得干扰最新一次发送
 let overShown = false; // 本局结算框是否已弹出
 let prevSnap = null;      // 上一次状态快照（漂移动画差分用）
+let pendingCardTargets = {}; // 本次市场换牌对应的收服者座位：卡牌 id -> seat
 const lastMarketIds = {}; // 每个市场槽位上次的卡 id（只给新补的卡播入场动画）
 // 系统"减弱动态效果"偏好：装饰动画（入场/离场）自动降级，状态时序不受影响
 const REDUCED_MOTION = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
@@ -176,6 +177,9 @@ function cancelFinalBanner() {
 /* ==================== 渲染（读取全局 S） ==================== */
 function render() {
   if (!S) return;
+  // 回放是观战视图：不显示会随当前行动者轮换的底部“主角”面板。
+  // 这个状态类也让 CSS 能在不影响实时对局的情况下收紧回放布局。
+  $('#screen-game').classList.toggle('replay-view', !!S.replay);
   // 最终回合（公平轮）：全场切换紧张氛围（红调暗角），对局结束/新一局自动还原
   const fr = S.endTriggered && !S.over;
   $('#screen-game').classList.toggle('final-round', fr);
@@ -236,28 +240,17 @@ function spawnBallFloat(c, from, to, delay) {
   el.style.setProperty('--band', BALLS[c].band);
   spawnFloat(el, from, to, delay, 1500);
 }
-function spawnCardFloat(card, from, to, delay) {
-  const el = document.createElement('img');
-  el.src = 'pictures/' + encodeURIComponent(card.name) + '.jpg';
-  el.style.width = '64px';
-  el.style.aspectRatio = '1335/2063';
-  el.style.objectFit = 'cover';
-  el.style.borderRadius = '8px';
-  el.style.boxShadow = '0 10px 24px rgba(0,0,0,.4)';
-  spawnFloat(el, from, to, delay, 1700);
-}
-// 对比新旧状态：谁拿了球/卡，就从源头飘一个动画到他的面板
+// 对比新旧状态：球从供应区飘向玩家；卡牌离场/入场由市场动画统一处理。
 function floatDiff() {
   if (!prevSnap) { prevSnap = snapOf(); return; }
   const nowStr = snapOf();
   const prev = JSON.parse(prevSnap);
   const now = JSON.parse(nowStr);
   prevSnap = nowStr;
+  pendingCardTargets = {};
   // 位置从"旧 DOM"取（render 尚未重建）
   const poolRects = {};
   document.querySelectorAll('#pool .pool-group').forEach((g) => { poolRects[g.dataset.color] = g.getBoundingClientRect(); });
-  const labelRects = {};
-  document.querySelectorAll('#market .tier-label, #rl-wrap .tier-label').forEach((l) => { labelRects[+l.dataset.tier] = l.getBoundingClientRect(); });
   // 球：供应区减少 → 飞向获得球的玩家
   COLORS.concat(['master']).forEach((c) => {
     const taken = prev.pool[c] - now.pool[c];
@@ -274,26 +267,13 @@ function floatDiff() {
     const prevIds = new Set((prev.players[i].cardIds || []).concat(prev.players[i].resIds || []));
     const newIds = (p2.cardIds || []).concat(p2.resIds || []).filter((id) => !prevIds.has(id));
     if (!newIds.length) return;
+    newIds.forEach((id) => { pendingCardTargets[id] = i; });
     // 音效：进化优先于预约，其余按收服处理
     if ((p2.evolutions || 0) > (prev.players[i].evolutions || 0)) playSound('evolve');
     else if (newIds.some((id) => (p2.resIds || []).includes(id))) playSound('reserve');
     else playSound('buy');
-    const to = boardRect(i);
-    if (!to) return;
-    newIds.forEach((id, k) => {
-      const card = findCardById(id);
-      if (!card) return;
-      let from = null;
-      for (const t of [1, 2, 3, 4, 5]) {
-        const idx = (prev.market[t] || []).indexOf(id);
-        if (idx >= 0) {
-          const slot = document.querySelector('.card[data-tier="' + t + '"][data-idx="' + idx + '"]');
-          if (slot) { from = slot.getBoundingClientRect(); break; }
-        }
-      }
-      if (!from) from = labelRects[card.tier]; // 盲抽：从牌堆标签飞出
-      if (from) spawnCardFloat(card, from, to, k * 280);
-    });
+    // 卡牌本体的“拿起 → 飞入自己面板”由 renderMarket() 的 card-lift 统一负责。
+    // 这里不再调用旧的 spawnCardFloat，否则一次收服会出现两张卡同时飞向玩家面板。
   });
 }
 
@@ -353,41 +333,26 @@ function fadeVoteBanner() {
 //   第一段(~40%) 只有角动：绕对角支点 3D 翘起 + 卡面 9 段逐条微弯（轻微变形）+ 接触阴影拉开
 //   第二段(~60%) 角领着整张牌沿掀角方向被带走（缓出）
 // 纯视觉层：新卡照常立即渲染，行动时序不受影响；系统开了"减弱动态效果"则直接跳过。
-const LIFT_MS = 520;   // 与 demo ⑥ 一致
-const LIFT_SEG = 9;    // 卡面切段数（逐条倾斜 → 弯曲）
+const LIFT_MS = 460;
 
-// 造一个"拿起"幽灵：外层负责被带走，内层嵌套 9 段负责翘起+弯曲
-function buildLiftGhost(el, rect){
-  const img = el.querySelector('.card-img');
-  const src = img ? img.getAttribute('src') : null;
-  const W = rect.width, H = rect.height, segH = H / LIFT_SEG;
+// 造一个"拿起"幽灵：保持完整卡面，避免切片在小尺寸真卡上产生断裂和闪烁。
+// 飞行终点取自己的玩家面板，动作方向因此随布局自动适配。
+function buildLiftGhost(el, rect, targetSeat){
   const wrap = document.createElement('div');
   wrap.className = 'card-lift';
-  wrap.style.cssText = 'position:fixed;left:' + rect.left + 'px;top:' + rect.top + 'px;width:' + W + 'px;height:' + H + 'px;margin:0;z-index:60;pointer-events:none;';
+  const tr = boardRect(targetSeat);
+  const tx = tr ? tr.left + tr.width / 2 - (rect.left + rect.width / 2) : 0;
+  const ty = tr ? tr.top + Math.min(80, tr.height / 2) - (rect.top + rect.height / 2) : 70;
+  wrap.style.cssText = 'position:fixed;left:' + rect.left + 'px;top:' + rect.top + 'px;width:' + rect.width + 'px;height:' + rect.height + 'px;margin:0;z-index:60;pointer-events:none;will-change:transform,opacity;--fly-x:' + tx.toFixed(1) + 'px;--fly-y:' + ty.toFixed(1) + 'px;';
   const sh = document.createElement('div');
   sh.className = 'sh';
   wrap.appendChild(sh);
-  const holder = document.createElement('div');
-  holder.className = 'lift3d';
-  let parent = holder;
-  for (let i = 0; i < LIFT_SEG; i++) {
-    const s = document.createElement('div');
-    s.className = 'seg';
-    s.style.setProperty('--i', String(i));
-    s.style.top = (i === 0 ? '0' : '100%');
-    s.style.height = segH.toFixed(2) + 'px';
-    // 首尾条跟着卡牌的圆角，不然悬起来的牌是个直角矩形
-    s.style.borderRadius = (i === 0 ? '12px 12px 0 0' : (i === LIFT_SEG - 1 ? '0 0 12px 12px' : '0'));
-    if (src) {
-      s.style.backgroundImage = 'url("' + src + '")';
-      s.style.backgroundSize = W + 'px ' + H + 'px';
-      s.style.backgroundPosition = '0 ' + (-i * segH).toFixed(2) + 'px';
-    }
-    parent.appendChild(s);
-    parent = s;   // 嵌套：让每段的自转累加 = 弯
-  }
-  wrap.appendChild(holder);
-  return { wrap: wrap, hasImage: !!src };
+  const ghost = el.cloneNode(true);
+  ghost.classList.add('lift-card');
+  ghost.classList.remove('new', 'selected', 'affordable', 'leaving');
+  ghost.style.cssText = 'width:100%;height:100%;margin:0;';
+  wrap.appendChild(ghost);
+  return wrap;
 }
 
 function spawnLeaveGhosts(root) {
@@ -400,19 +365,12 @@ function spawnLeaveGhosts(root) {
     if (prevIds[idx] == null) return; // 上一帧这个槽位没卡（新登场），不播离场
     if (prevIds[idx] === (cur ? cur.id : null)) return; // 槽位没换卡，不播
     const rect = el.getBoundingClientRect();
-    const built = buildLiftGhost(el, rect);
-    if (!built.hasImage) {
-      // 卡面图没加载出来（加载失败路径）→ 退回原来的单段整体后仰，不留空牌
-      const ghost = el.cloneNode(true);
-      ghost.classList.remove('new', 'selected', 'affordable');
-      ghost.classList.add('leaving');
-      ghost.style.cssText = 'position:fixed;left:' + rect.left + 'px;top:' + rect.top + 'px;width:' + rect.width + 'px;height:' + rect.height + 'px;margin:0;z-index:60;pointer-events:none;';
-      document.body.appendChild(ghost);
-      setTimeout(() => ghost.remove(), 280);
-      return;
-    }
-    document.body.appendChild(built.wrap);
-    setTimeout(() => built.wrap.remove(), LIFT_MS + 40); // 动画播完再移除 DOM
+    const oldId = prevIds[idx];
+    const targetSeat = pendingCardTargets[oldId];
+    const ghost = buildLiftGhost(el, rect, targetSeat);
+    // 先入 DOM，再让浏览器把幽灵提升为合成层，避免动画首帧和布局重排挤在同一帧。
+    document.body.appendChild(ghost);
+    setTimeout(() => ghost.remove(), LIFT_MS + 60); // 动画播完再移除 DOM
   });
 }
 
@@ -631,6 +589,18 @@ function renderPlayers() {
   const col = $('#players');
   const heroBox = $('#my-panel');
   col.dataset.n = S.n; // 人数：CSS 用来自适应密度（4 人局更紧凑）
+  // 回放没有“观看者座位”。所有玩家固定留在左侧列表，避免底部主面板
+  // 随着 S.current 改变而不断换人，观感也更接近赛事观战。
+  if (S.replay) {
+    heroBox.hidden = true;
+    heroBox.innerHTML = '';
+    const allSeats = S.players.map((_, pi) => pi);
+    reconcile(col, allSeats, (pi) => 'seat:' + pi,
+      () => document.createElement('div'),
+      (el, pi) => boardEl(el, S.players[pi], pi, false));
+    return;
+  }
+  heroBox.hidden = false;
   // 主角面板：联机=自己；本地=当前玩家。其余玩家放左侧竖排。
   const heroSeat = ONLINE ? mySeat : S.current;
   // 座位块按座位号复用：没变化的座位不重建（里面的卡面 <img> 也就不会重新解码）
@@ -780,6 +750,10 @@ function isConnected(seat) {
 function renderActions() {
   const box = $('#actions');
   box.innerHTML = '';
+  if (S.replay) {
+    box.innerHTML = '<div class="action-hint">观战模式 · 使用底部回放控制条逐步查看行动</div>';
+    return;
+  }
   const p = curPlayer();
   if (S.phase === 'gameover') return;
 
@@ -1507,19 +1481,22 @@ function lobbyAiLabel(level, total) {
 const LOBBY_NAV = [
   { id: 'start',  icon: '▶', label: '开始对局', cls: 'primary' },   // 对齐 demo：首项是红色主按钮
   { id: 'champ',  icon: '★', label: '挑战阿尔宙斯' },
-  { id: 'rank',   icon: '≡', label: '训练家排行' },
+  { id: 'rank',   icon: '≡', label: '训练家排行', group: '查看记录' },
   { id: 'replay', icon: '⟲', label: '对局回放' },
   { id: 'honor',  icon: '♛', label: '名人堂' },
 ];
 
 function showLobbySection(id) {
-  document.querySelectorAll('#screen-lobby .sec').forEach((s) => { s.hidden = s.id !== 'lobby-sec-' + id; });
   const it = LOBBY_NAV.find((x) => x.id === id);
   const t = $('#lobby-sec-title');
   if (t && it) t.textContent = it.label;
   document.querySelectorAll('#lobby-nav .nav-btn').forEach((b) => {
     b.classList.toggle('on', b.dataset.sec === id);
   });
+  // 排行和回放本身就是内容页，导航点击直接打开，避免出现“先点入口区、再点按钮”的重复操作。
+  if (id === 'rank') { $('#link-leaderboard').click(); return; }
+  if (id === 'replay') { window.open('/replay', '_blank'); return; }
+  document.querySelectorAll('#screen-lobby .sec').forEach((s) => { s.hidden = s.id !== 'lobby-sec-' + id; });
   // 挑战阿尔宙斯的人数档（2/3/4 人局 → 建 mode=challenge 专用房）
   const champ = $('#champ-size');
   if (champ && !champ.dataset.done) {
@@ -1546,7 +1523,15 @@ function renderLobbyNav() {
   const box = $('#lobby-nav');
   if (!box || box.dataset.done) return;
   box.dataset.done = '1';
+  let group = '';
   LOBBY_NAV.forEach((it) => {
+    if (it.group && it.group !== group) {
+      group = it.group;
+      const label = document.createElement('span');
+      label.className = 'nav-group-label';
+      label.textContent = group;
+      box.appendChild(label);
+    }
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'btn nav-btn' + (it.cls ? ' ' + it.cls : '');
@@ -1964,8 +1949,12 @@ function initOnline() {
   $('#lobby-logs').addEventListener('click', () => $('#btn-logs').click());
   $('#lobby-sound').addEventListener('click', () => $('#btn-sound').click());
   // 导航分区里的入口按钮
+  // 排行函数在 init() 内定义；这里通过兼容入口触发，避免初始化阶段引用未进入作用域的局部函数。
   $('#lobby-rank-open').addEventListener('click', () => $('#link-leaderboard').click());
-  $('#lobby-replay-open').addEventListener('click', () => $('#btn-logs').click());
+  // 对局回放入口：旧写法错接到「对局记录」弹窗（$('#btn-logs')）——点的是「对局回放」，
+  // 弹出来的却是一段纯文字日志（濠哥：「对局回放怎么显示的是日志」）。
+  // 现在直接开回放页 /replay：回放页与游戏共用 localStorage 的 spToken，登录态跟着走。
+  $('#lobby-replay-open').addEventListener('click', () => window.open('/replay', '_blank'));
   // ③ 挑战阿尔宙斯：选人数（2/3/4）→ 建专用房 mode=challenge（对手固定阿尔宙斯级）
   const champBox = $('#champ-size');
   if (champBox) {
@@ -2105,29 +2094,30 @@ function init() {
       $('#pw-old').value = ''; $('#pw-new').value = ''; $('#pw-new2').value = '';
     }
   });
-  // 训练家排行
-  $('#link-leaderboard').addEventListener('click', async (e) => {
-    e.preventDefault();
+  // 训练家排行：大厅导航和兼容旧入口共用同一个打开函数
+  async function openLeaderboard(e) {
+    if (e && e.preventDefault) e.preventDefault();
     const j = await postApi({ type: 'leaderboard', token: myToken });
     if (!j.ok) return;
     const list = j.list || [];
     $('#lb-body').innerHTML = list.length
       ? `<table class="lb-table">
-          <thead><tr><th>名次</th><th>姓名</th><th>胜场</th><th>场次</th><th>胜率</th><th>平均分</th><th>进化</th></tr></thead>
+          <thead><tr><th class="lb-rank-col">排名</th><th>训练家</th><th>胜场</th><th>场次</th><th>胜率</th><th>平均分</th><th>进化</th></tr></thead>
           <tbody>${list.map((r, i) => `
-            <tr>
-              <td>${i + 1}</td>
-              <td class="lb-name">${r.realName || r.nickname}</td>
-              <td>${r.wins}</td>
+            <tr class="lb-row ${i < 3 ? 'lb-top-' + (i + 1) : ''}">
+              <td class="lb-rank-col"><span class="lb-rank">${i + 1}</span></td>
+              <td class="lb-name"><b>${r.realName || r.nickname}</b><small>${r.nickname && r.nickname !== (r.realName || r.nickname) ? r.nickname : ''}</small></td>
+              <td class="lb-strong">${r.wins}</td>
               <td>${r.games}</td>
-              <td>${r.winRate}%</td>
+              <td><span class="lb-rate">${r.winRate}%</span></td>
               <td>${r.avgPoints}</td>
               <td>${r.evolutions}</td>
             </tr>`).join('')}</tbody>
         </table>`
       : '<div class="lb-empty">还没有战绩记录，快去开局吧！</div>';
     showModal('#modal-leaderboard');
-  });
+  }
+  $('#link-leaderboard').addEventListener('click', openLeaderboard);
   // 对局记录面板
   $('#btn-logs').addEventListener('click', () => {
     const list = (room && room.log) || [];

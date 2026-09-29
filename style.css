@@ -24,7 +24,7 @@
   --shadow-sm:0 2px 6px rgba(34,48,61,.07);
   --shadow:0 8px 22px rgba(34,48,61,.10);
   --shadow-lg:0 16px 44px rgba(34,48,61,.16);
-  --radius:16px;
+  --radius:14px;
 }
 
 /* ==================== 全局 ==================== */
@@ -76,7 +76,7 @@ h3{ font-size:14px; }
   border:none; border-radius:14px; padding:11px 20px;
   font-size:15px; font-weight:800; cursor:pointer;
   transition:transform .14s, filter .14s, box-shadow .14s;
-  letter-spacing:.5px;
+  letter-spacing:0;
 }
 .btn:hover:not(:disabled){ transform:translateY(-2px); filter:brightness(1.07); }
 .btn:active:not(:disabled){ transform:translateY(0); }
@@ -88,6 +88,9 @@ h3{ font-size:14px; }
 .btn.evolve{ background:linear-gradient(180deg,#4ade80,#15803d); color:#fff; box-shadow:0 5px 14px rgba(21,128,61,.35); }
 .btn.ghost{ background:#fff; color:var(--ink); border:2px solid var(--line-strong); }
 .btn.ghost:hover:not(:disabled){ border-color:var(--ink-soft); }
+.btn:focus-visible, .chip:focus-visible, .nav-btn:focus-visible, input:focus-visible, select:focus-visible{
+  outline:3px solid rgba(47,86,200,.42); outline-offset:2px;
+}
 .btn.lg{ font-size:18px; padding:15px 36px; border-radius:16px; }
 .btn.sm{ padding:7px 14px; font-size:13px; border-radius:10px; }
 
@@ -179,6 +182,35 @@ h3{ font-size:14px; }
 .lb-empty{ color:#93a2b3; text-align:center; padding:20px; font-size:14px; }
 /* 训练家排行：人数多到一屏装不下时在弹窗内部滚动（人少时不会出现滚动条，外观维持原样）；表头吸顶 */
 #lb-body{ max-height:64vh; overflow-y:auto; }
+#modal-leaderboard{
+  width:min(1040px,96vw); max-height:88vh; margin:0 2vw;
+  border-radius:6px; padding:22px 24px 18px; background:#f8fafc;
+  border:1px solid #d7e0eb; border-top:4px solid var(--red); box-shadow:0 18px 50px rgba(14,30,48,.28); text-align:left;
+}
+#modal-leaderboard h2{ color:var(--ink); text-shadow:none; margin-bottom:14px; }
+#modal-leaderboard #lb-body{ background:#fff; border:1px solid var(--line-strong); padding:0; overflow:hidden; }
+#modal-leaderboard .lb-table{ background:#fff; width:100%; border-collapse:separate; border-spacing:0; font-size:14px; }
+#modal-leaderboard .lb-table th{ background:#f1f5f9; color:#64748b; padding:10px 14px; border-bottom:1px solid #dbe3ed; font-size:11px; letter-spacing:.04em; }
+#modal-leaderboard .lb-table td{ padding:9px 14px; border-bottom:1px solid #edf1f5; color:#435466; }
+#modal-leaderboard .lb-table tbody tr:last-child td{ border-bottom:0; }
+#modal-leaderboard .lb-table tbody tr:hover{ background:#fff9f5; }
+#modal-leaderboard .lb-rank-col{ width:72px; text-align:center; }
+#modal-leaderboard .lb-rank{ display:inline-flex; width:25px; height:25px; align-items:center; justify-content:center; border-radius:50%; background:#edf2f7; color:#64748b; font-weight:900; }
+#modal-leaderboard .lb-top-1{ background:#fffaf0; }
+#modal-leaderboard .lb-top-2{ background:#fbfcfe; }
+#modal-leaderboard .lb-top-3{ background:#fffaf7; }
+#modal-leaderboard .lb-top-1 .lb-rank{ background:#ffcb05; color:#5a4300; }
+#modal-leaderboard .lb-top-2 .lb-rank{ background:#cbd5e1; color:#334155; }
+#modal-leaderboard .lb-top-3 .lb-rank{ background:#d99a72; color:#fff; }
+#modal-leaderboard .lb-name b{ display:block; color:var(--ink); font-size:15px; }
+#modal-leaderboard .lb-name small{ display:block; min-height:14px; color:#94a3b8; font-size:11px; }
+#modal-leaderboard .lb-strong{ color:var(--red); font-weight:900; }
+#modal-leaderboard .lb-rate{ display:inline-block; min-width:48px; padding:3px 7px; border-radius:999px; background:#eef6ff; color:#2f56c8; font-weight:800; text-align:center; }
+@media (max-width:640px){
+  #modal-leaderboard{ width:calc(100vw - 16px); margin:0 8px; padding:16px 10px 12px; }
+  #modal-leaderboard .lb-table{ min-width:620px; }
+  #modal-leaderboard #lb-body{ overflow-x:auto; }
+}
 .lb-table thead th{ position:sticky; top:0; z-index:1; }
 .join-as{ text-align:center; margin-bottom:12px; }
 .nick-label{ display:block; font-size:12px; color:var(--ink-soft); margin-bottom:4px; }
@@ -218,7 +250,7 @@ h3{ font-size:14px; }
   display:flex; align-items:center; justify-content:space-between; gap:12px;
   background:rgba(255,255,255,.92); backdrop-filter:blur(6px);
   border:1px solid rgba(34,48,61,.06);
-  border-radius:16px; padding:8px 16px; box-shadow:var(--shadow); margin-bottom:10px;
+  border-radius:16px; padding:8px 16px; box-shadow:var(--shadow); margin-bottom:12px;
 }
 .header-left{ display:flex; align-items:center; gap:12px; }
 .header-ball{ width:26px; height:26px; }
@@ -232,7 +264,10 @@ h3{ font-size:14px; }
   font-weight:800; font-size:13px; color:var(--ink-soft);
   background:var(--field); border:1px solid var(--line); padding:4px 14px; border-radius:999px;
 }
-.header-center{ font-size:17px; }
+.header-center{
+  min-width:210px; padding:5px 16px; border-radius:999px; text-align:center;
+  font-size:16px; font-weight:800; background:#fff7ed; border:1px solid #fed7aa;
+}
 .header-center b{ color:var(--red); font-size:20px; margin:0 2px; }
 .header-right{ display:flex; align-items:center; gap:10px; }
 #target-info{
@@ -243,7 +278,7 @@ h3{ font-size:14px; }
 .end-banner{ background:#fff3cd; border:1px solid #f3d78a; color:#8a5a00; font-weight:800; padding:4px 14px; border-radius:999px; font-size:13px; animation:pulseGold 1.2s infinite; }
 
 /* ---- 中部区域：左玩家栏 + 中市场 + 右供应/行动 ---- */
-#mid-zone{ display:flex; gap:12px; align-items:stretch; }
+#mid-zone{ display:flex; gap:14px; align-items:stretch; }
 #market{ flex:1; }
 
 /* ---- 市场 ---- */
@@ -281,49 +316,35 @@ h3{ font-size:14px; }
 }
 .card.new{ animation:cardIn .9s cubic-bezier(.25,.7,.35,1); } /* 只有新补的卡播放入场动画 */
 .card.leaving{ animation:cardOut .26s cubic-bezier(.55,.1,.75,.45) forwards; transform-origin:50% 100%; } /* 被拿走的卡：单段整体后仰（现在只作卡面图未加载时的回退）*/
-/* ---- 拿卡离场动画（visual 口径 = demo ⑥「拿起·翘右上·微变形，520ms」）----
-   第一段(~40%) 只有角动：绕对角支点 3D 翘起 + 卡面 9 段逐条微弯（轻微变形）+ 接触阴影拉开
-   第二段(~60%) 角领着整张牌沿掀角方向被带走（缓出）
-   纯视觉层：幽灵 DOM，不参与任何状态；减弱动态效果下 JS 直接跳过（这里再兜底） */
+/* ---- 拿卡离场动画：离桌 → 转向 → 飞入自己的玩家面板 ----
+   使用完整卡面幽灵，避免小尺寸卡片被切片后出现断裂；幽灵不参与状态。 */
 .card-lift{
-  perspective:900px; animation:liftCarry 520ms linear forwards;
-  /* 强度系数（默认 1 = 定稿 ⑥ 的「微变形」）。
-     游戏内卡片尺寸比 demo 小、同一角度的感知会弱一截，按比例补偿时把这两个数改大即可：
-     建议档位 角度 ×1.3 / 位移 ×1.2（仍是微变形，不会变成夸张感）*/
-  --lift-tilt-k:1; --lift-dx-k:1;
+  animation:liftCarry .46s cubic-bezier(.22,.72,.28,1) forwards;
+  contain:layout paint; backface-visibility:hidden;
 }
 .card-lift .sh{
-  position:absolute; left:5%; right:5%; bottom:-7%; height:14%; border-radius:50%;
-  background:radial-gradient(ellipse at 50% 50%, rgba(9,14,20,.5), rgba(9,14,20,0) 72%);
-  filter:blur(3px); animation:liftSh 520ms linear forwards;
+  position:absolute; left:6%; right:6%; bottom:-10%; height:18%; border-radius:50%;
+  background:radial-gradient(ellipse, rgba(9,14,20,.28), rgba(9,14,20,0) 72%);
+  opacity:.7; animation:liftSh .46s ease-out forwards;
 }
-.card-lift .lift3d{
-  position:absolute; inset:0; transform-style:preserve-3d; transform-origin:0% 100%;
-  animation:liftTilt 520ms linear forwards;
+@keyframes liftCarry{
+  0%{ transform:translate3d(0,0,0) rotate(0deg) scale(1); opacity:1; }
+  22%{ transform:translate3d(0,-12px,0) rotate(-3deg) scale(1.04); opacity:1; }
+  58%{ transform:translate3d(calc(var(--fly-x) * .42),calc(var(--fly-y) * .42 - 12px),0) rotate(5deg) scale(.98); opacity:.98; }
+  100%{ transform:translate3d(var(--fly-x),var(--fly-y),0) rotate(1deg) scale(.78); opacity:0; }
 }
-.card-lift .seg{
-  position:absolute; left:0; width:100%; background-repeat:no-repeat;
-  transform-origin:50% 100%; transform-style:preserve-3d; backface-visibility:visible;
-  animation:liftSeg 520ms linear forwards; animation-delay:calc(var(--i) * 10ms);
+@keyframes liftSh{
+  0%{ opacity:.7; transform:translate(0,0) scale(1); }
+  22%{ opacity:.2; transform:translate(2px,5px) scale(1.3); }
+  100%{ opacity:0; transform:translate(0,8px) scale(.5); }
 }
-@keyframes liftCarry{           /* 第二段：被带走（缓出） */
-  0%,40%{ transform:translate(0,0) rotate(0deg); opacity:1; animation-timing-function:cubic-bezier(.16,.84,.3,1); }
-  100%  { transform:translate(calc(74px * var(--lift-dx-k)), calc(-74px * var(--lift-dx-k))) rotate(6deg) scale(.86); opacity:0; }
+.card-lift::after{
+  content:''; position:absolute; inset:-10%; pointer-events:none; border-radius:14px;
+  background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.8) 49%,transparent 63%);
+  transform:translateX(-130%); opacity:.35; animation:liftShine .46s ease-out .06s forwards;
 }
-@keyframes liftTilt{            /* 第一段：绕对角支点翘起（缓入）；第二段再抬一点 */
-  0%  { transform:translateZ(0) rotate3d(216,140,0,0deg); animation-timing-function:cubic-bezier(.55,0,.85,.4); }
-  40% { transform:translateZ(calc(12px * var(--lift-tilt-k))) rotate3d(216,140,0,calc(26deg * var(--lift-tilt-k))); animation-timing-function:cubic-bezier(.16,.84,.3,1); }
-  100%{ transform:translateZ(calc(22px * var(--lift-tilt-k))) rotate3d(216,140,0,calc(32deg * var(--lift-tilt-k))); }
-}
-@keyframes liftSeg{             /* 每段逐次倾斜 → 卡面轻微弯曲（弧） */
-  0%  { transform:rotateX(0deg); animation-timing-function:cubic-bezier(.55,0,.85,.4); }
-  40% { transform:rotateX(calc(-2.4deg * var(--lift-tilt-k))); animation-timing-function:cubic-bezier(.16,.84,.3,1); }
-  100%{ transform:rotateX(calc(-1.6deg * var(--lift-tilt-k))); }
-}
-@keyframes liftSh{              /* 接触阴影：越翘越淡、越散 */
-  0%  { opacity:.75; transform:translate(0,0) scale(1); }
-  40% { opacity:.32; transform:translate(6px,5px) scale(1.45); }
-  100%{ opacity:0;   transform:translate(9px,7px) scale(1.6); }
+.card-lift .lift-card{ position:relative; z-index:1; transform-origin:50% 100%; box-shadow:none; will-change:transform,opacity; }
+@keyframes liftShine{ to{ transform:translateX(130%); } }
 }
 /* 系统"减弱动态效果"：入场/离场动画降级为直接出现。
    index.html 会在 <html> 上打 reduced-motion 类（JS 侧还会跳过离场克隆），这里用媒体查询再兜底 */
@@ -394,14 +415,14 @@ h3{ font-size:14px; }
 
 /* ---- 供应区（右栏） ---- */
 #middle-row{
-  flex:none; width:400px; display:flex; flex-direction:column; gap:12px;
+  flex:none; width:360px; display:flex; flex-direction:column; gap:12px;
 }
 #rl-wrap{ display:flex; gap:10px; align-items:center; }
 #rl-wrap .tier-label{ width:64px; padding:6px 4px; font-size:12px; }
 .card.mini{ width:96px; }
 #pool-wrap{
   background:rgba(255,255,255,.9); border:1px solid rgba(34,48,61,.06);
-  border-radius:16px; padding:9px 12px; box-shadow:var(--shadow);
+  border-radius:16px; padding:10px 12px; box-shadow:var(--shadow-sm);
 }
 #pool-wrap h3{ color:var(--ink-soft); margin-bottom:8px; font-size:13px; letter-spacing:1px; }
 #pool{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
@@ -454,7 +475,7 @@ h3{ font-size:14px; }
 }
 .pool-group.clickable{
   cursor:pointer; border-color:var(--gold); background:#fffdf2;
-  animation:poolNudge 1.1s infinite;
+  animation:poolNudge 1.6s infinite;
 }
 .pool-group.clickable:hover{ transform:translateY(-4px); }
 .pool-group.selected{ border-color:var(--green); background:#f0fdf4; animation:none; box-shadow:0 0 0 3px rgba(22,163,74,.25); }
@@ -462,13 +483,18 @@ h3{ font-size:14px; }
 
 /* ---- 行动区（右栏下方） ---- */
 #action-wrap{
-  flex:1; background:rgba(255,255,255,.9); border:1px solid rgba(34,48,61,.06);
-  border-radius:16px; padding:12px 18px; box-shadow:var(--shadow);
+  flex:1; min-height:150px; background:rgba(255,255,255,.96); border:1px solid rgba(34,48,61,.06);
+  border-left:4px solid var(--blue); border-radius:16px; padding:14px 16px; box-shadow:var(--shadow);
   display:flex; flex-direction:column; justify-content:center;
 }
-.action-hint{ font-size:14px; font-weight:800; margin-bottom:10px; }
+.action-hint{ font-size:14px; font-weight:900; line-height:1.45; margin-bottom:10px; }
+.action-hint::before{ content:'当前行动'; display:block; color:var(--blue); font-size:11px; letter-spacing:.08em; margin-bottom:3px; }
 .action-hint.warn{ color:#b91c1c; }
+.action-hint.warn::before{ content:'需要处理'; color:#b91c1c; }
 .action-btns{ display:flex; gap:10px; flex-wrap:wrap; }
+.action-btns .btn{ min-height:40px; }
+#act-take3, #act-confirm{ box-shadow:0 4px 12px rgba(227,53,13,.22); }
+#act-return{ color:var(--ink-soft); }
 .buy-confirm{ background:var(--field); border:1px solid var(--line); border-radius:14px; padding:10px 14px; margin-bottom:10px; }
 .buy-name{ font-weight:900; font-size:16px; margin-bottom:4px; }
 .buy-cost{ font-size:13px; display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
@@ -501,6 +527,10 @@ h3{ font-size:14px; }
 
 /* ---- 主角面板（底部横跨：联机=自己，本地=当前玩家） ---- */
 #my-panel{ margin-top:12px; }
+/* 回放采用固定观战布局：玩家列表始终包含全部座位，底部不再重复渲染主角面板。 */
+#screen-game.replay-view #my-panel{ display:none; }
+#screen-game.replay-view #players{ align-self:flex-start; }
+#screen-game.replay-view #action-wrap{ opacity:.72; }
 .player.hero{
   display:flex; gap:18px; align-items:stretch;
   padding:14px 18px; border-left-width:6px;
@@ -935,6 +965,11 @@ h3{ font-size:14px; }
 #screen-lobby .rail .logo .logo-ball{ margin-bottom:8px; }
 #screen-lobby .rail .sub{ text-align:center; color:var(--ink-soft); font-size:11px; letter-spacing:1px; }
 #screen-lobby .nav{ display:flex; flex-direction:column; gap:8px; }
+#screen-lobby .nav-group-label{
+  margin:10px 4px 0; color:var(--ink-faint); font-size:11px; font-weight:900;
+  letter-spacing:.08em; text-transform:uppercase;
+}
+#screen-lobby .nav-group-label + .nav-btn{ margin-top:-2px; }
 #screen-lobby .nav-btn{
   display:flex; align-items:center; gap:10px; justify-content:flex-start; width:100%; text-align:left;
   padding:10px 12px; font-size:14px; position:relative; overflow:hidden;
@@ -961,6 +996,7 @@ h3{ font-size:14px; }
 /* 选中态：非主按钮红字红边；主按钮金边 + 面板色字（对齐 demo） */
 #screen-lobby .nav-btn:not(.primary).on{ color:var(--red); border-color:var(--red); }
 #screen-lobby .nav-btn.primary.on{ color:var(--panel-bg); border-color:var(--gold); }
+#screen-lobby .nav-btn:not(.primary):not(.on){ color:var(--ink-soft); }
 /* 新手教程按钮：只注入到「本地设置页」（tutorial.js），大厅统一走工具条「教程」。
    —— 去重靠"少注入一处"，不要再用 `#screen-lobby .tut-btn{display:none}` 把入口藏起来：
    藏起来的那颗正是唯一真的能启动教程的按钮，会让人误判成"教程没接入"。 */

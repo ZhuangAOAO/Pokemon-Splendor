@@ -200,6 +200,7 @@ function broadcastRoom(room) {
       you: { cid: c.cid, seat: c.seat, isHost: c.isHost, name: c.name, voted: !!(room.vote && room.vote.yes.includes(c.cid)) },
     });
   }
+  armOfflineSkip(room); // 回合落到「已断线的人类」头上时挂上自动跳过（见函数注释）
 }
 function broadcastToast(room, msg) {
   for (const c of room.conns.values()) sendSSE(c, { type: 'toast', msg });
@@ -259,10 +260,7 @@ function handleDisconnect(room, conn) {
     if (room.offlineTimer) return; // 已进入倒计时
     room.offlineTimer = setTimeout(() => {
       room.offlineTimer = null;
-      if (connectedHumans(room).length === 0) {
-        endGameToLobby(room, '所有玩家离线超过 60 秒，对局自动结束');
-        deleteRoomIfEmpty(room); // 没人还连着：房间解散，不留幽灵房
-      }
+      if (connectedHumans(room).length === 0) finishOfflineGame(room); // 先把没打完的局打完再收房
     }, 60000);
     return;
   }
@@ -270,19 +268,68 @@ function handleDisconnect(room, conn) {
   if (room.vote) checkVoteComplete(room);
   broadcastRoom(room);
   // 对局中：保留座位，轮到他（行动或进化阶段）时自动跳过
+  armOfflineSkip(room);
+}
+// 「离线座位到点自动跳过」：断线那一刻是他的回合要挂，**回合后来才轮到他**也要挂。
+// 旧写法只在断线那一瞬判断一次：若断线时不是他的回合，等回合真转到他时就没有任何计时器 ——
+// 整局永远停在「等一个已经关掉页面的人」上。挑战房只有 1 个人类，尤其致命：
+// 玩家一断线，电脑走完就卡在人类回合，60 秒后房间被销毁 ⇒ 这一局战绩与回放全部丢失。
+function armOfflineSkip(room) {
+  if (room.skipTimer) return;                              // 已经挂过，不重复挂
+  if (room.phase !== 'game') return;
   const S = room.session.S;
-  if (S && !S.over && (S.phase === 'normal' || S.phase === 'evolve') && S.current === conn.seat && !room.session.curPlayer().isAI) {
-    if (room.skipTimer) clearTimeout(room.skipTimer);
-    room.skipTimer = setTimeout(() => {
-      room.skipTimer = null;
-      const s2 = room.session.S;
-      if (s2 && !s2.over && (s2.phase === 'normal' || s2.phase === 'evolve') && s2.current === conn.seat && !room.session.curPlayer().isAI) {
-        broadcastToast(room, `${conn.name} 断线，自动跳过回合`);
-        if (s2.phase === 'evolve') room.session.actSkipEvolve();
-        else room.session.advanceTurn();
-      }
-    }, TURN_TIMEOUT);
-  }
+  if (!S || S.over) return;
+  if (S.phase !== 'normal' && S.phase !== 'evolve') return; // 退球/选球等不在此推进回合
+  const cur = room.session.curPlayer();
+  if (!cur || cur.isAI) return;                            // 电脑的回合由 scheduleAI 负责
+  const conn = [...room.conns.values()].find((c) => c.seat === S.current);
+  if (!conn || conn.connected) return;                     // 人在线：等他自己的操作
+  room.skipTimer = setTimeout(() => {
+    room.skipTimer = null;
+    const s2 = room.session.S;
+    if (!s2 || s2.over || room.phase !== 'game') return;
+    if (s2.current !== conn.seat || (s2.phase !== 'normal' && s2.phase !== 'evolve')) return;
+    broadcastToast(room, `${conn.name} 断线，自动跳过回合`);
+    if (s2.phase === 'evolve') room.session.actSkipEvolve();
+    else room.session.advanceTurn();
+  }, TURN_TIMEOUT);
+}
+// 全员离线到点后的收尾：**先把还没打完的这一局打完**，再退回大厅。
+// 旧写法直接 endGameToLobby（把 S 置空）⇒ 这一局既没战绩也没回放，玩家回来只看到「回到大厅」、
+// 排行榜上查无此局 —— 挑战房是单人房（锁屏/切后台/弱网 60 秒即中招），所以「挑战局不算数」尤其明显。
+// 现在的口径：离线座位由 armOfflineSkip 自动跳过、电脑继续走；完局时 onGameOver 照常落战绩/回放。
+const OFFLINE_FINISH_MS = 120000; // 收尾窗口：全员离线后给对局打完的时间
+function finishOfflineGame(room) {
+  const drop = (reason) => {
+    endGameToLobby(room, reason);
+    deleteRoomIfEmpty(room); // 没人还连着：房间解散，不留幽灵房
+  };
+  const S0 = room.session.S;
+  if (!S0 || S0.over || room.phase !== 'game') return drop('所有玩家离线超过 60 秒，对局自动结束');
+  const t0 = Date.now();
+  const timer = setInterval(() => {
+    if (connectedHumans(room).length > 0) { clearInterval(timer); return; } // 有人回来：对局继续
+    const S = room.session.S;
+    if (!S || S.over) {
+      clearInterval(timer);
+      return drop('全员离线：对局已自动打完并结算'); // 战绩/回放已由 onGameOver 落库，这里只负责收房
+    }
+    // 全员离线：离线人类的回合**立即推进**（没人看，不必等 30 秒），电脑照常走 → 秒级打完
+    const cur = room.session.curPlayer();
+    if (cur && !cur.isAI) {
+      if (S.phase === 'evolve') room.session.actSkipEvolve();
+      else if (S.phase === 'discard') {
+        // 退球阶段必须替他退（否则整局永久停在「等一个不在的人退球」上）：退手上最多的那色，大师球排在最后
+        const c = COLORS.filter((x) => cur.balls[x] > 0).sort((a, b) => cur.balls[b] - cur.balls[a])[0]
+          || (cur.balls.master > 0 ? 'master' : null);
+        if (c) room.session.actDiscardOne(c);
+      } else if (S.phase === 'normal') room.session.advanceTurn();
+    }
+    if (Date.now() - t0 > OFFLINE_FINISH_MS) {
+      clearInterval(timer);
+      drop('全员离线超过 60 秒且对局未能自动打完，已结束');
+    }
+  }, 400);
 }
 
 /* ==================== 数据库（MySQL） ==================== */
@@ -437,6 +484,7 @@ async function handleLeaderboard(body) {
     realName: s.real_name || '',
     wins: s.wins,
     games: s.games,
+    points: s.points,
     winRate: s.games ? Math.round((s.wins / s.games) * 100) : 0,
     avgPoints: s.games ? Number((s.points / s.games).toFixed(1)) : 0,
     evolutions: s.evolutions,
@@ -709,6 +757,7 @@ async function handleAdminList(body) {
     name: x.name,
     realName: x.real_name || '—',
     gradYear: x.grad_year || 0,
+    nickname: x.nickname || '',
     remark: x.remark || '',
     source: x.source || 'public',
     status: x.status,
@@ -721,6 +770,59 @@ async function handleAdminList(body) {
     denied: users.filter((x) => x.status === 'denied').length,
   };
   return { ok: true, users, stats };
+}
+// 管理员编辑账号资料：不允许修改账号名/角色，避免破坏回放和战绩关联。
+async function handleAdminUpdateUser(body) {
+  const u = await authUser(body.token);
+  if (!u || u.role !== 'admin') return { ok: false, msg: '需要管理员权限' };
+  const name = String(body.name || '').trim();
+  const target = await findUserDb(name);
+  if (!target || target.role === 'admin') return { ok: false, msg: '账号不存在或不能编辑管理员' };
+  const realName = String(body.realName || '').trim().slice(0, 20);
+  const nickname = String(body.nickname || '').trim().slice(0, 20);
+  const remark = String(body.remark || '').trim().slice(0, 40);
+  const gradYear = Math.max(0, Math.min(9999, Number(body.gradYear) || 0));
+  if (realName.length > 20 || nickname.length > 20) return { ok: false, msg: '姓名或昵称过长' };
+  await pool.query('UPDATE users SET real_name = ?, grad_year = ?, nickname = ?, remark = ? WHERE name = ?',
+    [realName, gradYear, nickname, remark, name]);
+  logAccount('资料编辑', '管理员 ' + u.name + ' 编辑了账号 ' + name);
+  return { ok: true, msg: '账号资料已保存' };
+}
+// 管理员重置普通账号密码；新密码只写入 scrypt 哈希，不回传或记录明文。
+async function handleAdminResetPassword(body) {
+  const u = await authUser(body.token);
+  if (!u || u.role !== 'admin') return { ok: false, msg: '需要管理员权限' };
+  const name = String(body.name || '').trim();
+  const password = String(body.password || '');
+  const target = await findUserDb(name);
+  if (!target || target.role === 'admin') return { ok: false, msg: '账号不存在或不能重置管理员密码' };
+  if (password.length < 6) return { ok: false, msg: '密码至少 6 位' };
+  const salt = crypto.randomBytes(16).toString('hex');
+  await pool.query('UPDATE users SET salt = ?, hash = ?, welcomed = 0 WHERE name = ?',
+    [salt, hashPassword(password, salt), name]);
+  logAccount('重置密码', '管理员 ' + u.name + ' 重置了账号 ' + name + ' 的密码');
+  return { ok: true, msg: '密码已重置' };
+}
+// 管理员修正累计战绩：保留账号关联，只改汇总字段，并记录变更审计事件。
+async function handleAdminUpdateStats(body) {
+  const u = await authUser(body.token);
+  if (!u || u.role !== 'admin') return { ok: false, msg: '需要管理员权限' };
+  const account = String(body.account || '').trim();
+  const target = await findUserDb(account);
+  if (!target || target.role === 'admin' || target.source === 'backdoor') {
+    return { ok: false, msg: '账号不存在或该账号不参与排行榜' };
+  }
+  const fields = ['wins', 'games', 'points', 'evolutions'];
+  const values = fields.map((k) => Number(body[k]));
+  if (values.some((n) => !Number.isSafeInteger(n) || n < 0)) return { ok: false, msg: '战绩必须是非负整数' };
+  if (values[0] > values[1]) return { ok: false, msg: '胜场不能超过场次' };
+  const nickname = String(body.nickname || '').trim().slice(0, 20);
+  const [rows] = await pool.query('SELECT account FROM stats WHERE account = ? LIMIT 1', [account]);
+  if (!rows.length) return { ok: false, msg: '该账号还没有战绩记录' };
+  await pool.query('UPDATE stats SET nickname = ?, wins = ?, games = ?, points = ?, evolutions = ? WHERE account = ?',
+    [nickname, ...values, account]);
+  logAccount('战绩修正', '管理员 ' + u.name + ' 修正了账号 ' + account + ' 的累计战绩');
+  return { ok: true, msg: '战绩已保存' };
 }
 // 修改密码（登录用户自助）
 async function handleChangePassword(body) {
@@ -1192,6 +1294,9 @@ function handleApi(req, res) {
     else if (obj.type === 'replay') result = await handleReplay(obj);
     else if (obj.type === 'logout') result = handleLogout(obj);
     else if (obj.type === 'adminList') result = await handleAdminList(obj);
+    else if (obj.type === 'adminUpdateUser') result = await handleAdminUpdateUser(obj);
+    else if (obj.type === 'adminResetPassword') result = await handleAdminResetPassword(obj);
+    else if (obj.type === 'adminUpdateStats') result = await handleAdminUpdateStats(obj);
     else if (obj.type === 'adminReview') result = await handleAdminReview(obj);
     else if (obj.type === 'adminLogs') result = await handleAdminLogs(obj);
     else if (obj.type === 'backdoorRegister') result = await handleBackdoorRegister(obj);

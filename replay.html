@@ -94,6 +94,10 @@
       <span class="ball rp-head-ball" style="--bc:#e3350d;--band:#24303d"></span>
       <div>
         <h1>对局回放</h1>
+        <!-- 列表页副标题：replay.js 的 showList() 会往这里写「共 N 局 / 管理员视角…」。
+             v3.4.2「界面瘦身」把它删了，但 replay.js 仍在 sub.textContent = … ——
+             取到 null 直接抛 TypeError，列表整块渲染不出来（濠哥：「后台面板的对局回放什么都看不到」）。 -->
+        <p id="rp-page-sub"></p>
       </div>
     </div>
     <div class="rp-head-actions">

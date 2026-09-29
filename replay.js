@@ -56,7 +56,9 @@
   const COLORS_CN = window.COLORS && window.BALLS ? Object.fromEntries(window.COLORS.map((c) => [c, window.BALLS[c].name])) : {};
   // 与主页面共用同一个令牌（client.js 登录时写 localStorage 'spToken'）：
   // 主页面登录后进回放页免二次登录，反向亦然
-  let rpToken = localStorage.getItem('spToken') || '';
+  // 后台看板（/admin）把会话存在 'adToken'：从面板点「对局回放」开新标签页时这里没有 spToken，
+  // 会停在登录门（濠哥：「后台面板的对局回放什么都看不到」）→ 回退读 adToken，让同一会话直接可见。
+  let rpToken = localStorage.getItem('spToken') || localStorage.getItem('adToken') || '';
   let rpMe = '';       // 当前登录账号名（用来在列表里认出“我”那一局）
   let rp = null;       // 当前回放数据
   let cur = 0;         // 已应用行动数
