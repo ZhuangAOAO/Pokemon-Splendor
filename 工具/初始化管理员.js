@@ -65,7 +65,7 @@ const mysql = require('mysql2/promise');
       'INSERT INTO users (name, salt, hash, role, status, welcomed, created_at) VALUES (?,?,?,?,?,?,?)',
       [name, salt, crypto.scryptSync(password, salt, 64).toString('hex'), 'admin', 'approved', 1, new Date().toISOString().slice(0, 10)]);
     console.log('管理员账号已创建：' + name);
-    console.log('现在可以启动服务器，用这个账号登录 admin.html 进行审核。');
+    console.log('现在可以启动服务器，用这个账号访问 /admin 进行审核。');
     await pool.end();
     process.exit(0);
   } catch (e) {

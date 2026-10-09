@@ -1426,6 +1426,22 @@ async function postApi(obj, timeoutMs) {
     if (timer) clearTimeout(timer);
   }
 }
+
+// 从服务器读取真实发布身份，不依赖 HTML 里的手写版本号。
+// 这样即使云端漏传了某个文件，也会得到不同的 build 指纹，排查“本地好了、线上没好”更直接。
+async function loadAppInfo() {
+  const el = $('#lobby-rail-foot');
+  if (!ONLINE || !el) return;
+  try {
+    const r = await fetch('/health', { cache: 'no-store' });
+    if (!r.ok) return;
+    const info = await r.json();
+    if (!info.ok) return;
+    el.textContent = `v${info.version} · ${info.build}`;
+    const started = info.startedAt ? new Date(info.startedAt).toLocaleString('zh-CN', { hour12: false }) : '未知';
+    el.title = `服务器版本 v${info.version}\n构建 ${info.build}\n启动时间 ${started}`;
+  } catch (e) { /* 诊断标识加载失败不影响登录和游戏 */ }
+}
 function updateConnDot() {
   const dot = $('#conn-status');
   if (!ONLINE) { dot.hidden = true; return; }
@@ -2153,7 +2169,7 @@ function init() {
   // 卡面大图：点击遮罩关闭
   $('#zoom').addEventListener('click', () => { $('#zoom').hidden = true; });
 
-  if (ONLINE) { initOnline(); checkUpdate(); } // 联机模式：顺便检查有没有没读过的版本更新说明
+  if (ONLINE) { initOnline(); loadAppInfo(); checkUpdate(); } // 联机模式：同步发布身份，并检查未读更新说明
   else showScreen('setup');
 }
 

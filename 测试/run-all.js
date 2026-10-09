@@ -16,6 +16,7 @@ const DIR = __dirname;
 const ONLINE = new Set([
   'e2e-test.js', 'test-replay.js', 'test-reconnect.js',
   'test-ghostroom.js', 'test-namedup.js', 'test-leaderboard.js',
+  'test-app-info.js',
 ]);
 
 function portOpen(port, host = '127.0.0.1', timeout = 800) {
@@ -55,6 +56,16 @@ function configuredPort() {
   } catch (e) { return 3000; }
 }
 
+// 各联机测试有两种运行方式：日常服务器走 3000，隔离测试服务器走 3210。
+// 从脚本自己的 BASE 读取端口，逐项探测；不能因为 3000 在线，就误把未启动的 3210 测试跑成失败。
+function testPort(file, fallback) {
+  try {
+    const text = fs.readFileSync(path.join(DIR, file), 'utf8');
+    const m = text.match(/localhost:(\d+)/);
+    return m ? +m[1] : fallback;
+  } catch (e) { return fallback; }
+}
+
 (async () => {
   let pass = 0, fail = 0, skip = 0;
 
@@ -73,13 +84,19 @@ function configuredPort() {
   console.log('— 联机回归（需要本地 server.js）—');
   const port = configuredPort();
   const onlineFiles = fs.readdirSync(DIR).filter((f) => ONLINE.has(f)).sort();
-  if (!(await portOpen(port))) {
-    console.log('跳过 ' + onlineFiles.length + ' 个：未检测到 127.0.0.1:' + port);
-    console.log('要跑它们：另开一个终端 `node server.js`，再重新 `npm test`。');
-    skip += onlineFiles.length;
-  } else {
-    for (const f of onlineFiles) run('测试/' + f, [], f).ok ? pass++ : fail++;
+  const portStates = new Map();
+  for (const f of onlineFiles) {
+    const p = testPort(f, port);
+    if (!portStates.has(p)) portStates.set(p, await portOpen(p));
+    if (!portStates.get(p)) {
+      console.log('▶ ' + f + ' … 跳过（未检测到 127.0.0.1:' + p + '）');
+      skip++;
+      continue;
+    }
+    run('测试/' + f, [], f).ok ? pass++ : fail++;
   }
+  if ([...portStates.values()].every((v) => !v))
+    console.log('要跑日常联机测试：另开一个终端 `node server.js`，再重新 `npm test`。');
 
   console.log('');
   console.log(fail

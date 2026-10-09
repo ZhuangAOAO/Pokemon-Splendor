@@ -5,6 +5,10 @@
 // ================================================================
 'use strict';
 const BASE = 'http://localhost:3000';
+const crypto = require('crypto');
+const mysql = require('mysql2/promise');
+const dbConfig = require('../db-config.js')();
+const ADMIN = require('./凭证');
 async function api(body) {
   const r = await fetch(BASE + '/api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return r.json();
@@ -47,17 +51,37 @@ async function waitFor(fn, ms) {
 const lastState = (msgs) => [...msgs].reverse().find((m) => m.type === 'state');
 
 (async () => {
-  const A = await api({ type: 'join', name: '测试A' });
-  const B = await api({ type: 'join', name: '测试B', roomId: A.roomId });
-  if (!A.ok || !B.ok || A.roomId !== B.roomId) { console.log('❌ 加入失败', A, B); process.exit(1); }
+  const pool = mysql.createPool(Object.assign({}, dbConfig, { waitForConnections: true }));
+  const suffix = String(Date.now()).slice(-6);
+  const nameA = '端测A' + suffix;
+  const nameB = '端测B' + suffix;
+  const password = crypto.randomBytes(8).toString('hex');
+  let roomId = '';
+  const sseTasks = [];
+  try {
+  // 账号系统上线后不能再匿名 join：测试自行创建两名临时账号，结束后从数据库清理。
+  const admin = await api({ type: 'login', name: ADMIN.name, password: ADMIN.password });
+  if (!admin.ok) throw new Error('管理员登录失败：' + (admin.msg || '未知错误'));
+  const createdA = await api({ type: 'backdoorRegister', token: admin.token, name: nameA, password, remark: 'e2e 临时账号' });
+  const createdB = await api({ type: 'backdoorRegister', token: admin.token, name: nameB, password, remark: 'e2e 临时账号' });
+  if (!createdA.ok || !createdB.ok) throw new Error('临时账号创建失败');
+  const loginA = await api({ type: 'login', name: nameA, password });
+  const loginB = await api({ type: 'login', name: nameB, password });
+  if (!loginA.ok || !loginB.ok) throw new Error('临时账号登录失败');
+
+  const A = await api({ type: 'join', token: loginA.token });
+  const B = await api({ type: 'join', token: loginB.token, roomId: A.roomId });
+  roomId = A.roomId || '';
+  if (!A.ok || !B.ok || A.roomId !== B.roomId) throw new Error('加入失败：' + JSON.stringify({ A, B }));
   console.log('1. 加入（房间 ' + A.roomId + '）：✓');
 
   const msgsA = [], msgsB = [];
   const pA = sseTo(A.cid, msgsA, 30000);
   const pB = sseTo(B.cid, msgsB, 30000);
+  sseTasks.push(pA, pB);
   // 等两个玩家的 SSE 都连上（各自收到大厅广播）
   const bothOnline = await waitFor(() => (msgsA.length > 0 && msgsB.length > 0 ? true : null), 3000);
-  if (!bothOnline) { console.log('❌ 玩家 SSE 未全部连上'); process.exit(1); }
+  if (!bothOnline) throw new Error('玩家 SSE 未全部连上');
 
   const setAIs = await api({ type: 'setAIs', cid: A.cid, ais: [{ name: '小智', level: 'hard' }] });
   const setTarget = await api({ type: 'setTarget', cid: A.cid, target: 15 });
@@ -71,7 +95,7 @@ const lastState = (msgs) => [...msgs].reverse().find((m) => m.type === 'state');
     const s = lastState(msgsB);
     return s && s.game ? s : null; // 专门等"带对局"的广播，避免抓到开局前的大厅状态
   }, 5000);
-  if (!gameState) { console.log('❌ B 未收到对局广播'); process.exit(1); }
+  if (!gameState) throw new Error('B 未收到对局广播');
   console.log('5. 对局广播：✓ 玩家 =', gameState.game.players.map((p) => p.name + (p.isAI ? '(AI)' : '')).join(', '));
 
   // 开局先手是随机的：让"当前回合玩家"的对手来行动，必须被拦截
@@ -136,7 +160,7 @@ const lastState = (msgs) => [...msgs].reverse().find((m) => m.type === 'state');
       if (!r.ok) { console.log('❌ 人类行动失败：', JSON.stringify(r)); break; }
     }
   }
-  if (!aiActed) { console.log('❌ 测试中断'); await Promise.all([pA, pB]); process.exit(1); }
+  if (!aiActed) throw new Error('AI 自动行动测试中断');
 
   console.log('8. 非房主重开被拦截：', (await api({ type: 'restart', cid: B.cid })).msg === '只有房主可以操作' ? '✓' : '❌');
   console.log('9. 房主返回大厅：', (await api({ type: 'backToLobby', cid: A.cid })).ok ? '✓' : '❌');
@@ -148,5 +172,11 @@ const lastState = (msgs) => [...msgs].reverse().find((m) => m.type === 'state');
 
   await Promise.all([pA, pB]);
   console.log('✅ 端到端测试全部通过');
-  process.exit(0);
-})().catch((e) => { console.error('测试失败：', e); process.exit(1); });
+  } finally {
+    await Promise.allSettled(sseTasks);
+    if (roomId) await pool.query('DELETE FROM replays WHERE room_id = ?', [roomId]);
+    await pool.query('DELETE FROM stats WHERE account IN (?, ?)', [nameA, nameB]);
+    await pool.query('DELETE FROM users WHERE name IN (?, ?)', [nameA, nameB]);
+    await pool.end();
+  }
+})().catch((e) => { console.error('测试失败：', e.message || e); process.exitCode = 1; });

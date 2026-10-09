@@ -26,6 +26,31 @@ const ROOT = __dirname;
 const LOG_DIR = path.join(ROOT, 'logs');
 const DATA_DIR = path.join(ROOT, 'data');
 
+// 发布身份：版本号来自 package.json；构建号由实际部署的关键文件内容计算。
+// 生产目录没有 .git，也能据此判断“网页看到的究竟是哪一批代码”。
+function readAppInfo() {
+  let pkg = {};
+  try { pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')); }
+  catch (e) { /* 缺 package.json 时仍允许服务器给出 unknown，避免诊断接口反而拖垮启动 */ }
+  const hash = crypto.createHash('sha256');
+  const files = [
+    'server.js', 'game-core.js', 'ai-policy.js', 'config.js',
+    'index.html', 'client.js', 'style.css', 'replay.html', 'replay.js',
+  ];
+  for (const file of files) {
+    hash.update(file + '\0');
+    try { hash.update(fs.readFileSync(path.join(ROOT, file))); }
+    catch (e) { hash.update('missing'); }
+  }
+  return Object.freeze({
+    name: pkg.name || 'splendor-pokemon',
+    version: pkg.version || 'unknown',
+    build: hash.digest('hex').slice(0, 10),
+    startedAt: new Date().toISOString(),
+  });
+}
+const APP_INFO = readAppInfo();
+
 /* ==================== 日志 ==================== */
 function localStamp() {
   const d = new Date();
@@ -1285,6 +1310,7 @@ function handleApi(req, res) {
     let result;
     if (obj.type === 'register') result = await handleRegister(obj);
     else if (obj.type === 'login') result = await handleLogin(obj, (req.socket.remoteAddress || '').replace(/^::ffff:/, ''));
+    else if (obj.type === 'appInfo') result = Object.assign({ ok: true }, APP_INFO);
     else if (obj.type === 'whoami') result = await handleWhoami(obj);
     else if (obj.type === 'setNickname') result = await handleSetNickname(obj);
     else if (obj.type === 'changePassword') result = await handleChangePassword(obj);
@@ -1324,6 +1350,10 @@ const handler = (req, res) => {
   const u = new URL(req.url, 'http://localhost');
   if (u.pathname === '/events') return handleSSE(req, res, u);
   if (u.pathname === '/api') return handleApi(req, res);
+  if (u.pathname === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(Object.assign({ ok: true }, APP_INFO)));
+  }
   // 静态文件（先解码 URL，中文文件名才能对得上磁盘）
   let file;
   try { file = u.pathname === '/' ? '/index.html' : decodeURIComponent(u.pathname); }
@@ -1382,6 +1412,7 @@ function startServer() {
 server.listen(PORT, () => {
   console.log('════════════════════════════════════════════');
   console.log('  璀璨宝石·宝可梦 联机服务器已启动！');
+  console.log(`  版本：v${APP_INFO.version} · build ${APP_INFO.build}`);
   console.log('  本机打开：http://localhost:' + PORT);
   const nets = os.networkInterfaces();
   for (const name of Object.keys(nets)) {
