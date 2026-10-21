@@ -35,7 +35,7 @@ function readAppInfo() {
   const hash = crypto.createHash('sha256');
   const files = [
     'server.js', 'game-core.js', 'ai-policy.js', 'config.js',
-    'index.html', 'client.js', 'style.css', 'replay.html', 'replay.js',
+    'index.html', 'client.js', 'tutorial.js', 'style.css', 'replay.html', 'replay.js',
   ];
   for (const file of files) {
     hash.update(file + '\0');

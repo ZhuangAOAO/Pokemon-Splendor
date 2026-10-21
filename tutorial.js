@@ -5,9 +5,9 @@
    · 本地单机（file://）：直接在本页开教学局
    · 联机（http://）：点「新手教程」→ 服务器一键创建私有房间
      （本人 + 电脑小智，目标 15 分）并直接开局；引导逻辑两模式共用
-   · 不修改 client.js/game-core.js：包装 window.render / backToSetup / HOOKS.onGameOver，
-     用 document 捕获阶段监听拦截错误操作，样式全部内联注入
-   · 流程：拿球 → 收服 → 预约 → 进化(知识卡) → 稀有/传说(知识卡) → 盲抽
+   · 三个实操任务：拿球 → 收服（需要时继续攒球）→ 预约
+   · 进阶训练：盲抽预约 → 同色双球 → 收服盲抽卡
+   · 进化与稀有/传说保留为完成后的可选提示
    ================================================================ */
 
 (function () {
@@ -16,14 +16,16 @@
   const TUT = {
     active: false,      // 教程局进行中
     finished: false,    // 教程步骤已全部完成（拦截解除，游戏继续）
-    stepIdx: -1,        // 当前步骤下标（STEPS）
+    stepIdx: -1,        // 当前训练的步骤下标
     armed: false,       // 当前行动步骤已武装（已取快照）
     snap: null,         // 武装时的玩家状态快照（完成判定基准）
-    knowledge: false,   // 正在展示知识卡（遮罩态）
-    blockAll: false,    // 遮罩态：除提示条按钮外全部拦截
-    evolveGuide: null,  // 动态进化引导状态：null | 'shown' | 'continued'
+    kind: 'basic',
+    advancedCardId: null,
   };
-  let bar = null, dim = null;
+  let bar = null;
+  let spotlight = null;
+  let spotlightTarget = null;
+  let spotlightFrame = 0;
   let tutStarting = false; // 联机：防止连点「新手教程」重复开局
 
   /* ==================== 状态读取小工具 ==================== */
@@ -35,7 +37,8 @@
   }
   function takeSnap() {
     const p = human();
-    return { colored: coloredSum(p), cards: p.cards.length, reserved: p.reserved.length };
+    return { colored: coloredSum(p), cards: p.cards.length, reserved: p.reserved.length,
+      balls: { ...p.balls }, reservedIds: p.reserved.map((c) => c.id) };
   }
   // 场上（含预约区）当前付得起的第一张卡
   function pickAffordable() {
@@ -78,21 +81,14 @@
     return parts.length ? parts.join('、') : '一点点运气';
   }
 
-  /* ==================== 六步定义 ==================== */
-  // 每步公共字段：title(名称)、type(action|knowledge)、text(知识卡文案)、
-  //   isDone(对 snap 差量判定完成)、skip(条件不满足自动跳过)、allowedModes、
-  //   forceMode(强制 UI 模式)、onArm(武装时额外动作)、apply(每次渲染更新文案+高亮)、
-  //   canClick(捕获层白名单，返回 false 表示拦截)
-  const stepTitle = (i, name) => name + '（第 ' + (i + 1) + ' 步 / 共 ' + STEPS_LEN + ' 步）';
-  // STEPS_LEN 先占位，定义完数组后重算（见下方）
-  let STEPS_LEN = 6;
+  /* ==================== 三个实操任务 ==================== */
+  // 每步用玩家状态差量判断完成，不依赖固定牌序或 AI 的具体动作。
 
-  const STEPS = [
+  const BASIC_STEPS = [
     /* 1. 拿取精灵球 */
     {
       id: 'take3',
-      title: stepTitle(0, '拿取精灵球'),
-      type: 'action',
+      title: '拿取精灵球',
       allowedModes: ['take3'],
       isDone: (snap) => coloredSum(human()) > snap.colored,
       skip: () => COLORS.every((c) => S.pool[c] <= 0),
@@ -122,8 +118,7 @@
     /* 2. 收服宝可梦（含攒球子态） */
     {
       id: 'buy',
-      title: stepTitle(1, '收服宝可梦'),
-      type: 'action',
+      title: '收服宝可梦',
       allowedModes: ['buy', 'take3', 'take2', 'returnBalls', 'takeMaster'],
       isDone: (snap) => human().cards.length > snap.cards,
       apply() {
@@ -132,20 +127,25 @@
         if (!aff) {
           // 攒球子态：还没有付得起的卡，引导攒经济
           const tgt = pickClosest();
+          if (tgt) targetCard('.tier-row .card[data-tier="' + tgt.tier + '"][data-idx="' + tgt.idx + '"]');
           if (S.mode === 'take3' || S.mode === 'take2') {
             hlPoolColored();
             const one = S.mode === 'take2' ? 1 : 3;
             if (S.selColors.length >= (S.mode === 'take2' ? 1 : Math.min(3, COLORS.filter((c) => S.pool[c] > 0).length))) hl('#act-confirm', true);
-            setBar({ title: this.title, text: tgt ? '目标是「' + tgt.card.name + '」，还差：' + missText(p, tgt.card) + '。选好 ' + one + ' 种球点确认' : '先拿球攒一攒', mode: 'action' });
+            setBar({ title: this.title, text: tgt ? '参考目标「' + tgt.card.name + '」，还差：' + missText(p, tgt.card) + '。选好 ' + one + ' 种颜色后确认拿取' : '先拿球攒一攒', mode: 'action' });
           } else if (S.mode === 'returnBalls') {
             hl('.pball.clickable', true);
-            setBar({ title: this.title, text: '点自己面板里的球可以退还 1 个（周转用）。不过建议直接点「取消」，改拿球', mode: 'action' });
+            setBar({ title: this.title, text: '点自己面板中的一个球退还。每回合只能做一个行动；如果手牌未满，通常先取消并继续拿球更好。', mode: 'action' });
           } else if (S.mode === 'takeMaster') {
             hl('#act-confirm', true);
-            setBar({ title: this.title, text: '大师球是万能球，可以代替任意颜色！点「确认拿取」', mode: 'action' });
+            setBar({ title: this.title, text: '大师球能代替任意颜色，也能支付稀有卡的额外费用。点「确认拿取」结束这回合。', mode: 'action' });
           } else {
-            hl('#act-take3', true);
-            setBar({ title: this.title, text: tgt ? '现在还没有付得起的宝可梦。先点「拿 3 个不同球」攒一攒——目标是「' + tgt.card.name + '」，还差：' + missText(p, tgt.card) : '先拿球攒一攒，有付得起的卡时就能收服', mode: 'action' });
+            const full = totalBalls(p) >= RULES.handLimit;
+            hl(full ? '#act-return' : '#act-take3', true);
+            setBar({ title: this.title, text: full
+              ? '手里已有 ' + RULES.handLimit + ' 个球，仍买不起时可退还暂时用不到的球，下一回合再调整颜色。'
+              : tgt ? '还没有付得起的卡。参考蓝框的「' + tgt.card.name + '」，缺少：' + missText(p, tgt.card) + '。继续拿球，攒够后收服。'
+                : '先拿球攒一攒，有付得起的卡时就能收服。', mode: 'action' });
           }
           return;
         }
@@ -188,8 +188,7 @@
     /* 3. 预约宝可梦 */
     {
       id: 'reserve',
-      title: stepTitle(2, '预约宝可梦'),
-      type: 'action',
+      title: '预约宝可梦',
       allowedModes: ['reserve'],
       isDone: (snap) => human().reserved.length > snap.reserved,
       skip: () => ![1, 2, 3].some((t) => S.market[t].some(Boolean)),
@@ -198,21 +197,21 @@
         if (S.mode === 'reserve') {
           if (S.selCard) {
             hl('#act-confirm', true);
-            setBar({ title: this.title, text: '点「确认预约」！之后任意回合都可以收服它', mode: 'action' });
+            setBar({ title: this.title, text: '点「确认预约」。卡会进入你的预约区，以后攒够球可以收服；它现在不会提供加成。', mode: 'action' });
           } else {
             hl('.tier-row .card[data-tier="1"],.tier-row .card[data-tier="2"],.tier-row .card[data-tier="3"]', true);
-            setBar({ title: this.title, text: '点场上一只宝可梦（稀有/传说不能预约哦），' + masterInfo, mode: 'action' });
+            setBar({ title: this.title, text: '你刚收服的卡会永久减少同色球费用。现在点场上一只一至三阶宝可梦预约。' + masterInfo, mode: 'action' });
           }
         } else {
           hl('#act-reserve', true);
-          setBar({ title: this.title, text: '点「预约宝可梦」按钮，把场上一只宝可梦收进预约区，' + masterInfo, mode: 'action' });
+          setBar({ title: this.title, text: '你刚收服的卡会永久减少同色球费用。现在点「预约宝可梦」，把想要的卡留到以后收服。' + masterInfo, mode: 'action' });
         }
       },
       canClick(e) {
         if (utilClick(e)) return true;
         const el = e.target;
         if (S.mode === 'reserve') {
-          if (el.closest('.tier-label')) { toast('盲抽牌堆下一步再教你，先预约场上的宝可梦'); return false; }
+          if (el.closest('.tier-label')) { toast('这次先预约场上的宝可梦；盲抽牌堆是进阶玩法'); return false; }
           if (el.closest('.card,#act-confirm,#act-cancel')) return true; // 点稀有/传说卡由游戏自带提示拦截
           return true;
         }
@@ -225,103 +224,133 @@
         return true;
       },
     },
-    /* 4. 进化（知识卡） */
+  ];
+
+  const ADVANCED_STEPS = [
     {
-      id: 'evolveK',
-      title: stepTitle(3, '宝可梦进化'),
-      type: 'knowledge',
-      text: '每次行动结束后，游戏会检查一次「免费进化」：如果你的宝可梦（比如小火龙）的进化型（火恐龙）在场或你的预约区，而且加成足够，就能免费进化成更强、分数更高的形态！原来的卡收进「图鉴」收藏。什么时候看到绿色进化按钮，点它就免费进化（也可以选择跳过）。',
-    },
-    /* 5. 稀有与传说（知识卡） */
-    {
-      id: 'rlK',
-      title: stepTitle(4, '稀有与传说'),
-      type: 'knowledge',
-      hlSel: '#rl-wrap',
-      text: '看右边「稀有宝可梦」「传说宝可梦」：它们提供双倍加成、分数更高！但收服时必须额外支付大师球（稀有 1 个、传说 2 个），而且不能预约，只能直接收服。等球多了再来挑战它们吧！',
-    },
-    /* 6. 盲抽预约 */
-    {
-      id: 'blind',
-      title: stepTitle(5, '盲抽预约'),
-      type: 'action',
-      allowedModes: ['reserve'],
-      forceMode: 'reserve',
-      isDone: (snap) => human().reserved.length > snap.reserved,
-      onArm() {
-        S.mode = 'reserve'; S.selCard = null; S.selBlind = null; S.selColors = [];
-        return true;
-      },
+      id: 'blind', title: '盲抽预约', allowedModes: ['reserve'],
+      isDone: (snap) => human().reserved.some((c) => c.blind && !snap.reservedIds.includes(c.id)),
+      skip: () => !S.decks[1].length || human().reserved.length >= RULES.reserveLimit,
       apply() {
-        const t = [1, 2, 3].find((x) => S.decks[x].length > 0) || 1;
-        const masterInfo = S.pool.master > 0 ? '还能拿 1 个大师球！' : '（大师球已领完）';
-        if (S.selBlind) {
-          hl('#act-confirm', true);
-          setBar({ title: this.title, text: '点「确认盲抽」！抽到的卡只有你能看到', mode: 'action' });
+        if (S.mode === 'reserve') {
+          if (S.selBlind === 1) {
+            hl('#act-confirm', true);
+            setBar({ title: this.title, text: '点「确认盲抽」。一阶牌堆顶的卡会进入你的预约区；只有你能看到它，并可获得 1 个大师球。', mode: 'action' });
+          } else {
+            hl('.tier-label[data-tier="1"]', true);
+            setBar({ title: this.title, text: '点一阶牌堆的标题，而不是场上的卡。盲抽的卡不会向其他玩家公开。', mode: 'action' });
+          }
         } else {
-          hl('.tier-label[data-tier="' + t + '"]', true);
-          setBar({ title: this.title, text: '点左边「' + TIER_NAMES[t] + '宝可梦」牌堆，盲抽一张卡收进预约区（只有你知道），' + masterInfo, mode: 'action' });
+          hl('#act-reserve', true);
+          setBar({ title: this.title, text: '先点「预约宝可梦」。这次我们不预约明牌，而是从牌堆盲抽。', mode: 'action' });
         }
       },
       canClick(e) {
         if (utilClick(e)) return true;
-        const el = e.target;
-        if (el.closest('.tier-label,#act-confirm,#act-cancel')) return true;
-        if (el.closest('.card')) { toast('点左边的牌堆盲抽，不是场上的卡'); return false; }
-        if (el.closest('.rchip,.pool-group,#act-take3,#act-take2,#act-buy,#act-return,#act-reserve,#act-master')) {
-          toast('点左边的牌堆，盲抽一张宝可梦');
-          return false;
+        if (S.mode === 'reserve') return !!e.target.closest('.tier-label[data-tier="1"],#act-confirm,#act-cancel');
+        return !!e.target.closest('#act-reserve');
+      },
+    },
+    {
+      id: 'take2', title: '同色双球', allowedModes: ['take2'],
+      isDone: (snap) => COLORS.some((c) => human().balls[c] >= snap.balls[c] + 2),
+      skip: () => COLORS.every((c) => S.pool[c] < RULES.takeTwoMin),
+      apply() {
+        if (S.mode === 'take2') {
+          hlPoolColored();
+          if (S.selColors.length === 1) hl('#act-confirm', true);
+          setBar({ title: this.title, text: '供应区至少有 ' + RULES.takeTwoMin + ' 个的颜色才可拿 2 个。选择一种颜色，再点「确认拿取」。', mode: 'action' });
+        } else {
+          hl('#act-take2', true);
+          setBar({ title: this.title, text: '点「拿 2 个相同球」。想快速攒某一种颜色时，用它代替拿 3 种不同球。', mode: 'action' });
         }
-        return true;
+      },
+      canClick(e) {
+        if (utilClick(e)) return true;
+        return !!e.target.closest(S.mode === 'take2' ? '.pool-group,#act-confirm,#act-cancel' : '#act-take2');
+      },
+    },
+    {
+      id: 'buyBlind', title: '收服盲抽卡', allowedModes: ['buy', 'take3', 'take2', 'returnBalls', 'takeMaster'],
+      isDone: () => human().cards.some((c) => c.id === TUT.advancedCardId),
+      skip: () => !human().reserved.some((c) => c.id === TUT.advancedCardId),
+      apply() {
+        const p = human();
+        const idx = p.reserved.findIndex((c) => c.id === TUT.advancedCardId);
+        const card = p.reserved[idx];
+        if (!card) { advance(); return; }
+        if (canAfford(p, card)) {
+          if (S.mode === 'buy') {
+            if (S.selCard && S.selCard.kind === 'reserved' && S.selCard.ridx === idx) hl('#act-confirm', true);
+            else hl('.rchip[data-ridx="' + idx + '"]', true);
+            setBar({ title: this.title, text: S.selCard ? '确认收服刚盲抽的「' + card.name + '」。大师球会自动补足缺少的颜色。' : '点行动区下方的预约卡「' + card.name + '」。大师球可以代替缺少的任意颜色。', mode: 'action' });
+          } else {
+            hl('#act-buy', true);
+            setBar({ title: this.title, text: '已经攒够收服「' + card.name + '」的球了！点「收服宝可梦」，然后选择预约卡。', mode: 'action' });
+          }
+        } else if (S.mode === 'take3' || S.mode === 'take2') {
+          hlPoolColored();
+          const need = S.mode === 'take2' ? 1 : Math.min(3, COLORS.filter((c) => S.pool[c] > 0).length);
+          if (S.selColors.length === need) hl('#act-confirm', true);
+          setBar({ title: this.title, text: '「' + card.name + '」还缺：' + missText(p, card) + '。选球后确认，攒够就能收服。', mode: 'action' });
+        } else if (S.mode === 'takeMaster') {
+          hl('#act-confirm', true);
+          setBar({ title: this.title, text: '确认拿取大师球。它可以替代任意颜色，但稀有/传说卡的额外大师球费用必须单独支付。', mode: 'action' });
+        } else if (S.mode === 'returnBalls') {
+          hl('.pball.clickable', true);
+          if (S.selColors.length) hl('#act-confirm', true);
+          setBar({ title: this.title, text: '手牌已满时，退还暂时不需要的球，再按缺口补充。', mode: 'action' });
+        } else {
+          const full = totalBalls(p) >= RULES.handLimit;
+          hl(full ? '#act-return' : '#act-take3', true);
+          setBar({ title: this.title, text: '目标是收服刚盲抽的「' + card.name + '」。还缺：' + missText(p, card) + (full ? '。手牌已满，先退还多余的球。' : '。继续拿球；已有大师球会自动补差。'), mode: 'action' });
+        }
+      },
+      canClick(e) {
+        if (utilClick(e)) return true;
+        if (S.mode === 'buy') return !!e.target.closest('.rchip,#act-confirm,#act-cancel');
+        if (S.mode === 'take3' || S.mode === 'take2') return !!e.target.closest('.pool-group,#act-confirm,#act-cancel');
+        if (S.mode === 'takeMaster') return !!e.target.closest('#act-confirm,#act-cancel');
+        if (S.mode === 'returnBalls') return !!e.target.closest('.pball,#act-confirm,#act-cancel');
+        const card = human().reserved.find((c) => c.id === TUT.advancedCardId);
+        if (card && canAfford(human(), card)) return !!e.target.closest('#act-buy');
+        return !!e.target.closest('#act-buy,#act-take3,#act-take2,#act-master,#act-return');
       },
     },
   ];
-  STEPS_LEN = STEPS.length;
+  function steps() { return TUT.kind === 'advanced' ? ADVANCED_STEPS : BASIC_STEPS; }
 
   /* ==================== 步骤机 ==================== */
   function advance() {
+    if (TUT.kind === 'advanced' && TUT.stepIdx === 0) {
+      const card = human().reserved.find((c) => c.blind && !TUT.snap.reservedIds.includes(c.id));
+      TUT.advancedCardId = card && card.id;
+    }
     TUT.armed = false;
     TUT.stepIdx++;
-    if (TUT.stepIdx >= STEPS.length) { finishTutorial(); return; }
+    if (TUT.stepIdx >= steps().length) { finishTutorial(); return; }
     render();
   }
   function finishTutorial() {
     TUT.finished = true;
     TUT.armed = false;
     clearHl();
-    if (dim) dim.hidden = true;
-    toast('教程完成！现在自由发挥，去赢得比赛吧！');
-    setBar({ title: '教程完成', text: '你已经学会拿球、收服、预约、进化和盲抽啦。现在自由发挥，去赢得比赛吧！', mode: 'done' });
+    toast('训练完成！继续这局试着拿到 15 分吧！');
+    setBar({ title: '训练完成', text: TUT.kind === 'advanced'
+      ? '你已经练过盲抽、同色双球与收服预约卡。接下来试着规划加成与大师球，向稀有或传说宝可梦迈进。'
+      : '你已经会拿球、收服和预约了。收服的卡会永久减少同色球的费用；先拿到目标分数，再等所有人走完相同回合数。', mode: 'done' });
   }
   function end() {
     TUT.active = false; TUT.finished = false; TUT.armed = false; TUT.stepIdx = -1;
-    TUT.knowledge = false; TUT.blockAll = false; TUT.evolveGuide = null; TUT.snap = null;
+    TUT.snap = null;
+    TUT.advancedCardId = null;
     clearHl();
-    if (dim) dim.hidden = true;
     if (bar) bar.hidden = true;
   }
-  function showKnowledge(step) {
-    TUT.knowledge = true;
-    TUT.blockAll = true;
-    hideModals();
-    const zoom = document.getElementById('zoom');
-    if (zoom) zoom.hidden = true;
-    if (dim) dim.hidden = false;
-    if (step.hlSel) hl(step.hlSel, true);
-    setBar({ title: step.title, text: step.text, mode: 'knowledge' });
-  }
   function showEvolveGuide() {
-    if (!TUT.evolveGuide) {
-      TUT.evolveGuide = 'shown';
-      TUT.blockAll = true;
-      if (dim) dim.hidden = false;
-      hl('#my-panel', true);
-      setBar({ title: '免费进化机会！', text: '快看！你刚才的行动结束后，出现了免费进化机会！点「继续」，然后点绿色的进化按钮（也可以点「跳过进化」）', mode: 'knowledge' });
-    } else {
-      hl('.btn.evolve', true);
-      hl('#act-skip-evo', true);
-      setBar({ title: '免费进化机会！', text: '点绿色「进化」按钮完成进化（每回合最多 1 次），或点「跳过进化」', mode: 'action' });
-    }
+    hl('.btn.evolve', true);
+    hl('#act-skip-evo', true);
+    setBar({ title: '额外机会：免费进化', text: '这次行动后可以免费进化。点绿色按钮进化，也可以点「跳过进化」。每回合最多进化一次。', mode: 'action' });
   }
 
   /* 每次渲染后调用（幂等） */
@@ -332,14 +361,14 @@
     if (S.over || S.phase === 'gameover') { end(); return; }
     const p = curPlayer();
     // 1. 完成判定（先于 AI 分支：行动完成后回合常已切给 AI）
-    if (TUT.armed && !TUT.knowledge) {
-      const step = STEPS[TUT.stepIdx];
+    if (TUT.armed) {
+      const step = steps()[TUT.stepIdx];
       if (step && step.isDone && step.isDone(TUT.snap)) { advance(); return; }
     }
     // 2. AI 回合：等待态
     if (p.isAI) {
       TUT.armed = false;
-      const step = STEPS[TUT.stepIdx];
+      const step = steps()[TUT.stepIdx];
       if (!step) { finishTutorial(); return; }
       setBar({ title: step.title, text: p.name + ' 正在思考…轮到你就继续教你', mode: 'wait' });
       return;
@@ -357,11 +386,9 @@
       showEvolveGuide();
       return;
     }
-    TUT.evolveGuide = null;
-    // 5. 知识卡步骤
-    const step = STEPS[TUT.stepIdx];
+    // 5. 当前任务
+    const step = steps()[TUT.stepIdx];
     if (!step) { finishTutorial(); return; }
-    if (step.type === 'knowledge') { showKnowledge(step); return; }
     // 6. 行动步骤
     if (!TUT.armed) {
       TUT.armed = true;
@@ -369,9 +396,6 @@
       if (step.onArm && step.onArm()) { render(); return; }
     }
     if (step.skip && step.skip()) { toast('这一步的条件暂时不满足，先跳过'); advance(); return; }
-    if (step.forceMode && S.mode !== step.forceMode) {
-      S.mode = step.forceMode; S.selColors = []; S.selCard = null; S.selBlind = null; render(); return;
-    }
     if (S.mode && !(step.allowedModes || []).includes(S.mode)) {
       S.mode = null; S.selColors = []; S.selCard = null; S.selBlind = null; render(); return;
     }
@@ -387,29 +411,24 @@
   function tutCapture(e) {
     if (!TUT.active || TUT.finished) return;
     if (!S) return;
-    // A. 知识卡/进化引导遮罩态：除提示条按钮外全部拦截
-    if (TUT.blockAll) {
-      if (e.target.closest('#tut-bar')) return;
-      e.stopPropagation(); e.preventDefault(); return;
-    }
     const p = curPlayer();
     if (p.isAI) return; // 电脑回合：随便看，游戏逻辑自己会拦行动
-    // B. 进化引导「已继续」态：只放行进化/跳过
-    if (S.phase === 'evolve' && TUT.evolveGuide === 'continued') {
+    // A. 进化机会：放行进化/跳过
+    if (S.phase === 'evolve') {
       if (utilClick(e) || e.target.closest('.btn.evolve,#act-skip-evo')) return;
       e.stopPropagation(); e.preventDefault();
       toast('先点绿色进化按钮，或点「跳过进化」');
       return;
     }
-    // C. discard 引导：只放行退球
+    // B. discard 引导：只放行退球
     if (S.phase === 'discard') {
       if (utilClick(e) || e.target.closest('.pball')) return;
       e.stopPropagation(); e.preventDefault();
       toast('精灵球超过 ' + RULES.handLimit + ' 个啦，点自己面板里发光的球退回 1 个');
       return;
     }
-    // D. 行动步骤白名单（canClick 内部负责提示）
-    const step = STEPS[TUT.stepIdx];
+    // C. 行动步骤白名单（canClick 内部负责提示）
+    const step = steps()[TUT.stepIdx];
     if (step && step.canClick && !step.canClick(e)) {
       e.stopPropagation(); e.preventDefault();
     }
@@ -421,6 +440,8 @@
     else {
       bar = document.createElement('div');
       bar.id = 'tut-bar';
+      bar.setAttribute('role', 'region');
+      bar.setAttribute('aria-label', '新手训练进度');
       bar.hidden = true;
       const game = document.getElementById('screen-game');
       const main = game && game.querySelector('main');
@@ -428,25 +449,31 @@
       else if (game) game.appendChild(bar);
       else document.body.appendChild(bar);
     }
-    if (document.getElementById('tut-dim')) { dim = document.getElementById('tut-dim'); }
-    else {
-      dim = document.createElement('div');
-      dim.id = 'tut-dim';
-      dim.hidden = true;
-      document.body.appendChild(dim);
-    }
   }
   function setBar({ title, text, mode }) {
     ensureUI();
-    bar.className = 'tut-bar' + (mode === 'knowledge' ? ' know' : '');
+    bar.className = 'tut-bar tut-' + mode;
+    const done = mode === 'done';
+    const activeSteps = steps();
+    const progress = done ? activeSteps.length : Math.max(0, TUT.stepIdx);
     bar.innerHTML = `
-      <span class="tut-title">${title}</span>
-      <span class="tut-text">${text}</span>
-      <span class="tut-btns">
-        <button class="btn ghost sm" id="tut-exit">结束教程</button>
-        ${mode === 'knowledge' ? '<button class="btn primary sm" id="tut-continue">继续</button>' : ''}
-        ${mode === 'done' ? '<button class="btn primary sm" id="tut-done">自由发挥</button>' : ''}
-      </span>`;
+      <div class="tut-progress" aria-label="${done ? '三个任务已完成' : '第 ' + (TUT.stepIdx + 1) + ' 个任务，共 3 个'}">
+        ${activeSteps.map((s, i) => `<span class="tut-progress-item ${i < progress ? 'complete' : ''} ${!done && i === TUT.stepIdx ? 'current' : ''}"><span class="tut-progress-number">${i < progress ? '✓' : i + 1}</span>${s.title}</span>`).join('')}
+      </div>
+      <div class="tut-content">
+        <div class="tut-copy"><strong class="tut-title"></strong><span class="tut-text" aria-live="polite"></span></div>
+        <div class="tut-btns">
+          <button type="button" class="btn ghost sm" id="tut-exit">结束教学局</button>
+          ${done ? '<button type="button" class="btn primary sm" id="tut-done">继续对局</button>' : ''}
+        </div>
+      </div>
+      ${done ? `<details class="tut-more"><summary>想了解进阶玩法？</summary>
+        <p><b>进化：</b>持有进化前的宝可梦，加成满足条件且进化型出现时，回合结束可免费进化。</p>
+        <p><b>稀有与传说：</b>分数和加成更高，收服需额外支付大师球，不能预约。</p>
+        <p><b>盲抽：</b>预约时点击一至三阶牌堆，抽到的卡只有你能看到。</p>
+      </details>` : ''}`;
+    bar.querySelector('.tut-title').textContent = title;
+    bar.querySelector('.tut-text').textContent = text;
     bar.hidden = false;
     const ex = document.getElementById('tut-exit');
     if (ex) ex.addEventListener('click', async () => {
@@ -456,59 +483,87 @@
         else backToSetup();
       }
     });
-    const cont = document.getElementById('tut-continue');
-    if (cont) cont.addEventListener('click', () => {
-      TUT.knowledge = false;
-      TUT.blockAll = false;
-      if (TUT.evolveGuide === 'shown') { TUT.evolveGuide = 'continued'; render(); return; }
-      if (dim) dim.hidden = true;
-      advance();
+    const doneButton = document.getElementById('tut-done');
+    if (doneButton) doneButton.addEventListener('click', () => { bar.hidden = true; });
+    if (mode === 'action') showSpotlight();
+    else hideSpotlight();
+  }
+  function ensureSpotlight() {
+    if (spotlight) return;
+    spotlight = document.createElement('div');
+    spotlight.id = 'tut-spotlight';
+    spotlight.setAttribute('aria-hidden', 'true');
+    spotlight.hidden = true;
+    for (let i = 0; i < 4; i++) {
+      const shade = document.createElement('div');
+      shade.className = 'tut-shade';
+      spotlight.appendChild(shade);
+    }
+    const rim = document.createElement('div');
+    rim.className = 'tut-spotlight-rim';
+    spotlight.appendChild(rim);
+    document.body.appendChild(spotlight);
+  }
+  function hideSpotlight() {
+    spotlightTarget = null;
+    if (spotlight) spotlight.hidden = true;
+  }
+  function positionSpotlight() {
+    spotlightFrame = 0;
+    if (!spotlightTarget || !spotlight || spotlight.hidden) return;
+    if (!spotlightTarget.isConnected) { hideSpotlight(); return; }
+    const rect = spotlightTarget.getBoundingClientRect();
+    const w = window.innerWidth, h = window.innerHeight;
+    if (!rect.width || !rect.height || rect.bottom <= 0 || rect.top >= h) { hideSpotlight(); return; }
+    const left = Math.max(0, rect.left - 7), top = Math.max(0, rect.top - 7);
+    const right = Math.min(w, rect.right + 7), bottom = Math.min(h, rect.bottom + 7);
+    const shades = spotlight.querySelectorAll('.tut-shade');
+    const boxes = [
+      [0, 0, w, top], [0, bottom, w, h - bottom],
+      [0, top, left, bottom - top], [right, top, w - right, bottom - top],
+    ];
+    boxes.forEach(([x, y, width, height], i) => {
+      shades[i].style.cssText = `left:${x}px;top:${y}px;width:${Math.max(0, width)}px;height:${Math.max(0, height)}px`;
     });
-    const done = document.getElementById('tut-done');
-    if (done) done.addEventListener('click', () => { bar.hidden = true; });
+    spotlight.querySelector('.tut-spotlight-rim').style.cssText = `left:${left}px;top:${top}px;width:${Math.max(0, right - left)}px;height:${Math.max(0, bottom - top)}px`;
+  }
+  function queueSpotlightPosition() {
+    if (!spotlightTarget || spotlightFrame) return;
+    spotlightFrame = window.requestAnimationFrame(positionSpotlight);
+  }
+  function showSpotlight() {
+    // 只开一个可点击的聚光区；多颜色精灵球共用供应区，避免多个遮罩互相盖住。
+    const target = document.querySelector('#act-confirm.tut-hl')
+      || (document.querySelector('.pool-group.tut-hl') && document.getElementById('pool-wrap'))
+      || document.querySelector('.btn.tut-hl')
+      || document.querySelector('.tier-label.tut-hl,.card.tut-hl,.rchip.tut-hl,.pball.tut-hl')
+      || document.querySelector('.tut-target');
+    if (!target) { hideSpotlight(); return; }
+    ensureSpotlight();
+    spotlightTarget = target;
+    spotlight.hidden = false;
+    const rect = target.getBoundingClientRect();
+    if (rect.bottom < 72 || rect.top > window.innerHeight - 48) target.scrollIntoView({ block: 'center', behavior: 'auto' });
+    queueSpotlightPosition();
   }
   function hl(sel, on) {
     if (!sel) return;
     document.querySelectorAll(sel).forEach((el) => el.classList.toggle('tut-hl', on));
   }
+  function targetCard(sel) {
+    const el = document.querySelector(sel);
+    if (el) el.classList.add('tut-target');
+  }
   function clearHl() {
+    hideSpotlight();
     document.querySelectorAll('.tut-hl').forEach((el) => el.classList.remove('tut-hl'));
+    document.querySelectorAll('.tut-target').forEach((el) => el.classList.remove('tut-target'));
   }
-  function injectCSS() {
-    const st = document.createElement('style');
-    st.textContent = `
-#tut-bar{ display:flex; align-items:center; gap:12px; margin:0 0 10px;
-  background:#fffdf2; border:2px solid var(--gold); border-radius:16px;
-  padding:9px 16px; box-shadow:var(--shadow); font-size:13.5px; }
-#tut-bar .tut-title{ font-weight:900; color:var(--red); font-size:15px; white-space:nowrap; }
-#tut-bar .tut-text{ color:var(--ink); line-height:1.55; flex:1; }
-#tut-bar .tut-btns{ display:flex; gap:8px; }
-#tut-bar .btn{ white-space:nowrap; }
-#tut-bar.know{ position:fixed; top:80px; left:0; right:0; margin:0 auto;
-  width:max-content; max-width:min(600px,92vw); z-index:130;
-  flex-direction:column; align-items:stretch; gap:10px; padding:14px 18px;
-  animation:tutFade .25s ease; }
-#tut-bar.know .tut-title{ text-align:center; }
-#tut-bar.know .tut-btns{ justify-content:center; }
-@keyframes tutFade{ from{opacity:0} to{opacity:1} }
-#tut-dim{ position:fixed; inset:0; background:rgba(23,34,46,.18); z-index:105; }
-.tut-hl{ animation:pulseGold 1.1s infinite; }
-.card.tut-hl{ cursor:pointer; }
-.pool-group.tut-hl{ cursor:pointer;
-  animation:poolNudge 1.1s infinite, pulseGold 1.1s infinite; }
-.pool-group.tut-hl.selected{ animation:none; } /* 选中态完整露出（绿框绿底，不浮动） */
-.tier-label.tut-hl{ cursor:pointer; border-color:var(--gold) !important; background:#fffdf2; }
-.btn.tut-hl{ box-shadow:0 0 0 3px var(--gold), 0 5px 14px rgba(240,168,0,.35); }
-#rl-wrap.tut-hl, #my-panel.tut-hl{ outline:3px solid var(--gold); outline-offset:4px; border-radius:16px; }
-.pball.tut-hl{ outline:2px solid var(--gold); outline-offset:2px; border-radius:8px; }
-.tut-btn{ background:linear-gradient(180deg,#4ade80,#15803d); color:#fff; border:none;
-  box-shadow:0 5px 14px rgba(21,128,61,.35); }`;
-    document.head.appendChild(st);
-  }
-
   /* ==================== 启动与收尾包装 ==================== */
-  async function startTutorial() {
-    if (tutStarting) return;
+  async function startTutorial(kind = 'basic') {
+    if (tutStarting || TUT.active) return;
+    TUT.kind = kind === 'advanced' ? 'advanced' : 'basic';
+    TUT.advancedCardId = null;
     if (ONLINE) {
       // 联机：服务器一键建私有房间 + 电脑小智 + 15 分开局，对局状态经 SSE 推来
       tutStarting = true;
@@ -516,7 +571,7 @@
         const j = await postApi({ type: 'tutorial', token: myToken });
         if (!j.ok) return; // postApi 已提示错误
         TUT.active = true; TUT.finished = false; TUT.stepIdx = 0; TUT.armed = false;
-        TUT.knowledge = false; TUT.blockAll = false; TUT.evolveGuide = null; TUT.snap = null;
+        TUT.snap = null;
         myCid = j.cid;
         openEvents(j.cid);
         ensureUI();
@@ -528,7 +583,7 @@
       return;
     }
     TUT.active = true; TUT.finished = false; TUT.stepIdx = 0; TUT.armed = false;
-    TUT.knowledge = false; TUT.blockAll = false; TUT.evolveGuide = null; TUT.snap = null;
+    TUT.snap = null;
     const target = RULES.targets.includes(15) ? 15 : Math.min.apply(null, RULES.targets);
     const cfg = { players: [{ name: '小训练家', type: 'human' }, { name: '小智', type: 'easy' }], target };
     lastCfg = cfg;
@@ -549,6 +604,11 @@
       origRender();
       afterRender();
     };
+    const origShowScreen = window.showScreen;
+    window.showScreen = function (id) {
+      if (id !== 'game' && TUT.active) end();
+      return origShowScreen.apply(this, arguments);
+    };
     const origBackToSetup = window.backToSetup;
     window.backToSetup = function () {
       end();
@@ -561,18 +621,21 @@
     };
   }
   function injectButton() {
-    const make = () => {
+    const make = (advanced) => {
       const b = document.createElement('button');
       b.className = 'btn lg tut-btn';
-      b.textContent = '新手教程';
-      b.addEventListener('click', startTutorial);
+      b.textContent = advanced ? '进阶训练' : '三步新手训练';
+      b.addEventListener('click', advanced ? () => startTutorial('advanced') : () => startTutorial('basic'));
       return b;
     };
     // 本地设置页（开始游戏前）注入：那一屏没有工具条，这是唯一入口。
     // 联机侧不再注入 —— 大厅（未进房 / 房内同一套外壳）统一走顶栏工具条「教程」，
     // 避免同一屏出现两颗教程按钮（去重靠"少注入一处"，不靠 CSS 藏起来）。
     const startBtn = document.getElementById('btn-start');
-    if (startBtn && startBtn.parentNode) startBtn.parentNode.insertBefore(make(), startBtn);
+    if (startBtn && startBtn.parentNode) {
+      startBtn.parentNode.insertBefore(make(false), startBtn);
+      startBtn.parentNode.insertBefore(make(true), startBtn);
+    }
   }
 
   /* ---- 初始化：装包装器、样式、按钮、拦截监听（两模式通用） ---- */
@@ -580,9 +643,11 @@
   // 那里判的是全局 `typeof startTutorial === 'function'`。不挂到 window 上，
   // 工具条那颗按钮就永远落到 `toast('教程入口待接入')` 分支（濠哥报的"教程没接入"）。
   window.startTutorial = startTutorial;
-  injectCSS();
+  window.startAdvancedTutorial = () => startTutorial('advanced');
   ensureUI();
   wrapGlobals();
   injectButton();
   document.addEventListener('click', tutCapture, true);
+  window.addEventListener('resize', queueSpotlightPosition);
+  window.addEventListener('scroll', queueSpotlightPosition, true);
 })();

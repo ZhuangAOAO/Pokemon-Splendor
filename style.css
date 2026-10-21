@@ -1000,6 +1000,53 @@ h3{ font-size:14px; }
 /* 新手教程按钮：只注入到「本地设置页」（tutorial.js），大厅统一走工具条「教程」。
    —— 去重靠"少注入一处"，不要再用 `#screen-lobby .tut-btn{display:none}` 把入口藏起来：
    藏起来的那颗正是唯一真的能启动教程的按钮，会让人误判成"教程没接入"。 */
+.tut-btn{ background:linear-gradient(180deg,#4ade80,#15803d); color:#fff; border:none;
+  box-shadow:0 5px 14px rgba(21,128,61,.35); }
+#tut-bar{ display:block; position:relative; z-index:81; margin:8px 16px 10px;
+  background:#fffdf2; border:2px solid var(--gold); border-radius:16px;
+  box-shadow:var(--shadow); color:var(--ink); font-size:13px; overflow:hidden; }
+#tut-bar[hidden]{ display:none; }
+#tut-spotlight{ position:fixed; inset:0; z-index:80; pointer-events:none; }
+#tut-spotlight[hidden]{ display:none; }
+.tut-shade{ position:fixed; background:rgba(8,16,30,.68); pointer-events:auto; }
+.tut-spotlight-rim{ position:fixed; border:3px solid #f0a800; border-radius:13px;
+  box-shadow:0 0 0 3px rgba(255,255,255,.9),0 0 24px 7px rgba(240,168,0,.65); pointer-events:none; }
+.tut-progress{ display:flex; border-bottom:1px solid var(--line); background:rgba(240,168,0,.08); }
+.tut-progress-item{ flex:1; min-width:0; display:flex; align-items:center; justify-content:center;
+  gap:6px; padding:7px 5px; color:var(--ink-soft); font-size:12px; font-weight:700; }
+.tut-progress-item + .tut-progress-item{ border-left:1px solid var(--line); }
+.tut-progress-item.current{ color:var(--red); background:#fff; }
+.tut-progress-item.complete{ color:#15803d; }
+.tut-progress-number{ display:inline-flex; align-items:center; justify-content:center; flex:none;
+  width:20px; height:20px; border-radius:50%; background:var(--field); color:inherit; }
+.tut-progress-item.current .tut-progress-number{ background:var(--red); color:#fff; }
+.tut-progress-item.complete .tut-progress-number{ background:#dcfce7; }
+.tut-content{ display:flex; align-items:center; gap:14px; padding:10px 14px; }
+.tut-copy{ display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
+.tut-title{ color:var(--red); font-size:15px; font-weight:900; }
+.tut-text{ line-height:1.5; }
+.tut-btns{ display:flex; gap:8px; flex:none; }
+.tut-btns .btn{ white-space:nowrap; }
+.tut-wait .tut-title{ color:var(--ink-soft); }
+.tut-done{ border-color:#22a05a !important; }
+.tut-done .tut-title{ color:#15803d; }
+.tut-more{ margin:0 14px 12px; border-top:1px solid var(--line); padding-top:8px; }
+.tut-more summary{ cursor:pointer; width:max-content; color:var(--ink-soft); font-weight:700; }
+.tut-more p{ margin:7px 0 0; line-height:1.5; }
+.tut-hl{ animation:pulseGold 1.1s infinite; }
+.card.tut-target{ outline:3px dashed var(--blue); outline-offset:2px; }
+.card.tut-hl,.pool-group.tut-hl,.tier-label.tut-hl{ cursor:pointer; }
+.pool-group.tut-hl{ animation:poolNudge 1.1s infinite, pulseGold 1.1s infinite; }
+.pool-group.tut-hl.selected{ animation:none; }
+.tier-label.tut-hl{ border-color:var(--gold) !important; background:#fffdf2; }
+.btn.tut-hl{ box-shadow:0 0 0 3px var(--gold),0 5px 14px rgba(240,168,0,.35); }
+.pball.tut-hl{ outline:2px solid var(--gold); outline-offset:2px; border-radius:8px; }
+@media (max-width:800px){
+  #tut-bar{ margin:6px 10px; }
+  .tut-content{ flex-wrap:wrap; gap:8px; }
+  .tut-btns{ width:100%; justify-content:flex-end; }
+}
+@media (prefers-reduced-motion:reduce){ .tut-hl,.pool-group.tut-hl{ animation:none; outline:3px solid var(--gold); outline-offset:2px; } }
 #screen-lobby .rail .foot{ margin-top:auto; font-size:11px; color:var(--ink-faint); text-align:center; }
 #screen-lobby .stage{
   position:relative; z-index:1; flex:1; min-width:0;

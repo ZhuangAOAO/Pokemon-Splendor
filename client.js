@@ -1928,8 +1928,10 @@ function initOnline() {
     account: '<h3>账号</h3>'
       + '<button type="button" class="btn ghost sm" data-lpop="pw">修改密码</button> '
       + '<button type="button" class="btn ghost sm" data-lpop="logout">退出登录</button>',
-    tutorial: '<h3>新手教程</h3>'
-      + '<button type="button" class="btn secondary sm" data-lpop="tutgo">开始教程</button>',
+    tutorial: '<h3>选择训练</h3>'
+      + '<p class="pop-note">基础：拿球、收服、预约。进阶：盲抽、同色双球、收服预约卡。两种训练都能继续对局。</p>'
+      + '<button type="button" class="btn secondary sm" data-lpop="tutgo">基础训练</button> '
+      + '<button type="button" class="btn secondary sm" data-lpop="tutadvanced">进阶训练</button>',
     rules: '<h3>规则说明</h3>'
       + '<button type="button" class="btn secondary sm" data-lpop="rulesgo">打开规则</button>',
   };
@@ -1955,6 +1957,7 @@ function initOnline() {
         if (k === 'pw') { closeLobbyPop(); $('#link-password').click(); }
         else if (k === 'logout') { localStorage.removeItem('spToken'); location.reload(); }
         else if (k === 'tutgo') { closeLobbyPop(); if (typeof startTutorial === 'function') startTutorial(); else toast('教程入口待接入'); }
+        else if (k === 'tutadvanced') { closeLobbyPop(); if (typeof startAdvancedTutorial === 'function') startAdvancedTutorial(); else toast('进阶教程入口待接入'); }
         else if (k === 'rulesgo') { closeLobbyPop(); $('#btn-rules').click(); }
         return;
       }

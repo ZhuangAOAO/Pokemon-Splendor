@@ -4,7 +4,7 @@
 
 一个宝可梦主题的《璀璨宝石》网页版同人项目，支持本地游玩、多人联机、对局回放与强化学习 AI。
 
-![Version](https://img.shields.io/badge/version-3.4.7-e3350d)
+![Version](https://img.shields.io/badge/version-3.4.8-e3350d)
 ![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=nodedotjs&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-8.x-4479A1?logo=mysql&logoColor=white)
 ![License](https://img.shields.io/badge/license-none-lightgrey)
@@ -24,6 +24,7 @@
 - **挑战阿尔宙斯**：独立挑战模式，按 2/3/4 人加载对应的强化学习冠军策略。
 - **训练家排行与名人堂**：普通战绩排行、挑战赛季、永久殿堂和可点击回放。
 - **对局回放**：保存初始状态与行动序列，支持自动播放、权限隔离和管理员查看。
+- **交互式训练**：基础三步与独立进阶训练，聚光提示当前操作；教学局不计入战绩。
 - **响应式界面**：桌面与手机横屏布局、卡牌动效、音效、减弱动态效果支持。
 - **强化学习实验台**：可复现 RNG、无头仿真、PPO、神经网络、对手池和评测工具。
 
@@ -190,7 +191,7 @@ SPLENDOR_TEST_ADMIN_PASSWORD=<管理员密码>
 
 ## 当前状态
 
-当前版本为 **v3.4.7**。主要游戏、联机、账号、回放、挑战模式和冠军 AI 已可用；下一阶段重点是游戏桌面信息层级、卡牌状态表达、响应式布局收敛与可访问性。
+当前版本为 **v3.4.8**。新增基础与进阶交互式训练；主要游戏、联机、账号、回放、挑战模式和冠军 AI 已可用。下一阶段重点是游戏桌面信息层级、卡牌状态表达、响应式布局收敛与可访问性。
 
 更详细的版本变化见 [更新日志.json](更新日志.json)。
 
