@@ -81,6 +81,7 @@ const db = require(path.join(__dirname, '..', 'db-config.js'))();
   ok(true, '场景3：同一玩家新 SSE 顶掉旧连接，旧流被服务器主动关闭');
 
   // 场景1：模拟断线（全部连接取消）→ 宽限期内同名重连 → 对局继续
+  const turnBeforePause = rA2.msgs.filter((m) => m.game).at(-1).game.turnIdx;
   rA2.cancel();
   await sleep(1500); // 触发 handleDisconnect 与 60 秒宽限倒计时
   const rejoin = await post({ type: 'join', token: login.token, roomId: join.roomId, isPublic: false });
@@ -89,6 +90,8 @@ const db = require(path.join(__dirname, '..', 'db-config.js'))();
   const rB = sseReader(esB);
   await waitFor(() => rB.msgs.some((m) => m.game && !m.game.over), 5000, '重连后收到对局状态');
   ok(rB.msgs.some((m) => m.game && !m.game.over), '场景1：重连后对局仍在进行（没有被误结束）');
+  const turnAfterPause = rB.msgs.find((m) => m.game).game.turnIdx;
+  ok(turnAfterPause === turnBeforePause, '场景1：全员离线期间回合未被 AI 推进');
 
   // 场景4：等心跳（≤ 25 秒内应出现 type=hb）
   await waitFor(() => rB.msgs.some((m) => m.type === 'hb'), 25000, '心跳消息');
@@ -100,6 +103,8 @@ const db = require(path.join(__dirname, '..', 'db-config.js'))();
   await sleep(61000);
   const rejoin2 = await post({ type: 'join', token: login.token, roomId: join.roomId, isPublic: false });
   ok(!rejoin2.ok, '场景2：宽限期过后房间已解散（' + rejoin2.msg + '）');
+  const [[replayCount]] = await pool.query('SELECT COUNT(*) AS n FROM replays WHERE room_id = ?', [join.roomId]);
+  ok(replayCount.n === 0, '场景2：未完成的离线对局不生成回放');
 
   /* ---- 清理 ---- */
   await pool.query('DELETE FROM stats WHERE account = ?', [testName]);

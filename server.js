@@ -154,6 +154,7 @@ function createRoom(isPublic, mode) {
   session.HOOKS.onStateChanged = () => broadcastRoom(room);
   session.HOOKS.onToast = (m) => { broadcastToast(room, m); logEvent(room, '事件', m); };
   session.HOOKS.onGameOver = () => { recordGameStats(room); saveReplay(room); broadcastRoom(room); };
+  session.HOOKS.canRunAI = () => room.phase === 'game' && connectedHumans(room).length > 0;
   // AI 决策钩子：champion 座位走 RL 策略网络，easy/hard 走内置启发式（ai-policy 内分发）
   aiPolicy.installHook(session);
   // 每一步真实行动都记进回放（人类与电脑的行动都在这里流过；自动退球/自动进化不记）
@@ -245,6 +246,7 @@ setInterval(() => {
 /* ==================== 结束对局（投票 / 全员离线 / 房主） ==================== */
 function endGameToLobby(room, reason) {
   room.vote = null;
+  room.session.cancelAI();
   room.session.S = null;
   if (room.skipTimer) { clearTimeout(room.skipTimer); room.skipTimer = null; }
   if (room.offlineTimer) { clearTimeout(room.offlineTimer); room.offlineTimer = null; }
@@ -279,13 +281,17 @@ function handleDisconnect(room, conn) {
     deleteRoomIfEmpty(room);
     return;
   }
-  // 对局中：所有人类玩家都离线 → 先等 60 秒（断线重连很常见，弱网抖动不能直接毁局），
-  // 宽限期内有人连回来就继续对局；真没人回来才自动结束并解散房间
+  // 对局中全员离线：冻结对局，留 60 秒供重连；超时则直接解散，不让 AI 替人打完。
   if (connectedHumans(room).length === 0) {
+    room.session.cancelAI();
+    if (room.skipTimer) { clearTimeout(room.skipTimer); room.skipTimer = null; }
     if (room.offlineTimer) return; // 已进入倒计时
     room.offlineTimer = setTimeout(() => {
       room.offlineTimer = null;
-      if (connectedHumans(room).length === 0) finishOfflineGame(room); // 先把没打完的局打完再收房
+      if (connectedHumans(room).length === 0) {
+        endGameToLobby(room, '所有玩家离线超过 60 秒，对局已结束');
+        deleteRoomIfEmpty(room);
+      }
     }, 60000);
     return;
   }
@@ -295,13 +301,12 @@ function handleDisconnect(room, conn) {
   // 对局中：保留座位，轮到他（行动或进化阶段）时自动跳过
   armOfflineSkip(room);
 }
-// 「离线座位到点自动跳过」：断线那一刻是他的回合要挂，**回合后来才轮到他**也要挂。
-// 旧写法只在断线那一瞬判断一次：若断线时不是他的回合，等回合真转到他时就没有任何计时器 ——
-// 整局永远停在「等一个已经关掉页面的人」上。挑战房只有 1 个人类，尤其致命：
-// 玩家一断线，电脑走完就卡在人类回合，60 秒后房间被销毁 ⇒ 这一局战绩与回放全部丢失。
+// 「离线座位到点自动跳过」只适用于仍有其他人类在线的对局。
+// 如果断线时还没轮到他，后续回合落到该座位上也要挂计时器；全员离线则冻结整局。
 function armOfflineSkip(room) {
   if (room.skipTimer) return;                              // 已经挂过，不重复挂
   if (room.phase !== 'game') return;
+  if (connectedHumans(room).length === 0) return;           // 全员离线时冻结整局
   const S = room.session.S;
   if (!S || S.over) return;
   if (S.phase !== 'normal' && S.phase !== 'evolve') return; // 退球/选球等不在此推进回合
@@ -319,44 +324,6 @@ function armOfflineSkip(room) {
     else room.session.advanceTurn();
   }, TURN_TIMEOUT);
 }
-// 全员离线到点后的收尾：**先把还没打完的这一局打完**，再退回大厅。
-// 旧写法直接 endGameToLobby（把 S 置空）⇒ 这一局既没战绩也没回放，玩家回来只看到「回到大厅」、
-// 排行榜上查无此局 —— 挑战房是单人房（锁屏/切后台/弱网 60 秒即中招），所以「挑战局不算数」尤其明显。
-// 现在的口径：离线座位由 armOfflineSkip 自动跳过、电脑继续走；完局时 onGameOver 照常落战绩/回放。
-const OFFLINE_FINISH_MS = 120000; // 收尾窗口：全员离线后给对局打完的时间
-function finishOfflineGame(room) {
-  const drop = (reason) => {
-    endGameToLobby(room, reason);
-    deleteRoomIfEmpty(room); // 没人还连着：房间解散，不留幽灵房
-  };
-  const S0 = room.session.S;
-  if (!S0 || S0.over || room.phase !== 'game') return drop('所有玩家离线超过 60 秒，对局自动结束');
-  const t0 = Date.now();
-  const timer = setInterval(() => {
-    if (connectedHumans(room).length > 0) { clearInterval(timer); return; } // 有人回来：对局继续
-    const S = room.session.S;
-    if (!S || S.over) {
-      clearInterval(timer);
-      return drop('全员离线：对局已自动打完并结算'); // 战绩/回放已由 onGameOver 落库，这里只负责收房
-    }
-    // 全员离线：离线人类的回合**立即推进**（没人看，不必等 30 秒），电脑照常走 → 秒级打完
-    const cur = room.session.curPlayer();
-    if (cur && !cur.isAI) {
-      if (S.phase === 'evolve') room.session.actSkipEvolve();
-      else if (S.phase === 'discard') {
-        // 退球阶段必须替他退（否则整局永久停在「等一个不在的人退球」上）：退手上最多的那色，大师球排在最后
-        const c = COLORS.filter((x) => cur.balls[x] > 0).sort((a, b) => cur.balls[b] - cur.balls[a])[0]
-          || (cur.balls.master > 0 ? 'master' : null);
-        if (c) room.session.actDiscardOne(c);
-      } else if (S.phase === 'normal') room.session.advanceTurn();
-    }
-    if (Date.now() - t0 > OFFLINE_FINISH_MS) {
-      clearInterval(timer);
-      drop('全员离线超过 60 秒且对局未能自动打完，已结束');
-    }
-  }, 400);
-}
-
 /* ==================== 数据库（MySQL） ==================== */
 // 连接信息走统一入口：环境变量 > data/db.json > 默认（见 db-config.js）
 // 密钥不放项目目录里 —— 整个文件夹拷走也不泄露（2026-09-17 修）
@@ -950,8 +917,7 @@ async function handleJoin(body) {
   const old = humansList(room).find((c) => c.name === name && !c.connected);
   if (!old) return { ok: false, msg: '对局进行中，暂时不能加入' };
   logEvent(room, '重连', `${name} 回到座位 ${old.seat}`);
-  if (room.skipTimer) { clearTimeout(room.skipTimer); room.skipTimer = null; }
-  if (room.offlineTimer) { clearTimeout(room.offlineTimer); room.offlineTimer = null; }
+  // 只有 SSE 真正连上才解除离线冻结；仅拿到新 cid 还不算玩家已回归。
   const cid = crypto.randomUUID();
   const conn = { cid, name, accountName: u.name, seat: old.seat, res: null, connected: false, isHost: old.isHost, room };
   room.conns.delete(old.cid);
@@ -1294,6 +1260,7 @@ function handleSSE(req, res, u) {
   if (room.offlineTimer) { clearTimeout(room.offlineTimer); room.offlineTimer = null; } // 宽限倒计时取消
   logEvent(room, '在线', `${conn.name} 已连接（座位 ${conn.seat}）`);
   broadcastRoom(room);
+  if (room.phase === 'game') room.session.scheduleAI();
   // 半死的连接 write 时会抛错：吞掉等 close 事件来清理，别让进程崩溃
   res.on('error', () => {});
   // 用响应流的 close 检测客户端断开（req 的 close 在请求读完就会触发，会误判）

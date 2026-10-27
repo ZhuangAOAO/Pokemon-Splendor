@@ -2,10 +2,9 @@
 /* ================================================================
    幽灵房回归测试：全员退出后，房间必须从公开列表消失，且同名可重进。
    场景 1：大厅阶段退出 → 房间消失
-   场景 2：对局中全员离线 → 对局自动结束，房间消失
+   场景 2：对局中全员离线 → 60 秒内可重连，超时后房间消失
    场景 3：同名玩家可重新创建房间（名字没被幽灵房占用）
-   用法：在项目根目录先生成 server-test.js（sed 改 3210 端口的 server.js 副本）并启动，
-        再运行 node 测试/test-ghostroom.js
+   用法：先启动 node 测试/server-test.js（监听 3210），再运行 node 测试/test-ghostroom.js
    ================================================================ */
 const BASE = 'http://localhost:3210';
 const crypto = require('crypto');
@@ -45,7 +44,7 @@ const db = require(path.join(__dirname, '..', 'db-config.js'))();
   let rooms = (await post({ type: 'listRooms' })).rooms;
   ok(!rooms.some((r) => r.id === join1.roomId), '场景1：大厅退出后房间从公开列表消失');
 
-  // 场景 2：对局进行中全员离线 → 对局自动结束 + 房间消失
+  // 场景 2：对局进行中全员离线 → 宽限期可重连，超时后房间消失
   const join2 = await post({ type: 'join', token: login.token, roomId: '', isPublic: true });
   const es2 = await fetch(BASE + '/events?cid=' + join2.cid);
   await sleep(300);
@@ -54,12 +53,26 @@ const db = require(path.join(__dirname, '..', 'db-config.js'))();
   ok(start.ok, '开始对局（' + join2.roomId + '）');
   await es2.body.cancel(); // 唯一的人类玩家离线
   await sleep(1500);
-  rooms = (await post({ type: 'listRooms' })).rooms;
-  ok(!rooms.some((r) => r.id === join2.roomId), '场景2：对局中全员离线后房间从公开列表消失');
+  const rejoin = await post({ type: 'join', token: login.token, roomId: join2.roomId, isPublic: true });
+  ok(rejoin.ok, '场景2：宽限期内仍可重连原房间');
+  if (rejoin.ok) {
+    const es2b = await fetch(BASE + '/events?cid=' + rejoin.cid);
+    await sleep(300);
+    await es2b.body.cancel();
+  }
+  await sleep(61000);
+  const expired = await post({ type: 'join', token: login.token, roomId: join2.roomId, isPublic: true });
+  ok(!expired.ok, '场景2：全员离线超时后房间已解散');
+  const [[statsCount]] = await pool.query('SELECT COUNT(*) AS n FROM stats WHERE account = ?', [testName]);
+  ok(statsCount.n === 0, '场景2：未完成的离线对局不计入战绩');
 
   // 场景 3：同名玩家可重新创建房间
   const join3 = await post({ type: 'join', token: login.token, roomId: '', isPublic: true });
   ok(join3.ok, '场景3：同名玩家可重新创建房间（' + (join3.msg || '') + '）');
+  if (join3.ok) {
+    const es3 = await fetch(BASE + '/events?cid=' + join3.cid);
+    await es3.body.cancel();
+  }
 
   // 清理
   await pool.query('DELETE FROM stats WHERE account = ?', [testName]);

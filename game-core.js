@@ -34,6 +34,7 @@ const TIER_CN = { 1: '一阶', 2: '二阶', 3: '三阶', 4: '稀有', 5: '传说
 function createSession() {
 let S = null;       // 当前对局状态
 let lastCfg = null; // 最近一局的设置（用于"再来一局"）
+let aiTimer = null; // 待执行的电脑行动；全员离线时由服务器取消
 
 /* ---- 事件钩子：由环境注入 ---- */
 const HOOKS = {
@@ -42,6 +43,7 @@ const HOOKS = {
   onGameOver: () => {},      // 对局结束（浏览器=弹结算框；服务器=广播）
   onAction: () => {},        // 执行了一个真实行动（服务器=记回放；含人类与电脑的行动，不含自动退球/自动进化）
   chooseAIMove: null,        // AI 决策钩子：(p, defaultMove) => move，未设置时走内置逻辑（RL 实验用）
+  canRunAI: () => true,      // 服务器可在全员离线时暂停 AI；本地单机始终允许
 };
 
 /* ==================== 工具函数 ==================== */
@@ -129,6 +131,7 @@ function buildDecksFromTable() {
 
 /* ==================== 对局状态 ==================== */
 function newGame(cfg) {
+  cancelAI(); // 重开局时旧局的定时行动不得落到新局
   const n = cfg.players.length;
   const per = RULES.poolPerPlayer[n]; // 2人局每种基础球4个，3人局5个，4人局7个
   const pool = {};
@@ -406,14 +409,19 @@ function sameLoc(a, b) {
 
 /* ==================== 电脑 AI ==================== */
 function scheduleAI() {
+  if (aiTimer || !S || !HOOKS.canRunAI()) return;
   const g = S;
   const p = curPlayer();
   // 回放模式（S.replay）：电脑行动由回放记录驱动，不自动决策
   if (S.phase === 'normal' && p.isAI && !S.over && !S.replay) {
-    setTimeout(() => {
-      if (S === g && !S.over && S.phase === 'normal' && curPlayer() === p) aiTurn(p);
+    aiTimer = setTimeout(() => {
+      aiTimer = null;
+      if (S === g && !S.over && S.phase === 'normal' && curPlayer() === p && HOOKS.canRunAI()) aiTurn(p);
     }, AI_CONFIG.thinkMin + Math.random() * (AI_CONFIG.thinkMax - AI_CONFIG.thinkMin));
   }
+}
+function cancelAI() {
+  if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
 }
 function aiTurn(p) {
   const move = chooseAIMove(p);
@@ -597,7 +605,7 @@ function finishGame() {
     newGame, curPlayer, allMarketCards,
     actTakeThree, actTakeTwo, actDiscardOne, actBuy, actBuyReserved, actReserve, actReturnBall, actTakeMaster,
     actReserveBlind,
-    afterActionDone, advanceTurn, scheduleAI, aiTurn,
+    afterActionDone, advanceTurn, scheduleAI, cancelAI, aiTurn,
     actEvolve, actSkipEvolve, evolveOptions, sameLoc,
     canAfford, payPlan, missingFor, totalBalls, totalCost, globalNeed, bonusOf,
     shuffle, pick,
@@ -617,7 +625,7 @@ if (typeof window !== 'undefined') {
     actBuy: B.actBuy, actBuyReserved: B.actBuyReserved, actReserve: B.actReserve,
     actReturnBall: B.actReturnBall, actTakeMaster: B.actTakeMaster, actReserveBlind: B.actReserveBlind,
     TIER_CN,
-    afterActionDone: B.afterActionDone, advanceTurn: B.advanceTurn, scheduleAI: B.scheduleAI, aiTurn: B.aiTurn,
+    afterActionDone: B.afterActionDone, advanceTurn: B.advanceTurn, scheduleAI: B.scheduleAI, cancelAI: B.cancelAI, aiTurn: B.aiTurn,
     actEvolve: B.actEvolve, actSkipEvolve: B.actSkipEvolve, evolveOptions: B.evolveOptions,
     sameLoc: B.sameLoc, baseNameOf,
     canAfford: B.canAfford, payPlan: B.payPlan, missingFor: B.missingFor,
@@ -641,7 +649,7 @@ if (typeof module !== 'undefined' && module.exports) {
     actBuy: D.actBuy, actBuyReserved: D.actBuyReserved, actReserve: D.actReserve,
     actReturnBall: D.actReturnBall, actTakeMaster: D.actTakeMaster, actReserveBlind: D.actReserveBlind,
     TIER_CN,
-    afterActionDone: D.afterActionDone, advanceTurn: D.advanceTurn, scheduleAI: D.scheduleAI, aiTurn: D.aiTurn,
+    afterActionDone: D.afterActionDone, advanceTurn: D.advanceTurn, scheduleAI: D.scheduleAI, cancelAI: D.cancelAI, aiTurn: D.aiTurn,
     actEvolve: D.actEvolve, actSkipEvolve: D.actSkipEvolve, evolveOptions: D.evolveOptions,
     sameLoc: D.sameLoc, baseNameOf,
     canAfford: D.canAfford, payPlan: D.payPlan, missingFor: D.missingFor,
