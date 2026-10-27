@@ -108,6 +108,10 @@ function toast(msg) {
 
 /* ==================== 屏幕切换 ==================== */
 function showScreen(id) {
+  if (ONLINE && window.CardImagePreloader) {
+    if (id === 'lobby') window.CardImagePreloader.resume();
+    else window.CardImagePreloader.pause();
+  }
   // 过场只在"真的切屏"时播：进来前这一屏已经可见 → 不播。
   // 否则联机每次服务器推送状态（handleServerMsg → showScreen('game')）都会重放
   // 一次全屏球体开合，对局中每动一下屏幕就闪一下。
@@ -1834,6 +1838,7 @@ function enterJoinScreen() {
   showScreen('lobby');   // 与大厅共用同一套外壳（不再单独一屏）
   renderLobbyNav();      // 加入态也把导航渲出来（与进房后同一套）
   setLobbyMode(false);   // 未进房 → 显示「加入卡」
+  if (window.CardImagePreloader) window.CardImagePreloader.start();
 }
 async function doLogin() {
   const name = $('#login-name').value.trim();

@@ -87,7 +87,7 @@
         <h1>璀璨宝石 <span class="accent">·</span> 宝可梦</h1>
       </div>
       <nav class="nav" id="lobby-nav" aria-label="一级导航"></nav>
-      <p class="foot" id="lobby-rail-foot" title="正在读取服务器版本">v3.4.8</p>
+      <p class="foot" id="lobby-rail-foot" title="正在读取服务器版本">v3.4.9</p>
     </aside>
 
     <main class="stage">
@@ -108,6 +108,7 @@
           <span>手机横屏体验更好</span>
           <button class="btn ghost sm" id="lt-close" aria-label="忽略提示" title="忽略提示">×</button>
         </div>
+        <div id="card-preload-status" class="card-preload-status" hidden aria-live="off"></div>
 
         <div class="content">
           <!-- 区 1：开始对局 —— 未进房时是「加入卡」，进房后换成「房间卡」（同一套外壳，只换中间这张卡） -->
@@ -372,6 +373,7 @@
 <script src="config.js"></script>
 <script src="game-core.js"></script>
 <script src="confirm-dialog.js"></script>
+<script src="card-preload.js"></script>
 <script src="client.js"></script>
 <script src="tutorial.js"></script>
 </body>

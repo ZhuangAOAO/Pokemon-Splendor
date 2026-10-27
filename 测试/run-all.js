@@ -71,6 +71,7 @@ function testPort(file, fallback) {
 
   console.log('— 离线自检（不需要服务器）—');
   const OFFLINE = [
+    ['测试/test-card-preload.js', [], '登录后卡图预载（限并发、暂停恢复、省流量）'],
     ['测试/test-tutorial.js', [], '新手教程状态机（三步、AI 回合、退出重进）'],
     ['工具/rl/seed-demo.js', ['42'], '工具/rl/seed-demo.js 42（种子可复现性）'],
     // 冒烟跑：显式 --no-ledger，免得每次 npm test 都往 实验台账.md 刷一行

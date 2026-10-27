@@ -1,6 +1,6 @@
 {
   "name": "splendor-pokemon",
-  "version": "3.4.8",
+  "version": "3.4.9",
   "scripts": {
     "start": "node server.js",
     "test": "node 测试/run-all.js",
